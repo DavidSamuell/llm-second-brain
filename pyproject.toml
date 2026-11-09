@@ -29,7 +29,7 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PTH", "ASYNC"]
-ignore = []
+ignore = ["E501"]  # ruff format owns line length; long strings stay readable
 
 [tool.ruff.lint.isort]
 known-first-party = ["vault_core", "vault_mcp", "vault_watcher"]

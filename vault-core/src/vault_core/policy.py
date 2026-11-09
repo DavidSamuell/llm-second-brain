@@ -28,7 +28,7 @@ class PolicyError(Exception):
     """The policy file is missing or invalid. The message names the file and the field."""
 
 
-def _validate_prefixes(prefixes: list[str]) -> list[str]:
+def validate_prefixes(prefixes: list[str]) -> list[str]:
     for prefix in prefixes:
         if not prefix.endswith("/"):
             raise ValueError(f"folder prefix must end with '/': {prefix!r}")
@@ -49,13 +49,13 @@ class WritePolicy(_Strict):
     delete: Literal[False] = Field(False, description="No delete tool exists in v1 (D9).")
     max_file_mb: PositiveFloat = 10
 
-    _check_allow = field_validator("allow")(_validate_prefixes)
+    _check_allow = field_validator("allow")(validate_prefixes)
 
 
 class ReadPolicy(_Strict):
     deny: list[str] = []
 
-    _check_deny = field_validator("deny")(_validate_prefixes)
+    _check_deny = field_validator("deny")(validate_prefixes)
 
 
 class RateLimits(_Strict):

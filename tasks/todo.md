@@ -86,11 +86,12 @@ Commands used in verification:
   - Verify: `uv run pytest vault-core -k "audit or alerts or secrets"`.
   - Deps: T5 · Files: `vault-core/src/vault_core/{audit,alerts,secrets}.py`, tests · Scope: M
 
-- [ ] **T9 — vault-mcp credential store + token CLI** · Decisions: D16, D33 · **watch**
+- [x] **T9 — vault-mcp credential store + token CLI** · Decisions: D16, D33 · **watch**
   - `tokens.db` schema; `vault-mcp token create|list|revoke`; bearer verification (hash lookup, expiry, revocation, `last_used_at`); `scripts/token` wrapper.
   - Acceptance: a token is shown once and only its hash stored; a revoked or expired token fails verification; `--folders`, `--scope`, `--expires` are persisted; `never` must be explicit.
   - Verify: `uv run pytest vault-mcp -k tokens`.
   - Deps: T6 · Files: `vault-mcp/src/vault_mcp/{store,cli}.py`, `scripts/token`, tests · Scope: M
+  - **Status:** store and CLI tested (39 tests; mutation checks on revocation, hash-only storage, scope and expiry). `scripts/token` passes shellcheck; it runs the CLI in the `vault-mcp` service, which T10 adds, so its end-to-end run happens in T10/T11.
 
 - [ ] **T10 — vault-mcp read slice + compose base** · Decisions: D3, D4, D5, D10, D13, D16 · **watch**
   - FastMCP server: streamable HTTP `/mcp`, stdio mode (`VAULT_MCP_TOKEN`), `/health`. Tools `get_schema`, `read`, `list` with bearer auth and scope/deny enforcement. Dockerfile. `docker-compose.yml` with `ignis` + `vault-mcp`, binding `${BIND_ADDR}`, plus the `BIND_ADDR=0.0.0.0` startup warning.
