@@ -43,6 +43,8 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T10] `vault-mcp serve` listens on `0.0.0.0:8082` inside the container; the host side is published only on `${BIND_ADDR}` (default 127.0.0.1). The BIND_ADDR warning is printed at startup when it isn't loopback (checked against the container). Reversible: yes.
 - [T13] History records every vault file except `.git/`, `.trash/`, `.obsidian/workspace*`, `.obsidian/cache` and vault-mcp temp files. So Obsidian config under `.obsidian/` (app.json, plugin settings) is versioned too. Why: config changes are recoverable that way, and D22 only excluded layout and cache. Reversible: yes.
 - [T13] Attribution: an fs event that arrives while `git-sync` holds the vault lock marks that path's debounced burst as `git`; other events are `web`; startup and periodic scans record `unknown`. The watcher's `/health` runs on port 8083 inside the compose network only and reports unhealthy if the heartbeat is stale. Reversible: yes.
+- [T16] `append` on a missing file returns `not_found` (create with `write`), so a typo in the path can't create a stray page. `append` starts the text on a new line if the file doesn't end with one. Reversible: yes.
+- [T16] For write tools the durable `ok` audit line is written by the writer itself, under the same id as the history version, so a successful write has exactly one audit line; refusals and failures are logged by the server wrapper. The locked part of a write runs in a worker thread so its fsyncs don't stall other requests. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

@@ -86,7 +86,7 @@ class Recorder:
             post_sha256=entry.post_sha256,
             pre_known=entry.pre_known,
         )
-        fields = {
+        fields: dict[str, Any] = {
             "path": entry.path,
             "new_path": entry.new_path,
             "credential_id": entry.credential_id,

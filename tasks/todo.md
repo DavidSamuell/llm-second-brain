@@ -148,7 +148,7 @@ Commands used in verification:
 
 ## Phase 3 — MCP write path, secret scan, ops monitor
 
-- [ ] **T16 — `write` + `append`** · Decisions: D7, D8, D9, D10, D20, D21, D24 · **watch**
+- [x] **T16 — `write` + `append`** · Decisions: D7, D8, D9, D10, D20, D21, D24 · **watch**
   - Version-checked create/replace, append under the lock; D21 handoff (liveness pre-flight, pre/post-image spool, ack wait); diff-only secret rejection; `max_file_mb`; audit line before releasing the lock.
   - Acceptance:
     - §16.9: a stale `base_version` → `conflict`, nothing lost.
@@ -159,6 +159,7 @@ Commands used in verification:
     - Watcher stopped → `history_pending` and the file is unchanged.
   - Verify: `uv run pytest vault-mcp -k write` + `uv run pytest e2e -k "conflict or human_page or audit_history or secret_mcp"`.
   - Deps: T13 · Files: `vault-mcp/src/vault_mcp/tools_write.py`, tests · Scope: M
+  - **Status:** the pipeline is `vault-mcp/src/vault_mcp/writer.py`; tests run against a real vault-watcher. vault-mcp is killed in subprocesses before the rename, before the audit line, and before the commit; no phantom versions, missing audit lines or duplicates. Mutation checks cover the base-version, permission, read-only, pre-image, acknowledgement, secret and audit-ordering branches. e2e (both profiles): read token can't write, §16.9 conflict, §16.10 refusal, §16.13 MCP rejection, §16.15 five writes ↔ five audit ids ↔ five history versions.
 
 - [ ] **T17 — `replace_section` + `insert_after`** · Decisions: D10, D11 · **watch**
   - markdown-it-py section locator; both tools reuse the T16 write pipeline.

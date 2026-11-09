@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     data_dir: Path = Path("/data")
     policy_file: Path = Path("/config/vault-mcp.yaml")
     bind_addr: str = "127.0.0.1"
+    history_ack_timeout: float = 5.0  # D21: how long a write waits for vault-watcher
 
 
 def bind_addr_warning(bind_addr: str) -> str | None:

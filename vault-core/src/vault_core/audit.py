@@ -42,8 +42,16 @@ class AuditLog:
         self.path = path
 
     def append(
-        self, *, service: str, tool: str, result: str, id: str | None = None, **fields: Any
+        self,
+        *,
+        service: str,
+        tool: str,
+        result: str,
+        id: str | None = None,
+        durable: bool = False,
+        **fields: Any,
     ) -> str:
+        """Append one entry. `durable=True` fsyncs it (D21 step 4: before the commit rename)."""
         entry_id = id or new_id()
         entry = {
             "ts": utc_timestamp(),
@@ -58,6 +66,8 @@ class AuditLog:
         fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o640)
         try:
             written = os.write(fd, line)
+            if durable:
+                os.fsync(fd)
         finally:
             os.close(fd)
         if written != len(line):

@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -79,3 +80,34 @@ def policy(policy_file: Path) -> Policy:
 @pytest.fixture
 def store(data: Path) -> CredentialStore:
     return CredentialStore(data / "tokens.db")
+
+
+@pytest.fixture
+def watcher(vault: Path, data: Path, policy: Policy) -> Iterator[object]:
+    """A real vault-watcher: the D21 handoff needs a live consumer to acknowledge writes."""
+    from vault_watcher.watcher import Watcher, WatcherConfig
+
+    class Alerts:
+        def __init__(self) -> None:
+            self.sent: list[tuple[str, str]] = []
+
+        def send(
+            self,
+            event: str,
+            severity: str,
+            message: str,
+            details: object = None,
+            *,
+            subject: str = "",
+        ) -> bool:
+            self.sent.append((event, message))
+            return True
+
+    cfg = WatcherConfig(
+        vault_dir=vault, data_dir=data, debounce_quiet_s=0.3, debounce_cap_s=5,
+        scan_interval_s=3600, heartbeat_interval_s=0.1, policy=policy,
+    )  # fmt: skip
+    w = Watcher(cfg, alerts=Alerts())
+    w.start()
+    yield w
+    w.stop()

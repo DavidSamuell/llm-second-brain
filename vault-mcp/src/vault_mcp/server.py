@@ -4,7 +4,7 @@ authenticated by `VAULT_MCP_TOKEN`, and an unauthenticated `/health`."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
 from fastmcp import FastMCP
@@ -20,6 +20,7 @@ from vault_mcp.errors import VaultToolError
 from vault_mcp.store import Credential, CredentialStore
 from vault_mcp.tools_read import ReadTools
 from vault_mcp.tools_search import SearchTools
+from vault_mcp.writer import VaultWriter
 
 T = TypeVar("T")
 
@@ -53,6 +54,9 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     audit = AuditLog(settings.data_dir / "audit.log")
     reads = ReadTools(settings.vault_dir, policy)
     searches = SearchTools(settings.data_dir / "index.db", policy)
+    writer = VaultWriter(
+        settings.vault_dir, settings.data_dir, policy, ack_timeout_s=settings.history_ack_timeout
+    )
 
     mcp = FastMCP(
         "vault-mcp",
@@ -93,6 +97,25 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         audit.append(service="vault-mcp", tool=tool, result="ok", **fields)
         return result
 
+    async def audited_write(tool: str, path: str, call: Callable[[Credential], Awaitable[T]]) -> T:
+        """Write tools: the writer itself logs the durable `ok` line (D21 step 4) under the
+        same id as the history version; only refusals and failures are logged here."""
+        cred = current()
+        fields: dict[str, Any] = {
+            "credential_id": cred.id,
+            "credential_name": cred.name,
+            "owner": cred.owner,
+            "path": path,
+        }
+        try:
+            return await call(cred)
+        except VaultToolError as exc:
+            audit.append(service="vault-mcp", tool=tool, result=exc.code, **fields)
+            raise
+        except Exception:
+            audit.append(service="vault-mcp", tool=tool, result="internal_error", **fields)
+            raise
+
     @mcp.tool(name="get_schema")
     def get_schema() -> dict[str, Any]:
         """Return the vault's AGENTS.md (with schema_version). Read it before anything else."""
@@ -114,6 +137,19 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         """Full-text search (title, headings, path, frontmatter, body). Words are matched
         literally and all must appear; `folder` narrows the search to one folder."""
         return audited("search", folder, lambda cred: searches.search(cred, query, folder, limit))
+
+    @mcp.tool(name="write")
+    async def write(path: str, content: str, base_version: str | None) -> dict[str, Any]:
+        """Create a file (base_version null) or replace it (base_version = the version you
+        read). Fails with `conflict` if the file changed since you read it."""
+        return await audited_write(
+            "write", path, lambda cred: writer.write(cred, path, content, base_version)
+        )
+
+    @mcp.tool(name="append")
+    async def append(path: str, text: str) -> dict[str, Any]:
+        """Append text to an existing file, starting on a new line."""
+        return await audited_write("append", path, lambda cred: writer.append(cred, path, text))
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
