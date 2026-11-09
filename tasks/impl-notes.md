@@ -37,6 +37,7 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T38] D38: Dependabot (not Renovate); Playwright for the nightly Ignis checks. Reversible: yes.
 - [T30] D39: the Cloudflare tunnel is remotely managed via `CF_TUNNEL_TOKEN`; Access is configured by following the docs, not the API. Reversible: yes.
 - [T2] D17 amended: SDK OAuth endpoints stay at the MCP host root (`/authorize`, `/token`, `/register`, `/revoke`); only the kit's pages (`/oauth/login|consent|callback`) sit under `/oauth/`. `required_scopes` is left unset on the provider. Why: see the T2 surprises below. This is the fallback the plan named before T2 started. Reversible: yes, until clients store the endpoints.
+- [T3] D21 step order fixed: make `post.blob`, the temp file and `txn.json` durable → read the current file → make `pre.blob` + `pre.json` durable → re-read and compare → `os.replace`. A changed file at the compare is `conflict` for tools with `base_version`, and a redo for `append`/`insert_after`. Why: the T3 measurements below. Defaults kept: `HISTORY_ACK_TIMEOUT=5s`, debounce 5 s / 60 s, heartbeat stale after 30 s. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.
@@ -77,6 +78,9 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T2] fastmcp 4.x: `required_scopes=["vault:read"]` makes `WWW-Authenticate` carry `scope="vault:read"`, and the SDK client then requests only that scope. On 3.4.11 the challenge has no scope.
 - [T2] Protected-resource metadata is path-aware (`/.well-known/oauth-protected-resource/mcp`). The bare `/.well-known/oauth-protected-resource` returns 404. check-exposure (D35) must follow `resource_metadata` from `WWW-Authenticate` rather than guess the path.
 - [T2] Both versions advertise `token_endpoint_auth_methods_supported` without `none`. Whether public clients (Claude.ai) still register is a T24 check.
+- [T3] With the pre-image fsync between reading the file and replacing it, the window in which an unlocked Ignis save gets silently overwritten was ~16 ms: 2 of 18 interleaved web saves were lost in 2 of 3 runs. Moving all fsyncs out of that window (durable pre-image first, then a re-read/compare right before the rename) cut it to 0.04–0.1 ms, with 0 losses in 3 runs. The residual race can't reach zero, because Ignis takes no lock.
+- [T3] D21 ack latency for back-to-back MCP writes: p50 6–12 ms, p95 10–15 ms. Every crash and recovery case in the T3 acceptance behaved as designed, including an Ignis save between a vault-mcp crash and recovery (`unconfirmed` pointer + alert, data kept).
+- [T3] A watcher that dies is only noticed after the 30 s heartbeat threshold. Writes in that gap go ahead and end in `history_pending` (`applied: true`); they are recorded when the watcher restarts.
 
 ## Open questions for the human
 _At the /build auto checkpoint (2026-11-09) the user approved "go with the defaults" for the items below. Where an item states a default, that default is being applied; the items stay listed for final confirmation. For the T1 restricted-mode question the conservative default is an **empty** default allowlist._

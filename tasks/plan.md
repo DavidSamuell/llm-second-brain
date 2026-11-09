@@ -222,15 +222,16 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
     - The **new** content is recorded on every change, plus a baseline at the first scan, so the "previous version" always exists.
   - **Durable per-write handoff with an explicit commit point.** Every MCP tool that changes a file does this while holding the lock:
     1. **Liveness pre-flight:** if the watcher heartbeat (`/data/vault-watcher/heartbeat`) is older than 30 s, return `history_pending` *before changing anything*.
-    2. **Prepare:** write a transaction `/data/history/.inbox/<audit_id>.prepared/` containing:
-       - `post.blob`: the exact new bytes
-       - `pre.blob`: only if the file's current sha256 differs from the newest pointer (an un-recorded Ignis edit still inside the debounce window)
-       - `txn.json`: `{audit_id, path, new_path?, event, pre_sha256, post_sha256, credential, tool}`
-       Everything is fsynced. Entries in `.prepared` state are never consumed by the normal drain.
-    3. **Apply:** `os.replace` the vault file and fsync the directory.
+    2. **Prepare (T3 ordering):**
+       - First write and fsync everything that doesn't depend on the current file: `post.blob` (the exact new bytes), the same-directory temp file for the replace, and `txn.json` (`{audit_id, path, new_path?, post_sha256, credential, tool}`). Entries in `.prepared` state are never consumed by the normal drain.
+       - Then read the current file. If its sha256 differs from the newest pointer (an un-recorded Ignis edit still inside the debounce window), write `pre.blob` with those bytes. Always write `pre.json` (`{pre_sha256, event}`). Fsync both, plus the directory. **Every byte recovery needs is durable before step 3.**
+    3. **Revalidate and apply:** re-read the file and compare it with the bytes from step 2, immediately before `os.replace`. If they differ, Ignis saved in between:
+       - `write`/`replace_section`/`move` (which carry a `base_version`) return `conflict` and drop the prepared entry;
+       - `append`/`insert_after` redo step 2 against the new content.
+       Then fsync the directory. Recovery also deletes a leftover `.<name>.vault-mcp-<id8>.tmp` file.
     4. **Audit:** append the audit line, carrying `audit_id`.
     5. **Commit:** rename `<audit_id>.prepared` → `<audit_id>.committed` and fsync `.inbox/`. This rename is the commit point.
-    6. Release the lock and **wait for the acknowledgement**: the watcher deletes the committed entry once its pointers are fsynced. The wait is bounded by `HISTORY_ACK_TIMEOUT` (new env var, default 5 s, tuned in T3).
+    6. Release the lock and **wait for the acknowledgement**: the watcher deletes the committed entry once its pointers are fsynced. The wait is bounded by `HISTORY_ACK_TIMEOUT` (new env var, default 5 s; T3 measured p50 6–12 ms and p95 10–15 ms for back-to-back writes, so 5 s leaves room for a drain that's waiting on the lock).
     - Success is returned only after the acknowledgement. On ack timeout the tool returns `history_pending` with `details: {applied: true, version}`. The committed entry is durable, so the version is recorded when the watcher resumes.
   - **Watcher consumption is idempotent.** Each drain takes the lock and runs at startup, on inotify events in `.inbox/`, and before handling any vault fs event. It consumes `.committed` entries and runs crash recovery on `.prepared` ones (below). For each entry it records `pre` (as `source: web`) when present, then `post` (as `source: mcp`, with `audit_id`). A pointer that already carries `audit_id` + kind is skipped. Pointer timestamps come from `txn.json`, so order is preserved.
     - The watcher takes the lock before it hashes a file for a vault event (D6). An MCP write's fs event is therefore handled only after the commit, when its version is already recorded (hash = head → skip).
@@ -250,7 +251,15 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
   - No debounce for web edits: Ignis autosave produces a version per keystroke burst.
   - Hardlink snapshots: nowhere to keep metadata.
 - **Why:** The exact bytes are on disk before the vault file changes, and success waits for the watcher's acknowledgement. Every reported MCP write therefore has a version (§16.15), crashes cannot lose one, and the watcher stays the single history owner (§6.6/§7.1).
-- **Open uncertainty:** acknowledgement latency for back-to-back agent edits, and inotify delivery on the Docker bind mount. The T3 spike measures both and sets `HISTORY_ACK_TIMEOUT` and the debounce before T13/T16 are built.
+- **T3 results** (prototype: watcher in a container on bind mounts, writer on the host; throwaway, deleted):
+  - 20/20 back-to-back MCP writes interleaved with Ignis-style saves had a post pointer and an audit line.
+  - Watcher stopped for more than 30 s → `history_pending`, file unchanged, nothing spooled.
+  - Watcher frozen mid-ack → `history_pending` with `applied: true`, and the version was recorded after restart.
+  - vault-mcp killed: (a) before replace → no version, audit `aborted`, temp file removed; (b) after replace → version + one `recovered` audit line; (c) after audit → version, no duplicate audit line. Killed after replace with a pre-image pending → both the un-recorded web version and the MCP version were recorded.
+  - An Ignis save between the kill and recovery → `unconfirmed` pointer that keeps the MCP bytes, audit `unknown`, and an alert.
+  - inotify events on the bind mount reached the containerised watcher (pointer after 5.1 s = 5 s debounce + latency).
+  - **The ordering matters.** With the pre-image fsyncs between read and replace, the unlocked-Ignis window was ~16 ms, and 2 of 18 web saves were silently overwritten in 2 of 3 runs. With the step-2/3 ordering above the window is 0.04–0.1 ms, and 0 of 18 were lost in 3 runs.
+  - Debounce defaults (5 s quiet / 60 s cap) and the 30 s heartbeat staleness are kept.
 
 ### D22 — Watcher change detection
 - Spec: §7.
@@ -439,9 +448,9 @@ The watcher comes before the MCP write path because the D21 handoff needs a runn
 | Two people typing in the same note at once: the last save wins silently | Med | **T1:** confirmed. It's an Ignis/Obsidian behaviour the kit can't change; documented in LIMITATIONS. |
 | ~~A read-only plugins mount makes Ignis/Obsidian error at startup~~ | — | **T1: resolved.** The read-only mount works; see D28. |
 | FastMCP `OAuthProvider` route paths can't be moved under `/oauth/*`, or Claude.ai rejects the metadata | High | **T2 (fastmcp 3.4.11, cross-checked on 4.1.6):** under `/oauth/*` the SDK client fails (issuer mismatch on 3.x, broken refresh fallback on 4.x), so SDK endpoints stay at the root (D17). The full flow passed with the MCP SDK's own `OAuthClientProvider`: discovery from 401 → protected-resource metadata → authorization-server metadata → DCR → authorize with PKCE S256 and `resource` → token → tool call → refresh. **A real Claude.ai connector is still untested** (user chose scripted client only); T2 stays open until the Checkpoint D manual run. |
-| The window between Ignis writes and MCP compare-and-replace (Ignis takes no lock) | Med | Re-hash right before `os.replace`; document the residual race in LIMITATIONS |
+| The window between Ignis writes and MCP compare-and-replace (Ignis takes no lock) | Med | **T3:** read → durable pre-image → re-read/compare → `os.replace`. The window measured 0.04–0.1 ms, down from ~16 ms when the fsyncs sat inside it. A save that lands in that window is still overwritten; documented as a residual race in LIMITATIONS (T41). |
 | Secret-regex false positives block legitimate agent writes | Med | Diff-only scan; high-confidence rules only; each reported false positive becomes a rule fix + fixture (no content-level bypass, D24) |
-| The D21 ack wait slows back-to-back agent edits, or inotify misses events on the bind mount | Med | T3 spike measures this before T13/T16; the spool is drained before vault events, so there is no debounce on MCP writes; the full scan is the backstop |
+| ~~The D21 ack wait slows back-to-back agent edits, or inotify misses events on the bind mount~~ | — | **T3: resolved.** Ack p50 6–12 ms / p95 10–15 ms, and inotify works on the bind mount. |
 | Claude Code JSON output changes and `total_cost_usd` disappears | Med | Pin the CLI version; a missing field disables jobs with an alert (fail closed on budget) |
 | Spec deviations ⚠ (D2, D4) rejected in review | Low | Raised as Open Questions before Phase 1 |
 

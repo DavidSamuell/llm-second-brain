@@ -36,7 +36,7 @@ Commands used in verification:
   - Deps: none · Files: plan.md only · Scope: S
   - **Status:** local part done (scripted MCP SDK client against fastmcp 3.4.11; the D17 fallback, SDK endpoints at the root, is written into plan.md). **Still open:** the real Claude.ai connector run, deferred by the user to Checkpoint D. Don't tick until it passes.
 
-- [ ] **T3 — History handoff spike** · Decisions: D6, D21, D22 · **watch**
+- [x] **T3 — History handoff spike** · Decisions: D6, D21, D22 · **watch**
   - Prototype: a watchdog observer in a container on a bind mount. A writer runs the D21 transaction: flock → prepare → `os.replace` → audit → commit rename → wait for ack. It makes 20 back-to-back writes to one file, interleaved with simulated Ignis-style rapid saves. Fault injection:
     - the watcher stopped before the write
     - the watcher killed between commit and ack
