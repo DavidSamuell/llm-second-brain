@@ -1177,12 +1177,14 @@ version = "0.0.0"
 source = { editable = "vault-mcp" }
 dependencies = [
     { name = "fastmcp" },
+    { name = "markdown-it-py" },
     { name = "vault-core" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "fastmcp", specifier = "==3.4.11" },
+    { name = "markdown-it-py", specifier = ">=3,<5" },
     { name = "vault-core", editable = "vault-core" },
 ]
 

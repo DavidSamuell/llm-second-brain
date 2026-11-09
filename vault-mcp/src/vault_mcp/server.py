@@ -151,6 +151,26 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         """Append text to an existing file, starting on a new line."""
         return await audited_write("append", path, lambda cred: writer.append(cred, path, text))
 
+    @mcp.tool(name="replace_section")
+    async def replace_section(
+        path: str, heading: str, content: str, base_version: str
+    ) -> dict[str, Any]:
+        """Replace the body under one heading (subsections included), keeping the heading
+        line. `heading` is its text ("Usage") or full line ("## Usage"). Prefer this over
+        rewriting whole pages."""
+        return await audited_write(
+            "replace_section",
+            path,
+            lambda cred: writer.replace_section(cred, path, heading, content, base_version),
+        )
+
+    @mcp.tool(name="insert_after")
+    async def insert_after(path: str, heading: str, content: str) -> dict[str, Any]:
+        """Insert content directly below a heading, before the section's existing body."""
+        return await audited_write(
+            "insert_after", path, lambda cred: writer.insert_after(cred, path, heading, content)
+        )
+
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})

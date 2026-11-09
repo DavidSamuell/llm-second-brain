@@ -333,3 +333,25 @@ async def test_unrecorded_browser_edit_just_before_an_mcp_write_is_kept(
     await asyncio.sleep(0.8)  # past the debounce
     contents = [HistoryStore(data).content(v) for v in HistoryStore(data).versions("wiki/index.md")]
     assert b"browser edit still inside the debounce window\n" in contents
+
+
+async def test_section_tools_edit_through_the_same_pipeline(
+    vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
+) -> None:
+    page = vault / "wiki" / "guide.md"
+    page.write_text("# Guide\n\n## Install\n\nold\n\n## Usage\n\nuse\n")
+    w, c = writer(vault, data, policy), cred(store)
+    version = version_of(page.read_bytes())
+    out = await w.replace_section(c, "wiki/guide.md", "Install", "new\n", version)
+    assert page.read_text() == "# Guide\n\n## Install\nnew\n## Usage\n\nuse\n"
+    with pytest.raises(ToolError) as exc:  # stale version
+        await w.replace_section(c, "wiki/guide.md", "Usage", "x\n", version)
+    assert code(exc)["code"] == "conflict"
+    await w.insert_after(c, "wiki/guide.md", "Usage", "first\n")
+    assert page.read_text() == "# Guide\n\n## Install\nnew\n## Usage\nfirst\n\nuse\n"
+    with pytest.raises(ToolError) as exc:
+        await w.insert_after(c, "wiki/guide.md", "Missing", "x\n")
+    assert code(exc)["code"] == "not_found"
+    posts = mcp_versions(data, "wiki/guide.md")
+    assert len(posts) == 2
+    assert out["version"] == posts[0].sha256

@@ -25,6 +25,7 @@ from vault_core.lock import AsyncVaultLock
 from vault_core.paths import PathError, normalize, resolve_in_vault
 from vault_core.policy import Policy, check_write
 from vault_core.secrets import scan_added_lines
+from vault_mcp import sections
 from vault_mcp.errors import VaultToolError
 from vault_mcp.store import Credential
 
@@ -91,6 +92,24 @@ class VaultWriter:
 
         result = await self.apply(
             cred, "append", path, build, base_version=ANY, retries=APPEND_RETRIES
+        )
+        return {"path": result.path, "version": result.version}
+
+    async def replace_section(
+        self, cred: Credential, path: str, heading: str, content: str, base_version: str
+    ) -> dict[str, str]:
+        """Replace one section's body (D11), checked against the version you read."""
+        build = _section_edit(path, lambda text: sections.replace_section(text, heading, content))
+        result = await self.apply(cred, "replace_section", path, build, base_version=base_version)
+        return {"path": result.path, "version": result.version}
+
+    async def insert_after(
+        self, cred: Credential, path: str, heading: str, content: str
+    ) -> dict[str, str]:
+        """Insert directly below a heading (D11); like append, no base_version needed."""
+        build = _section_edit(path, lambda text: sections.insert_after(text, heading, content))
+        result = await self.apply(
+            cred, "insert_after", path, build, base_version=ANY, retries=APPEND_RETRIES
         )
         return {"path": result.path, "version": result.version}
 
@@ -245,6 +264,21 @@ class VaultWriter:
                     path=result.path, applied=True, version=result.version,
                 )  # fmt: skip
             await asyncio.sleep(0.005)
+
+
+def _section_edit(path: str, edit: Callable[[str], str]) -> Callable[[bytes | None], bytes]:
+    def build(current: bytes | None) -> bytes:
+        if current is None:
+            raise VaultToolError("not_found", "no such file", path=path)
+        try:
+            text = current.decode("utf-8")
+        except UnicodeDecodeError:
+            raise VaultToolError(
+                "invalid", "section edits need a UTF-8 text file", path=path
+            ) from None
+        return edit(text).encode()
+
+    return build
 
 
 class _Changed(Exception):

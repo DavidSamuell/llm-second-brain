@@ -161,11 +161,12 @@ Commands used in verification:
   - Deps: T13 · Files: `vault-mcp/src/vault_mcp/tools_write.py`, tests · Scope: M
   - **Status:** the pipeline is `vault-mcp/src/vault_mcp/writer.py`; tests run against a real vault-watcher. vault-mcp is killed in subprocesses before the rename, before the audit line, and before the commit; no phantom versions, missing audit lines or duplicates. Mutation checks cover the base-version, permission, read-only, pre-image, acknowledgement, secret and audit-ordering branches. e2e (both profiles): read token can't write, §16.9 conflict, §16.10 refusal, §16.13 MCP rejection, §16.15 five writes ↔ five audit ids ↔ five history versions.
 
-- [ ] **T17 — `replace_section` + `insert_after`** · Decisions: D10, D11 · **watch**
+- [x] **T17 — `replace_section` + `insert_after`** · Decisions: D10, D11 · **watch**
   - markdown-it-py section locator; both tools reuse the T16 write pipeline.
   - Acceptance: headings inside code fences are ignored; duplicate headings → `ambiguous_heading` with candidates; setext headings work; content outside the section is byte-identical afterwards.
   - Verify: `uv run pytest vault-mcp -k sections`.
   - Deps: T16 · Files: `vault-mcp/src/vault_mcp/{sections,tools_write}.py`, tests · Scope: S
+  - **Status:** 11 section tests (fences ignored, setext, frontmatter not a heading, subsections inside a section, last section to EOF, CRLF outside kept, level pinned by a full heading line, ambiguity with candidates) plus a pipeline test through the writer. Mutation checks on section end, frontmatter stripping, ambiguity and level matching.
 
 - [ ] **T18 — `review_queue_add`** · Decisions: D15 · **watch**
   - Appends a D15-format item to `_system/review-queue.md`, creating the file if missing. Requires write scope and is exempt from the maintainer rule, so it works for `maintainer: human` pages.

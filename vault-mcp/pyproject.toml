@@ -7,6 +7,7 @@ license = "MIT"
 dependencies = [
     "vault-core",
     "fastmcp==3.4.11",
+    "markdown-it-py>=3,<5",
 ]
 
 [build-system]
