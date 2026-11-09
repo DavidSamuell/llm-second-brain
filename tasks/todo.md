@@ -100,11 +100,13 @@ Commands used in verification:
   - Deps: T6, T7, T9 · Files: `vault-mcp/src/vault_mcp/{server,tools_read}.py`, `vault-mcp/Dockerfile`, `docker-compose.yml` · Scope: M
   - **Status:** 64 vault-mcp tests (HTTP via uvicorn, stdio via subprocess; mutation checks on auth, scope and audit). Against the real compose stack: both services healthy; `/health` 200; `/mcp` without a token → 401 + `WWW-Authenticate: Bearer`; a token made with `scripts/token` reads `wiki/`, gets `forbidden` for `private/`, and every call is in `audit.log`; the BIND_ADDR warning shows for `0.0.0.0`; editing in Ignis works with the D4 `WS_ORIGINS` value. Follow-up fix: `get_schema` and `list` now go through the vault-escape guard too (an `AGENTS.md` or listed entry symlinked out of the vault is refused or skipped; regression tests added).
 
-- [ ] **T11 — e2e harness + CI e2e job** · Decisions: D5, D38 · **watch**
+- [x] **T11 — e2e harness + CI e2e job** · Decisions: D5, D38 · **watch**
   - `e2e/` pytest suite: brings up the stack with `INGRESS=local` and `none`, creates tokens through `docker compose exec`, uses the `fastmcp.Client`. Implement §16.2 (probe from a container on a separate network) and the read half of §16.5.
   - Acceptance: CI `e2e` job runs both profiles on every PR and passes.
   - Verify: `uv run pytest e2e -m "profile_local or profile_none"`.
   - Deps: T10 · Files: `e2e/`, `.github/workflows/ci.yml` · Scope: M
+  - **Status:** local acceptance met under the user's "build and test locally, list external checks" allowance. `uv run pytest e2e -m "profile_local or profile_none"`: 16 passed, 2 skipped. The skips are the other-network container probe: this host's firewall blocks container-to-host traffic, so its control listener is unreachable. §16.2 is still covered by the LAN-address probe, which was shown to fail when the stack is published on `0.0.0.0`. `ci.yml` has the `e2e` job (actionlint clean).
+  - [ ] **External check (listed for the user):** the CI `e2e` job green on a PR (needs a push), including the other-network probe running unskipped on the GitHub runner.
 
 ### Checkpoint A — after T4–T11
 - [ ] lint, unit, and e2e green in CI

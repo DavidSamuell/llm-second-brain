@@ -46,3 +46,16 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-packages
       - run: uv run pytest
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --all-packages
+      - name: End-to-end tests (INGRESS=local and none)
+        run: uv run pytest e2e -m "profile_local or profile_none" -rs

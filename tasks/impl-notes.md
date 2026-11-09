@@ -61,6 +61,8 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T1] Task said: verify with "two browsers + one mobile". → Did: two isolated Chromium browser contexts (separate cookies and localStorage), plus Chromium device emulation of an iPhone 12. Because: no real mobile device is available in this environment. Real iOS/Android behaviour is listed as "Not verified" in `docs/LIMITATIONS.md`.
 - [T2] Task said: run a real Claude.ai custom connector over a temporary tunnel. → Did: ran the MCP SDK's own `OAuthClientProvider` as a scripted client, with the authorize step done by HTTP instead of a browser. Because: the user chose "scripted client only" at the /build auto checkpoint. T2 is left **unticked** in `tasks/todo.md` until the Claude.ai run at Checkpoint D.
 - [T10] Task list put `vault-mcp.example.yaml` in T29. → Did: added it in T10. Because: the compose service can't start without a policy file, and T10's acceptance runs the stack. T29 still owns copying it in `scripts/setup`. — `vault-mcp.example.yaml`
+- [T11] Plan D38 said §16.2 probes the host IP from a container on a separate network. → Did: two tests. (1) Connect to this host's LAN address directly; Docker's DNAT also applies to locally generated traffic, so a port published on `0.0.0.0` answers there. (2) The container probe, skipped with a reason when its control listener is unreachable. Because: this host's firewall (ufw) blocks container-to-host traffic, which makes the container probe environment-dependent. Test (1) was shown to fail with `BIND_ADDR=0.0.0.0`. — `e2e/test_deploy.py`
+- [T11] Added env var `MCP_POLICY_FILE` (default `./vault-mcp.yaml`) for the policy bind mount, so the e2e suite can use a temporary policy instead of overwriting a developer's `vault-mcp.yaml`. — `docker-compose.yml`
 
 ## Surprises (things learned)
 - The repo started with only `SPEC.md`, `README.md` (18 B), and a stock Python `.gitignore`, so there are no existing conventions to follow.
@@ -87,6 +89,7 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T3] A watcher that dies is only noticed after the 30 s heartbeat threshold. Writes in that gap go ahead and end in `history_pending` (`applied: true`); they are recorded when the watcher restarts.
 - [T10] With `WS_ORIGINS=https://localhost` (D4's exact value for an unset `IGNIS_HOST`), the editor at `http://127.0.0.1:8081` still loaded and saved edits. Ignis seems to allow same-origin connections regardless of the list. Whether it rejects a *cross-origin* WebSocket is not verified yet; that belongs in the T41 security pass.
 - [T10] With bearer-only auth (no OAuth yet), a 401 from `/mcp` carries just `WWW-Authenticate: Bearer`, without `resource_metadata`. That arrives with the OAuth provider in T24 (§5.4 check-exposure expects it).
+- [T11] On this host, containers on a user-defined Docker network can't reach the host's LAN address (ufw default policy), while the host itself can. GitHub runners have no ufw, so the container probe is expected to run there.
 
 ## Open questions for the human
 _At the /build auto checkpoint (2026-11-09) the user approved "go with the defaults" for the items below. Where an item states a default, that default is being applied; the items stay listed for final confirmation. For the T1 restricted-mode question the conservative default is an **empty** default allowlist._
@@ -95,7 +98,7 @@ _At the /build auto checkpoint (2026-11-09) the user approved "go with the defau
 - [ ] D14: OK that `submit_source(url=…)` creates a stub and never fetches?
 - [ ] D21: is it acceptable that MCP writes fail closed (`history_pending`, nothing changed) while vault-watcher is down?
 - [ ] D24: is diff-only secret scanning on MCP writes acceptable, or must every `write` re-scan the whole file even when that blocks edits to pages that already contain a secret?
-- [ ] §13: approve the 8 new env vars.
+- [ ] §13: approve the new env vars (`VAULT_NAME`, `PUID`, `PGID`, `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROFILES`, `OAUTH_UPSTREAM_ISSUER`, `HISTORY_ACK_TIMEOUT`, and `MCP_POLICY_FILE` from T11).
 - [ ] §8 / D28: is downloading plugins from GitHub at startup OK, instead of shipping them in the template? (This needs network access on the first start.)
 - [ ] [T1] Restricted mode is per browser. Should the kit's default allowlist be **empty**, so nothing depends on community plugins? Or should USER-GUIDE tell every user to switch community plugins on once per browser? The kit can't set it on the server without modifying Ignis, which §2 excludes.
 - [ ] [T1] Should vault-mcp refuse writes (as `conflict`) to a note whose file changed within the last N seconds and isn't recorded in history yet? That's a sign someone is typing in it. It would reduce, not remove, the lost-keystrokes window seen in T1, and it's new behaviour the spec doesn't ask for. The default is to not add it and only document the limit.

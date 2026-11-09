@@ -39,7 +39,7 @@ services:
     volumes:
       - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
       - ${DATA_PATH:?set DATA_PATH in .env}:/data
-      - ./vault-mcp.yaml:/config/vault-mcp.yaml:ro
+      - ${MCP_POLICY_FILE:-./vault-mcp.yaml}:/config/vault-mcp.yaml:ro
     ports:
       - ${BIND_ADDR:-127.0.0.1}:${MCP_PORT:-8082}:8082
     healthcheck:

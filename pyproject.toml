@@ -36,6 +36,7 @@ known-first-party = ["vault_core", "vault_mcp", "vault_watcher"]
 
 [tool.ruff.lint.per-file-ignores]
 "*/tests/**" = ["S101", "S104", "S603", "S607"]
+"e2e/**" = ["S101", "S104", "S603", "S607"]
 
 [tool.mypy]
 strict = true
@@ -48,3 +49,7 @@ testpaths = ["vault-core/tests", "vault-mcp/tests", "vault-watcher/tests"]
 addopts = ["--import-mode=importlib", "--strict-markers"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "profile_local: end-to-end tests against the INGRESS=local stack",
+    "profile_none: end-to-end tests against the INGRESS=none stack",
+]
