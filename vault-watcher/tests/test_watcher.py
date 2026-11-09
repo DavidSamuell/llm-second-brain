@@ -318,3 +318,46 @@ def test_edits_and_mcp_writes_are_searchable_and_deletes_drop_out(
     wait_for(lambda: [h.path for h in search(db, "beacon")] == ["wiki/agent.md"])
     (dirs[0] / "wiki" / "web.md").unlink()
     wait_for(lambda: search(db, "harbour") == [])
+
+
+@pytest.mark.parametrize(
+    ("crash_after", "browser_save", "results", "alerts"),
+    [
+        ("prepare", None, ["aborted"], 0),
+        ("replace", None, ["ok"], 0),
+        ("replace", b"saved after the crash", ["unknown"], 1),
+    ],
+)
+def test_recovery_is_idempotent_if_the_watcher_dies_before_acknowledging(
+    dirs: tuple[Path, Path],
+    crash_after: str,
+    browser_save: bytes | None,
+    results: list[str],
+    alerts: int,
+) -> None:
+    from vault_watcher.recorder import Recorder
+
+    vault, data = dirs
+    (vault / "wiki" / "a.md").write_bytes(b"base")
+    HistoryStore(data).record("wiki/a.md", b"base", event="create", source="web")
+    audit_id = mcp_write(dirs, "wiki/a.md", b"agent", crash_after=crash_after)
+    if browser_save is not None:
+        (vault / "wiki" / "a.md").write_bytes(browser_save)
+    sink = RecordingAlerts()
+    recorder = Recorder(vault, data, AuditLog(data / "audit.log"), sink)
+    real_ack = recorder.spool.ack
+
+    def dying_ack(entry: object) -> None:
+        raise SystemExit("watcher killed before acknowledging")
+
+    recorder.spool.ack = dying_ack  # type: ignore[method-assign]
+    with vault_lock(data, "vault-watcher"), pytest.raises(SystemExit):
+        recorder.drain()
+    recorder.spool.ack = real_ack  # type: ignore[method-assign]
+    restarted = Recorder(vault, data, AuditLog(data / "audit.log"), sink)
+    with vault_lock(data, "vault-watcher"):
+        restarted.drain()
+    assert [r["result"] for r in audit_rows(dirs, audit_id)] == results
+    assert sum(1 for event, _ in sink.sent if event == "history_unconfirmed") >= alerts
+    kinds = [(v.kind, v.audit_id) for v in history(dirs).versions("wiki/a.md") if v.audit_id]
+    assert len(kinds) == len(set(kinds)), "duplicate history pointers"

@@ -91,39 +91,46 @@ class Recorder:
             "new_path": entry.new_path,
             "credential_id": entry.credential_id,
         }
+        # Every branch is idempotent: the watcher can die after writing the audit line and
+        # before acknowledging the entry, and the next drain must not repeat the line.
+        logged = self.audit.has_id(entry.audit_id)
         if outcome == "applied":
             self.history.record_entry(entry)
-            if not self.audit.has_id(entry.audit_id):
+            if not logged:
                 self.audit.append(
                     id=entry.audit_id, service="vault-watcher", tool=entry.tool, result="ok",
                     recovered=True, new_version=entry.post_sha256, **fields,
                 )  # fmt: skip
         elif outcome == "aborted":
             self.history.record_entry(entry, include_post=False)
-            self.audit.append(
-                id=entry.audit_id,
-                service="vault-watcher",
-                tool=entry.tool,
-                result="aborted",
-                **fields,
-            )
+            if not logged:
+                self.audit.append(
+                    id=entry.audit_id,
+                    service="vault-watcher",
+                    tool=entry.tool,
+                    result="aborted",
+                    **fields,
+                )
         else:
             self.history.record_entry(entry, unconfirmed=True)
-            self.audit.append(
-                id=entry.audit_id,
-                service="vault-watcher",
-                tool=entry.tool,
-                result="unknown",
-                **fields,
-            )
-            self.alerts.send(
-                "history_unconfirmed",
-                "high",
-                f"Could not confirm whether an interrupted MCP write to {target_rel} landed; "
-                "its content is kept in history as unconfirmed.",
-                {"path": target_rel, "audit_id": entry.audit_id},
-                subject=entry.audit_id,
-            )
+            if not logged:
+                # Alert before the audit line: a crash in between repeats the alert (at least
+                # once) rather than losing it.
+                self.alerts.send(
+                    "history_unconfirmed",
+                    "high",
+                    f"Could not confirm whether an interrupted MCP write to {target_rel} landed; "
+                    "its content is kept in history as unconfirmed.",
+                    {"path": target_rel, "audit_id": entry.audit_id},
+                    subject=entry.audit_id,
+                )
+                self.audit.append(
+                    id=entry.audit_id,
+                    service="vault-watcher",
+                    tool=entry.tool,
+                    result="unknown",
+                    **fields,
+                )
         log.warning(
             "recovered interrupted MCP write %s on %s: %s", entry.audit_id, target_rel, outcome
         )
