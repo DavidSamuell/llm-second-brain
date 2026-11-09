@@ -96,14 +96,14 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T14] My scripted Python string replacements fail silently when the target text doesn't match: two T14 wiring edits didn't apply, and a test failure briefly looked like a SQLite WAL problem until the review pointed at the missing wiring. Scripted edits now assert that their target exists.
 
 ## Open questions for the human
-_At the /build auto checkpoint (2026-11-09) the user approved "go with the defaults" for the items below. Where an item states a default, that default is being applied; the items stay listed for final confirmation. For the T1 restricted-mode question the conservative default is an **empty** default allowlist._
-- [ ] D2: is adding `vault-core/` to the §14 layout acceptable?
-- [ ] D4/D37: is it OK to keep Ignis state in `${DATA_PATH}/ignis` instead of a Docker volume?
-- [ ] D14: OK that `submit_source(url=…)` creates a stub and never fetches?
-- [ ] D21: is it acceptable that MCP writes fail closed (`history_pending`, nothing changed) while vault-watcher is down?
-- [ ] D24: is diff-only secret scanning on MCP writes acceptable, or must every `write` re-scan the whole file even when that blocks edits to pages that already contain a secret?
-- [ ] §13: approve the new env vars (`VAULT_NAME`, `PUID`, `PGID`, `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROFILES`, `OAUTH_UPSTREAM_ISSUER`, `HISTORY_ACK_TIMEOUT`, and `MCP_POLICY_FILE` from T11).
-- [ ] §8 / D28: is downloading plugins from GitHub at startup OK, instead of shipping them in the template? (This needs network access on the first start.)
-- [ ] [T1] Restricted mode is per browser. Should the kit's default allowlist be **empty**, so nothing depends on community plugins? Or should USER-GUIDE tell every user to switch community plugins on once per browser? The kit can't set it on the server without modifying Ignis, which §2 excludes.
-- [ ] [T1] Should vault-mcp refuse writes (as `conflict`) to a note whose file changed within the last N seconds and isn't recorded in history yet? That's a sign someone is typing in it. It would reduce, not remove, the lost-keystrokes window seen in T1, and it's new behaviour the spec doesn't ask for. The default is to not add it and only document the limit.
-- [ ] [T2] Move from fastmcp 3.x to 4.x? 4.x is the current major (4.1.6). Staying on 3.4.11 is the approved plan. An upgrade changes the mcp SDK major (1.30 → 2.3, `httpx` → `httpx2`) and needs its own task.
+**Resolved 2026-11-10:** the user reviewed and ticked every item below, confirming the stated defaults: keep `vault-core/`, Ignis state under `/data/ignis`, no server-side URL fetch, writes fail closed while the watcher is down, diff-only secret scan, the new env vars, plugin download at startup, an **empty** default plugin allowlist, no recent-web-edit write guard (document the limit), and stay on fastmcp 3.4.11. _At the /build auto checkpoint (2026-11-09) the user approved "go with the defaults" for the items below. Where an item states a default, that default is being applied; the items stay listed for final confirmation. For the T1 restricted-mode question the conservative default is an **empty** default allowlist._
+- [x] D2: is adding `vault-core/` to the §14 layout acceptable?
+- [x] D4/D37: is it OK to keep Ignis state in `${DATA_PATH}/ignis` instead of a Docker volume?
+- [x] D14: OK that `submit_source(url=…)` creates a stub and never fetches?
+- [x] D21: is it acceptable that MCP writes fail closed (`history_pending`, nothing changed) while vault-watcher is down?
+- [x] D24: is diff-only secret scanning on MCP writes acceptable, or must every `write` re-scan the whole file even when that blocks edits to pages that already contain a secret?
+- [x] §13: approve the new env vars (`VAULT_NAME`, `PUID`, `PGID`, `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROFILES`, `OAUTH_UPSTREAM_ISSUER`, `HISTORY_ACK_TIMEOUT`, and `MCP_POLICY_FILE` from T11).
+- [x] §8 / D28: is downloading plugins from GitHub at startup OK, instead of shipping them in the template? (This needs network access on the first start.)
+- [x] [T1] Restricted mode is per browser. Should the kit's default allowlist be **empty**, so nothing depends on community plugins? Or should USER-GUIDE tell every user to switch community plugins on once per browser? The kit can't set it on the server without modifying Ignis, which §2 excludes.
+- [x] [T1] Should vault-mcp refuse writes (as `conflict`) to a note whose file changed within the last N seconds and isn't recorded in history yet? That's a sign someone is typing in it. It would reduce, not remove, the lost-keystrokes window seen in T1, and it's new behaviour the spec doesn't ask for. The default is to not add it and only document the limit.
+- [x] [T2] Move from fastmcp 3.x to 4.x? 4.x is the current major (4.1.6). Staying on 3.4.11 is the approved plan. An upgrade changes the mcp SDK major (1.30 → 2.3, `httpx` → `httpx2`) and needs its own task.
