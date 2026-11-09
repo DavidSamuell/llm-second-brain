@@ -1,7 +1,7 @@
 # Implementation notes: Docs Vault Kit
 Spec: `SPEC.md` (Draft v0.4)  Plan: `tasks/plan.md`  Tasks: `tasks/todo.md`  Started: 2026-11-09
 
-**Summary:** T1 (Ignis behaviour spike) is done; results are in `docs/LIMITATIONS.md`. No kit code yet. The deviation the reviewer must look at first is still **D21**: MCP writes fail closed while vault-watcher is down. T1's most important finding: an agent write drops a person's unsaved keystrokes in the same note (open question below).
+**Summary (Checkpoint A, 2026-11-09):** T1, T3–T11 done locally; T2 waits for the Claude.ai connector run at Checkpoint D; T5 and T11 each list one external check (CI green on a PR). 14 deviations logged. The ones to look at first: **D21** (MCP writes fail closed while vault-watcher is down) and the T1 finding that an agent write drops a person's unsaved keystrokes in the same note.
 
 ## Decisions (not covered by the spec)
 Full rationale for each is in `tasks/plan.md` under the D-number. This list is only the index. Reversible = can be changed after release without migrating data or breaking clients.

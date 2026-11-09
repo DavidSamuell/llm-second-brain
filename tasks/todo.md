@@ -109,8 +109,8 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** the CI `e2e` job green on a PR (needs a push), including the other-network probe running unskipped on the GitHub runner.
 
 ### Checkpoint A — after T4–T11
-- [ ] lint, unit, and e2e green in CI
-- [ ] §16.2 passes; a bearer read works end-to-end against the compose stack
+- [ ] lint, unit, and e2e green in CI (locally: ruff, mypy, shellcheck, hadolint, 198 unit tests and the e2e suite pass; CI needs a push)
+- [x] §16.2 passes; a bearer read works end-to-end against the compose stack
 - [ ] Human review of the Open Questions in plan.md before Phase 2
 
 ## Phase 2 — Watcher: history, index, search
