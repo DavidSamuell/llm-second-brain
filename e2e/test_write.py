@@ -103,3 +103,16 @@ async def test_16_15_every_mcp_write_has_an_audit_entry_and_a_history_version(st
     mcp_ids = {p["audit_id"] for p in pointers if p["source"] == "mcp"}
     assert len(ok_ids) == 5
     assert ok_ids == mcp_ids
+
+
+async def test_16_10_review_queue_add_works(stack: Stack) -> None:
+    token = _writer(stack, "queue-agent")
+    out = await _call(
+        stack,
+        token,
+        "review_queue_add",
+        {"page": "projects/alpha.md", "issue": "Outdated", "suggestion": "Mention v2"},
+    )
+    queue = (stack.root / "vault" / "_system" / "review-queue.md").read_text()
+    assert f"^{out['item_id']}" in queue
+    assert "[[projects/alpha]] — Outdated — Mention v2" in queue

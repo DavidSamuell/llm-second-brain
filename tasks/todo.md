@@ -168,11 +168,12 @@ Commands used in verification:
   - Deps: T16 · Files: `vault-mcp/src/vault_mcp/{sections,tools_write}.py`, tests · Scope: S
   - **Status:** 11 section tests (fences ignored, setext, frontmatter not a heading, subsections inside a section, last section to EOF, CRLF outside kept, level pinned by a full heading line, ambiguity with candidates) plus a pipeline test through the writer. Mutation checks on section end, frontmatter stripping, ambiguity and level matching.
 
-- [ ] **T18 — `review_queue_add`** · Decisions: D15 · **watch**
+- [x] **T18 — `review_queue_add`** · Decisions: D15 · **watch**
   - Appends a D15-format item to `_system/review-queue.md`, creating the file if missing. Requires write scope and is exempt from the maintainer rule, so it works for `maintainer: human` pages.
   - Acceptance: §16.10 second half; items render as Obsidian tasks with a block id.
   - Verify: `uv run pytest vault-mcp -k review_queue` + e2e §16.10.
   - Deps: T16 · Files: `vault-core/src/vault_core/review_queue.py`, `vault-mcp/src/vault_mcp/tools_write.py` · Scope: S
+  - **Status:** format tests (single Obsidian task line, `#review` vs `#review/high`, newline and `[[` injection neutralised, creation with a header); writer tests (a folder-scoped credential can still add to the queue; denied pages and read tokens are refused; one history version per item); e2e §16.10 second half in both profiles.
 
 - [ ] **T19 — `move` + link rewriting** · Decisions: D8, D9, D12, D21 · **watch**
   - Obsidian-style link resolution; backlink preflight; all-or-nothing rename + link rewrites as one D21 transaction group; history and audit per touched file.

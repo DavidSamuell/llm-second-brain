@@ -388,3 +388,40 @@ async def test_cancelling_a_write_holds_the_lock_until_the_locked_work_has_finis
     # The cancel must not return (and release the vault lock) while the rename is still pending.
     assert (vault / "wiki" / "cancel.md").read_text() == "landed\n"
     assert not list(Spool(data).inbox.glob("*.prepared"))
+
+
+async def test_16_10_review_queue_add_works_for_a_human_page(
+    vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
+) -> None:
+    w = writer(vault, data, policy)
+    scoped = cred(store, folders=["wiki/", "projects/"])  # no _system/ in its folders
+    out = await w.review_queue_add(scoped, "projects/alpha.md", "Outdated", "Mention v2")
+    out2 = await w.review_queue_add(scoped, "projects/alpha.md", "Second", "Another")
+    queue = (vault / "_system" / "review-queue.md").read_text()
+    assert queue.startswith("# Review queue\n")
+    lines = [line for line in queue.splitlines() if line.startswith("- [ ] ")]
+    assert len(lines) == 2
+    assert "[[projects/alpha]] — Outdated — Mention v2 — by" in lines[0]
+    assert lines[0].endswith(f"#review ^{out['item_id']}")
+    assert lines[1].endswith(f"^{out2['item_id']}")
+    assert len(mcp_versions(data, "_system/review-queue.md")) == 2
+
+
+@pytest.mark.parametrize(
+    ("page", "scope", "expected"),
+    [("private/salaries.md", "write", "forbidden"), ("projects/alpha.md", "read", "forbidden")],
+)
+async def test_review_queue_refusals(
+    vault: Path,
+    data: Path,
+    policy: Policy,
+    store: CredentialStore,
+    watcher: object,
+    page: str,
+    scope: str,
+    expected: str,
+) -> None:
+    with pytest.raises(ToolError) as exc:
+        await writer(vault, data, policy).review_queue_add(cred(store, scope), page, "i", "s")
+    assert code(exc)["code"] == expected
+    assert not (vault / "_system" / "review-queue.md").exists()

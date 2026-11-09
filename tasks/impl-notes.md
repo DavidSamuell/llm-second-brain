@@ -45,6 +45,7 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T13] Attribution: an fs event that arrives while `git-sync` holds the vault lock marks that path's debounced burst as `git`; other events are `web`; startup and periodic scans record `unknown`. The watcher's `/health` runs on port 8083 inside the compose network only and reports unhealthy if the heartbeat is stale. Reversible: yes.
 - [T16] `append` on a missing file returns `not_found` (create with `write`), so a typo in the path can't create a stray page. `append` starts the text on a new line if the file doesn't end with one. Reversible: yes.
 - [T16] For write tools the durable `ok` audit line is written by the writer itself, under the same id as the history version, so a successful write has exactly one audit line; refusals and failures are logged by the server wrapper. The locked part of a write runs in a worker thread so its fsyncs don't stall other requests. Reversible: yes.
+- [T18] `review_queue_add` is open to every write credential regardless of its `--folders` (the queue is how agents ask about pages they can't edit), but the `page` must be readable by the credential, so denied pages can't be named. Field text is flattened to one line and `[[`/`]]` are removed so an item can't break the task list or inject links. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

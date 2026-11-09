@@ -14,16 +14,17 @@ import secrets
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from vault_core import frontmatter
+from vault_core import frontmatter, review_queue
 from vault_core.audit import AuditLog, new_id
 from vault_core.fsio import fsync_dir, replace_from_temp, version_of, write_temp_sibling
 from vault_core.history import HistoryStore, Spool
 from vault_core.lock import AsyncVaultLock
 from vault_core.paths import PathError, normalize, resolve_in_vault
-from vault_core.policy import Policy, check_write
+from vault_core.policy import Decision, Policy, check_read, check_write
 from vault_core.secrets import scan_added_lines
 from vault_mcp import sections
 from vault_mcp.errors import VaultToolError
@@ -113,6 +114,41 @@ class VaultWriter:
         )
         return {"path": result.path, "version": result.version}
 
+    async def review_queue_add(
+        self, cred: Credential, page: str, issue: str, suggestion: str
+    ) -> dict[str, str]:
+        """Propose a change as a task in `_system/review-queue.md` (D15). Any write credential
+        may add to the queue, whatever its folders: it is how agents ask about pages they
+        can't edit. The page itself must be readable by the credential."""
+        try:
+            page_rel = normalize(page)
+        except PathError as exc:
+            raise VaultToolError(exc.code, str(exc), page=page) from None
+        if not check_read(page_rel, self.policy, cred.folders).allowed:
+            raise VaultToolError(
+                "forbidden", "you can only propose changes to pages you can read", page=page_rel
+            )
+        item_id = new_id()
+        item = review_queue.format_item(
+            page_rel,
+            issue,
+            suggestion,
+            by=cred.name,
+            owner=cred.owner,
+            ts=datetime.now(UTC),
+            item_id=item_id,
+        )
+
+        def build(current: bytes | None) -> bytes:
+            text = current.decode("utf-8", "replace") if current is not None else None
+            return review_queue.add_item(text, item).encode()
+
+        result = await self.apply(
+            cred, "review_queue_add", review_queue.QUEUE_PATH, build,
+            base_version=ANY, retries=APPEND_RETRIES, queue=True,
+        )  # fmt: skip
+        return {"path": result.path, "version": result.version, "item_id": f"rq-{item_id.lower()}"}
+
     # -- the pipeline ----------------------------------------------------------------------
 
     def _target(self, path: str) -> tuple[str, Path]:
@@ -137,6 +173,7 @@ class VaultWriter:
         *,
         base_version: object = ANY,
         retries: int = 1,
+        queue: bool = False,
     ) -> WriteResult:
         if not cred.allows("write"):
             raise VaultToolError("forbidden", "this credential is read-only", path=path)
@@ -150,7 +187,9 @@ class VaultWriter:
             for attempt in range(retries):
                 # Blocking file I/O and fsyncs run off the event loop; the async lock serialises writers.
                 outcome = await _finish_even_if_cancelled(
-                    asyncio.to_thread(self._attempt, cred, tool, rel, target, build, base_version)
+                    asyncio.to_thread(
+                        self._attempt, cred, tool, rel, target, build, base_version, queue
+                    )
                 )
                 if outcome is not None:
                     break
@@ -173,6 +212,7 @@ class VaultWriter:
         target: Path,
         build: Callable[[bytes | None], bytes],
         base_version: object,
+        queue: bool = False,
     ) -> tuple[Path, WriteResult] | None:
         """One locked attempt. Returns None when the file changed under us and the tool may retry."""
         current = target.read_bytes() if target.is_file() else None
@@ -181,8 +221,12 @@ class VaultWriter:
             if current is not None
             else None
         )
-        decision = check_write(
-            rel, self.policy, cred.folders, exists=current is not None, maintainer=maintainer
+        decision = (
+            Decision(True)  # the review queue is open to every write credential (D15)
+            if queue
+            else check_write(
+                rel, self.policy, cred.folders, exists=current is not None, maintainer=maintainer
+            )
         )
         if not decision.allowed:
             reason = decision.reason or "denied"

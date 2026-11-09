@@ -171,6 +171,16 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
             "insert_after", path, lambda cred: writer.insert_after(cred, path, heading, content)
         )
 
+    @mcp.tool(name="review_queue_add")
+    async def review_queue_add(page: str, issue: str, suggestion: str) -> dict[str, Any]:
+        """Propose a change instead of editing: for `maintainer: human` pages, pages outside
+        your write folders, or anything a human should decide. Adds a task to the review queue."""
+        return await audited_write(
+            "review_queue_add",
+            page,
+            lambda cred: writer.review_queue_add(cred, page, issue, suggestion),
+        )
+
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})
