@@ -65,6 +65,7 @@ Commands used in verification:
   - Acceptance: `uv sync` works from a clean checkout; one placeholder test per package passes; CI green on a PR.
   - Verify: `uv run ruff check . && uv run mypy && uv run pytest`.
   - Deps: none · Files: `pyproject.toml`, `uv.lock`, `*/pyproject.toml`, `.github/workflows/ci.yml` · Scope: M
+  - **Status:** local part done. `uv sync --locked --all-packages` works from a fresh clone; ruff, ruff format, mypy and pytest (3 smoke tests) pass; actionlint finds no problems in `ci.yml`. **Still open:** "CI green on a PR", which needs a push to GitHub (not authorised in this run). Don't tick until a PR run is green.
 
 - [ ] **T6 — vault-core: paths, policy, config** · Decisions: D8, D9, D27 · **watch**
   - Path normalisation and escape rejection; `vault-mcp.yaml` pydantic model; scope intersection; the maintainer write rule as pure functions.

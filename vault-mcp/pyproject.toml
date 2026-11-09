@@ -1,0 +1,14 @@
+[project]
+name = "vault-mcp"
+version = "0.0.0"
+description = "MCP gateway over the vault."
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+dependencies = [
+    "vault-core",
+    "fastmcp==3.4.11",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.13"]
+build-backend = "uv_build"

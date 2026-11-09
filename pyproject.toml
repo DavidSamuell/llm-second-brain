@@ -1,0 +1,46 @@
+[project]
+name = "docs-vault-kit"
+version = "0.0.0"
+description = "Workspace root for the Docs Vault Kit services (not published)."
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["vault-core", "vault-mcp", "vault-watcher"]
+
+[tool.uv.sources]
+vault-core = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PTH", "ASYNC"]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/**" = ["S101"]
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
+packages = ["vault_core", "vault_mcp", "vault_watcher"]
+mypy_path = ["vault-core/src", "vault-mcp/src", "vault-watcher/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["vault-core/tests", "vault-mcp/tests", "vault-watcher/tests"]
+addopts = ["--import-mode=importlib", "--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
