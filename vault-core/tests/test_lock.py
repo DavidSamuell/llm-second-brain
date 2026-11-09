@@ -108,3 +108,28 @@ async def test_async_lock_serializes_tasks_in_one_process(tmp_path: Path) -> Non
 
     await asyncio.gather(*(critical() for _ in range(5)))
     assert peak == 1
+
+
+@pytest.mark.skipif(shutil.which("flock") is None, reason="flock(1) not installed")
+async def test_cancelled_waiter_does_not_leave_the_lock_held(tmp_path: Path) -> None:
+    holder = _spawn_holder(tmp_path, 0.4, tmp_path / "out")
+    _wait_until_locked(tmp_path)
+    lock = AsyncVaultLock(tmp_path, "vault-mcp")
+
+    async def wait_for_lock() -> None:
+        async with lock.hold():
+            pass
+
+    waiter = asyncio.create_task(wait_for_lock())
+    await asyncio.sleep(0.1)  # waiter is now blocked behind the other process
+    waiter.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await waiter
+    assert holder.wait(5) == 0
+    await asyncio.sleep(0.2)  # give any stray acquisition time to happen
+    # Nothing in this process may still hold the flock or the in-process lock.
+    cmd = ["flock", "-n", str(lock_path(tmp_path)), "true"]
+    assert (await asyncio.to_thread(subprocess.run, cmd, check=False)).returncode == 0
+    async with asyncio.timeout(2):
+        async with lock.hold():
+            pass
