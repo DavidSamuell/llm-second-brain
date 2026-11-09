@@ -115,7 +115,7 @@ Commands used in verification:
 
 ## Phase 2 — Watcher: history, index, search
 
-- [ ] **T12 — vault-core: history store** · Decisions: D21 · **watch**
+- [x] **T12 — vault-core: history store** · Decisions: D21 · **watch**
   - Blob + pointer layout, `record`, `head`, `list`, `restore`, `restore_deleted`, retention GC (age + min versions + blob sweep). D21 transaction format: a prepare/commit writer (used by vault-mcp), plus an idempotent consumer and a prepared-entry classifier (`applied` / `aborted` / `unconfirmed`) used by the watcher, keyed by `audit_id` + kind.
   - Acceptance: identical content is stored once; GC keeps ≥ `HISTORY_MIN_VERSIONS` per file regardless of age and never touches the spool; tombstones allow restoring deleted files; consuming the same committed entry twice yields one pointer; the classifier gives the D21 table's result for each file state (post hash / pre hash or absent / other); timestamps are UTC.
   - Verify: `uv run pytest vault-core -k history`.
