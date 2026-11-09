@@ -93,6 +93,8 @@ _GENERIC = "generic-secret-assignment"
 def _plausible(rule: Rule, value: str) -> bool:
     if _PLACEHOLDER.match(value):
         return False
+    if rule.id == "aws-access-key-id":
+        return not value.endswith("EXAMPLE")  # AWS documentation keys (gitleaks allowlist)
     if rule.id == _GENERIC:
         return any(c.isdigit() for c in value) and any(c.isalpha() for c in value)
     return True

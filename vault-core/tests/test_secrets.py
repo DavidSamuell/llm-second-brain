@@ -16,7 +16,7 @@ def j(*parts: str) -> str:
 
 
 POSITIVES = {
-    "aws-access-key-id": j("AKIA", "IOSFODNN7", "EXAMPLE"),
+    "aws-access-key-id": j("AKIA", "Q3RTZ7XK", "2P4LMNBV"),
     "github-token": j("gh", "p_", "a1B2" * 9),
     "github-fine-grained-pat": j("github_", "pat_", "11ABCDEFG0", "x" * 72),
     "gitlab-pat": j("gl", "pat-", "aB3dE5gH7jK9mN1pQ3sT"),
@@ -60,6 +60,7 @@ NEGATIVES = [
     "version: " + hashlib.sha256(b"x").hexdigest(),
     "2f1c1c4e-6b9e-4a8f-9d6e-1a2b3c4d5e6f",  # uuid
     "The AKIA prefix marks AWS access keys.",
+    "aws_access_key_id = " + j("AKIA", "IOSFODNN7", "EXAMPLE"),  # AWS documentation example key
     "Use postgres://user:password@localhost/db as a template.",
     "postgres://app:${DB_PASSWORD}@db:5432/main",
     "redis://:<password>@cache:6379",
