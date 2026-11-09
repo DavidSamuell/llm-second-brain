@@ -36,6 +36,7 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T37] D37: hot backup using the SQLite online backup API; restore requires the stack stopped; config files are included only with `--include-config`. Reversible: yes.
 - [T38] D38: Dependabot (not Renovate); Playwright for the nightly Ignis checks. Reversible: yes.
 - [T30] D39: the Cloudflare tunnel is remotely managed via `CF_TUNNEL_TOKEN`; Access is configured by following the docs, not the API. Reversible: yes.
+- [T2] D17 amended: SDK OAuth endpoints stay at the MCP host root (`/authorize`, `/token`, `/register`, `/revoke`); only the kit's pages (`/oauth/login|consent|callback`) sit under `/oauth/`. `required_scopes` is left unset on the provider. Why: see the T2 surprises below. This is the fallback the plan named before T2 started. Reversible: yes, until clients store the endpoints.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.
@@ -54,6 +55,7 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T29] Spec said: §13 is the complete `.env.example`. → Did: added `VAULT_NAME`, `PUID`, `PGID`, `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROFILES`, `OAUTH_UPSTREAM_ISSUER`, `HISTORY_ACK_TIMEOUT`. Because: each one is needed by D4/D3/D5/D18/D21. — `tasks/plan.md:440`
 - [T29] Spec said: §8 `OBSIDIAN_VERSION` is pinned and "Ignis downloads this exact version". → Did: set it to exactly the version pinned by the `IGNIS_IMAGE` digest. Because: Ignis replaces any older value with its own pin (seen in T1) and doesn't guarantee newer versions. — `tasks/plan.md:310`
 - [T1] Task said: verify with "two browsers + one mobile". → Did: two isolated Chromium browser contexts (separate cookies and localStorage), plus Chromium device emulation of an iPhone 12. Because: no real mobile device is available in this environment. Real iOS/Android behaviour is listed as "Not verified" in `docs/LIMITATIONS.md`.
+- [T2] Task said: run a real Claude.ai custom connector over a temporary tunnel. → Did: ran the MCP SDK's own `OAuthClientProvider` as a scripted client, with the authorize step done by HTTP instead of a browser. Because: the user chose "scripted client only" at the /build auto checkpoint. T2 is left **unticked** in `tasks/todo.md` until the Claude.ai run at Checkpoint D.
 
 ## Surprises (things learned)
 - The repo started with only `SPEC.md`, `README.md` (18 B), and a stock Python `.gitignore`, so there are no existing conventions to follow.
@@ -69,8 +71,15 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T1] If a file is atomically replaced while someone is typing in it, the editor reloads from disk and drops the keystrokes it hadn't saved yet.
 - FastMCP `OAuthProxy` keeps clients and tokens in its own encrypted key-value store and passes upstream tokens through, so it can't satisfy §6.3's single `tokens.db`. The abstract `OAuthProvider` hands all storage to the subclass. Source: https://gofastmcp.com/docs/v3/servers/auth/full-oauth-server.md
 - Docker Compose `include:` has open and recent interpolation bugs (docker/compose #12496, #13540, #13644), which is why D5 uses `COMPOSE_FILE`.
+- [T2] The approved pin is fastmcp **3.x** (3.4.11, mcp SDK 1.30.0), but a 4.x line now exists (4.1.6, mcp SDK 2.3.0, clients on `httpx2`). T2 ran on both. The build uses 3.4.11, as D1 says.
+- [T2] fastmcp 3.4.11 with the SDK endpoints moved under `/oauth/`: the authorization-server metadata reports `issuer` = `…/oauth`, and the MCP SDK client aborts with `Authorization server metadata issuer mismatch`.
+- [T2] fastmcp 4.1.6 with `/oauth/` endpoints: the full flow works, but the SDK client's refresh without cached metadata POSTs `<issuer>/token` → `404` → a full re-authorization.
+- [T2] fastmcp 4.x: `required_scopes=["vault:read"]` makes `WWW-Authenticate` carry `scope="vault:read"`, and the SDK client then requests only that scope. On 3.4.11 the challenge has no scope.
+- [T2] Protected-resource metadata is path-aware (`/.well-known/oauth-protected-resource/mcp`). The bare `/.well-known/oauth-protected-resource` returns 404. check-exposure (D35) must follow `resource_metadata` from `WWW-Authenticate` rather than guess the path.
+- [T2] Both versions advertise `token_endpoint_auth_methods_supported` without `none`. Whether public clients (Claude.ai) still register is a T24 check.
 
 ## Open questions for the human
+_At the /build auto checkpoint (2026-11-09) the user approved "go with the defaults" for the items below. Where an item states a default, that default is being applied; the items stay listed for final confirmation. For the T1 restricted-mode question the conservative default is an **empty** default allowlist._
 - [ ] D2: is adding `vault-core/` to the §14 layout acceptable?
 - [ ] D4/D37: is it OK to keep Ignis state in `${DATA_PATH}/ignis` instead of a Docker volume?
 - [ ] D14: OK that `submit_source(url=…)` creates a stub and never fetches?
@@ -80,3 +89,4 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [ ] §8 / D28: is downloading plugins from GitHub at startup OK, instead of shipping them in the template? (This needs network access on the first start.)
 - [ ] [T1] Restricted mode is per browser. Should the kit's default allowlist be **empty**, so nothing depends on community plugins? Or should USER-GUIDE tell every user to switch community plugins on once per browser? The kit can't set it on the server without modifying Ignis, which §2 excludes.
 - [ ] [T1] Should vault-mcp refuse writes (as `conflict`) to a note whose file changed within the last N seconds and isn't recorded in history yet? That's a sign someone is typing in it. It would reduce, not remove, the lost-keystrokes window seen in T1, and it's new behaviour the spec doesn't ask for. The default is to not add it and only document the limit.
+- [ ] [T2] Move from fastmcp 3.x to 4.x? 4.x is the current major (4.1.6). Staying on 3.4.11 is the approved plan. An upgrade changes the mcp SDK major (1.30 → 2.3, `httpx` → `httpx2`) and needs its own task.

@@ -19,7 +19,7 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
 
 ### D1 — Python toolchain
 - Spec: §15, §17 (Python, FastMCP, watchdog, SQLite FTS5).
-- **Choice:** Python 3.13 and a `uv` workspace with a committed `uv.lock`. Lint with `ruff` (lint + format), type-check with `mypy --strict`, test with `pytest` + `pytest-asyncio`. CLIs use stdlib `argparse`. Env config uses `pydantic-settings` and the YAML policy uses a `pydantic` model, since both are already in FastMCP's dependency tree. Pin `fastmcp` to the 3.x minor in use.
+- **Choice:** Python 3.13 and a `uv` workspace with a committed `uv.lock`. Lint with `ruff` (lint + format), type-check with `mypy --strict`, test with `pytest` + `pytest-asyncio`. CLIs use stdlib `argparse`. Env config uses `pydantic-settings` and the YAML policy uses a `pydantic` model, since both are already in FastMCP's dependency tree. Pin `fastmcp` to the 3.x minor in use. (T2: that is `fastmcp==3.4.11` with mcp SDK 1.30.0. A 4.x line also exists (4.1.6, mcp SDK 2.3.0 on `httpx2`); moving to it is an open question in impl-notes, not part of this plan.)
 - **Rejected:** Poetry or pip-tools; Typer or Click for CLIs.
 - **Why:** uv gives one lockfile across the three packages and fast, reproducible Docker builds. argparse covers `token create|list|revoke` and `oauth approve-code` without adding dependencies.
 
@@ -170,7 +170,16 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
 - **Choice:**
   - Subclass FastMCP `OAuthProvider`, backed by `tokens.db` (D16). Access tokens are opaque, live 1 h, and are hashed. Refresh tokens live 30 days, rotate on use, and are revoked when reuse is detected.
   - Scopes: `vault:read`, `vault:write`.
-  - Endpoints: `/oauth/register|authorize|token|revoke|callback|login|consent`. Metadata sits at `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server` on the MCP host root, with issuer `MCP_OAUTH_ISSUER`.
+  - Endpoints (**changed by T2**):
+    - The SDK endpoints stay at FastMCP's defaults on the MCP host root: `/authorize`, `/token`, `/register`, `/revoke`.
+    - The kit's own pages live under `/oauth/`: `login`, `consent`, `callback` (FastMCP `custom_route`; T2 confirmed they coexist).
+    - Metadata: `/.well-known/oauth-authorization-server` at the root, with `issuer` = `MCP_OAUTH_ISSUER`. Protected-resource metadata is path-aware at `/.well-known/oauth-protected-resource/mcp`. `WWW-Authenticate` on a 401 from `/mcp` carries `resource_metadata` pointing there.
+  - **Why not `/oauth/token` etc. (T2):**
+    - On the pinned fastmcp 3.4.11, moving the SDK endpoints under `/oauth/` makes the authorization-server metadata report `issuer` = `…/oauth`. The MCP SDK client (1.30.0) then aborts with `Authorization server metadata issuer mismatch`.
+    - On fastmcp 4.1.6 the issuer can be kept at the root. But the SDK client's refresh falls back to `<issuer>/token` when it has stored tokens and no cached metadata, and that path returned `404` and forced a full re-authorization.
+    - With root paths, both versions ran the whole flow, including a refresh that needed exactly one extra `POST /token`. Ingress already routes the whole MCP host without login (D39, §5.1 item 4), so root paths need no extra ingress rule.
+  - **No `required_scopes` on the provider (T2):** on fastmcp 4.x, setting it puts `scope="vault:read"` into `WWW-Authenticate`, and the SDK client then requests only `vault:read`. On 3.4.11 the client requested `vault:read vault:write` either way. Leaving it unset keeps write grants requestable on both. The consent page decides what is granted, and vault-mcp enforces read/write per tool against the credential's scope.
+  - **To check in T24:** FastMCP advertises `token_endpoint_auth_methods_supported: [client_secret_post, client_secret_basic]` with no `none`. Check that public PKCE-only clients (e.g. Claude.ai) still register; add `none` if not.
   - The consent page is server-rendered HTML with no JS. It shows client name, redirect host, and the requested scope.
   - Each grant becomes a `credentials` row named `oauth:<client_name>`, owned by the user's email.
   - Approval codes: `vault-mcp oauth approve-code --owner <email> [--scope] [--ttl 1h]` prints a one-time 10-character base32 code. It is stored hashed and is single-use.
@@ -429,7 +438,7 @@ The watcher comes before the MCP write path because the D21 handoff needs a runn
 | An agent write while a person is typing in the same note drops their unsaved keystrokes (§16.12) | Med | **T1:** an idle open editor shows the new content within ~0.5 s and doesn't overwrite it, so §16.12 passes. Keystrokes typed but not yet saved when the write lands are lost. Documented in LIMITATIONS. Whether to add a guard against writing to notes with recent web edits is an open question in impl-notes. |
 | Two people typing in the same note at once: the last save wins silently | Med | **T1:** confirmed. It's an Ignis/Obsidian behaviour the kit can't change; documented in LIMITATIONS. |
 | ~~A read-only plugins mount makes Ignis/Obsidian error at startup~~ | — | **T1: resolved.** The read-only mount works; see D28. |
-| FastMCP `OAuthProvider` route paths can't be moved under `/oauth/*`, or Claude.ai rejects the metadata | High | T2 spike against the MCP Inspector and a real Claude.ai connector over a temporary tunnel; fallback: FastMCP default paths, with §5.1 docs updated to route the whole MCP host |
+| FastMCP `OAuthProvider` route paths can't be moved under `/oauth/*`, or Claude.ai rejects the metadata | High | **T2 (fastmcp 3.4.11, cross-checked on 4.1.6):** under `/oauth/*` the SDK client fails (issuer mismatch on 3.x, broken refresh fallback on 4.x), so SDK endpoints stay at the root (D17). The full flow passed with the MCP SDK's own `OAuthClientProvider`: discovery from 401 → protected-resource metadata → authorization-server metadata → DCR → authorize with PKCE S256 and `resource` → token → tool call → refresh. **A real Claude.ai connector is still untested** (user chose scripted client only); T2 stays open until the Checkpoint D manual run. |
 | The window between Ignis writes and MCP compare-and-replace (Ignis takes no lock) | Med | Re-hash right before `os.replace`; document the residual race in LIMITATIONS |
 | Secret-regex false positives block legitimate agent writes | Med | Diff-only scan; high-confidence rules only; each reported false positive becomes a rule fix + fixture (no content-level bypass, D24) |
 | The D21 ack wait slows back-to-back agent edits, or inotify misses events on the bind mount | Med | T3 spike measures this before T13/T16; the spool is drained before vault events, so there is no debounce on MCP writes; the full scan is the backstop |
