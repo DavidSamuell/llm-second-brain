@@ -16,7 +16,7 @@ The kit contains no documentation content, only what is needed to deploy, secure
 |---|---|
 | [`docs/SETUP.md`](docs/SETUP.md) | Installing the kit on a Linux server |
 | [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) | Non-technical staff: editing in the browser, adding sources, the review queue |
-| [`docs/ingress/`](docs/ingress/) | Publishing the vault: `cloudflare.md`, `caddy.md`, `pangolin.md`, `nginx.md`, `traefik.md`, `tailscale.md`, `headscale.md`, `local.md` |
+| [`docs/ingress/`](docs/ingress/) | Publishing the vault: [`cloudflare.md`](docs/ingress/cloudflare.md), [`caddy.md`](docs/ingress/caddy.md), [`pangolin.md`](docs/ingress/pangolin.md), [`nginx.md`](docs/ingress/nginx.md), [`traefik.md`](docs/ingress/traefik.md), [`tailscale.md`](docs/ingress/tailscale.md), [`headscale.md`](docs/ingress/headscale.md), [`local.md`](docs/ingress/local.md) |
 | [`docs/CONNECT-AGENTS.md`](docs/CONNECT-AGENTS.md) | Connecting Claude Code, Cursor, Codex, Claude.ai, and ChatGPT |
 | [`docs/IMPORTING.md`](docs/IMPORTING.md) | Bringing in existing docs (Confluence, Notion, Google Docs, repos) via agents |
 | [`docs/SECURITY.md`](docs/SECURITY.md) | Threat model, tokens and OAuth, secrets, offboarding checklist |

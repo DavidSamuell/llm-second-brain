@@ -173,3 +173,12 @@ def test_list_skips_symlinks_that_escape_the_vault(
     t, cred = tools(vault, policy, store)
     entries = t.list_folder(cred, "wiki")["entries"]
     assert [e["path"] for e in entries] == ["wiki/concepts/", "wiki/index.md"]
+
+
+def test_list_rejects_an_absolute_folder(
+    vault: Path, policy: Policy, store: CredentialStore
+) -> None:
+    t, cred = tools(vault, policy, store)
+    with pytest.raises(ToolError) as exc:
+        t.list_folder(cred, "/wiki")
+    assert error_of(exc)["code"] == "invalid"

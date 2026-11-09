@@ -84,6 +84,10 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         except VaultToolError as exc:
             audit.append(service="vault-mcp", tool=tool, result=exc.code, **fields)
             raise
+        except Exception:
+            # No exception text: it can carry vault content or host paths.
+            audit.append(service="vault-mcp", tool=tool, result="internal_error", **fields)
+            raise
         audit.append(service="vault-mcp", tool=tool, result="ok", **fields)
         return result
 

@@ -241,7 +241,8 @@ class CredentialStore:
         with self._db() as conn:
             row = conn.execute(
                 "SELECT c.*, t.expires_at AS token_expires_at FROM token_hashes t"
-                " JOIN credentials c ON c.id = t.credential_id WHERE t.hash = ?",
+                " JOIN credentials c ON c.id = t.credential_id"
+                " WHERE t.hash = ? AND t.type = 'bearer'",
                 (_hash(token),),
             ).fetchone()
             if row is None:

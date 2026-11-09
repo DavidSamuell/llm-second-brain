@@ -146,3 +146,21 @@ def test_stdio_mode_refuses_an_invalid_token(vault: Path, data: Path, policy_fil
     )
     assert proc.returncode == 2
     assert "VAULT_MCP_TOKEN" in proc.stderr
+
+
+async def test_unexpected_tool_failures_are_audited_without_details(
+    vault: Path, data: Path, policy_file: Path, store: CredentialStore
+) -> None:
+    token, _ = store.create_bearer(name="local", owner="ops@example.com", scope="read")
+    page = vault / "wiki" / "index.md"
+    page.chmod(0o000)
+    try:
+        settings = Settings(vault_dir=vault, data_dir=data, policy_file=policy_file)
+        async with Client(build_server(settings, stdio_token=token)) as client:
+            with pytest.raises(ToolError):
+                await client.call_tool("read", {"path": "wiki/index.md"})
+    finally:
+        page.chmod(0o644)
+    (row,) = [json.loads(x) for x in (data / "audit.log").read_text().splitlines()]
+    assert (row["tool"], row["result"], row["path"]) == ("read", "internal_error", "wiki/index.md")
+    assert "detail" not in row

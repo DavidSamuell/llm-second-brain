@@ -160,3 +160,17 @@ def test_verify_records_last_use(store: CredentialStore, clock: Clock) -> None:
 def test_database_file_is_private(tmp_path: Path, store: CredentialStore) -> None:
     store.create_bearer(name="a", owner="a@example.com", scope="read")
     assert (tmp_path / "tokens.db").stat().st_mode & 0o077 == 0
+
+
+def test_only_bearer_hashes_authenticate(tmp_path: Path, store: CredentialStore) -> None:
+    import sqlite3
+
+    token, cred = store.create_bearer(name="a", owner="a@example.com", scope="read")
+    refresh = "vmcp_" + "R" * 43
+    with sqlite3.connect(tmp_path / "tokens.db") as conn:
+        conn.execute(
+            "INSERT INTO token_hashes (hash, credential_id, type) VALUES (?, ?, 'refresh')",
+            (hashlib.sha256(refresh.encode()).hexdigest(), cred.id),
+        )
+    assert store.verify(token) is not None
+    assert store.verify(refresh) is None

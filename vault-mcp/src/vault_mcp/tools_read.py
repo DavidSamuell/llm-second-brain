@@ -105,7 +105,7 @@ class ReadTools:
         return out
 
     def list_folder(self, cred: Credential, folder: str) -> dict[str, Any]:
-        folder = folder.strip("/")
+        folder = folder.rstrip("/")  # a leading "/" stays and is rejected as absolute
         if folder:
             rel, target = self._resolve(folder)
             prefix = rel + "/"
