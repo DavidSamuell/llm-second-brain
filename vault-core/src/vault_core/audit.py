@@ -63,3 +63,12 @@ class AuditLog:
         if written != len(line):
             raise OSError(f"short write to {self.path}: {written} of {len(line)} bytes")
         return entry_id
+
+    def has_id(self, entry_id: str) -> bool:
+        """Whether an entry with this id exists. Linear scan: only used for crash recovery."""
+        needle = f'"id":"{entry_id}"'
+        try:
+            with self.path.open() as f:
+                return any(needle in line and json.loads(line).get("id") == entry_id for line in f)
+        except FileNotFoundError:
+            return False

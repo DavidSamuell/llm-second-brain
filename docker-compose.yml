@@ -50,5 +50,28 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  vault-watcher:
+    <<: *run-as
+    image: ${VAULT_WATCHER_IMAGE:-docs-vault-kit/vault-watcher:local}
+    build:
+      context: .
+      dockerfile: vault-watcher/Dockerfile
+    environment:
+      BIND_ADDR: ${BIND_ADDR:-127.0.0.1}
+      HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
+      HISTORY_MIN_VERSIONS: ${HISTORY_MIN_VERSIONS:-10}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+      - ${MCP_POLICY_FILE:-./vault-mcp.yaml}:/config/vault-mcp.yaml:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8083/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
 volumes:
   obsidian-app:

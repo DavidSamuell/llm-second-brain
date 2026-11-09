@@ -121,11 +121,12 @@ Commands used in verification:
   - Verify: `uv run pytest vault-core -k history`.
   - Deps: T7 · Files: `vault-core/src/vault_core/history.py`, tests · Scope: M
 
-- [ ] **T13 — vault-watcher service: detection + history** · Decisions: D3, D6, D21, D22 · **watch**
+- [x] **T13 — vault-watcher service: detection + history** · Decisions: D3, D6, D21, D22 · **watch**
   - watchdog observer + full scan; spool draining under the lock (startup, `.inbox` events, and before every vault event); prepared-entry recovery with audit repair (`recovered` / `aborted` / `unknown`) and alert; ack by deleting the entry after the pointer is fsynced; heartbeat file; debounce for non-MCP writers; attribution from the lock owner; startup baseline; daily GC; `/health`; Dockerfile; compose service.
   - Acceptance: a shell edit creates a `web` version after the debounce; a committed write is recorded as `mcp` with `audit_id`, and its fs event is skipped as a duplicate; a delete creates a tombstone; events missed while stopped are caught by the scan; committed and prepared entries left by crashes are resolved at startup per the D21 recovery table; at startup, any file whose hash differs from its newest pointer is recorded (`source: unknown`), including content saved after a vault-mcp crash and before recovery (gap seen in T3).
   - Verify: `uv run pytest vault-watcher -k history` (temp dirs) + `docker compose up -d --wait`.
   - Deps: T3, T8, T12 · Files: `vault-watcher/src/vault_watcher/{main,events,recorder}.py`, `vault-watcher/Dockerfile`, `docker-compose.yml` · Scope: L (split by module if it grows)
+  - **Status:** 12 watcher tests on real directories with a real watchdog observer (5 repeated runs stable; mutation checks on the startup scan, git attribution, audit repair, head dedupe, temp cleanup and the ignore list). In the compose stack (e2e, both profiles): the watcher is healthy, the startup scan records baselines, a host-side edit becomes a `web` version, and the heartbeat is fresh.
 
 - [ ] **T14 — Search index + MCP `search` tool** · Decisions: D8, D10, D23 · **watch**
   - FTS5 schema, incremental updates, rebuild at startup; `search(query, folder?, limit?)` in vault-mcp opening the database read-only with scope filtering.

@@ -17,7 +17,7 @@ from harness import REPO, Stack, start, stop
 
 @pytest.fixture(scope="session", autouse=True)
 def _image() -> None:
-    subprocess.run(["docker", "compose", "build", "vault-mcp"], cwd=REPO, check=True, env={
+    subprocess.run(["docker", "compose", "build", "vault-mcp", "vault-watcher"], cwd=REPO, check=True, env={
         **os.environ, "VAULT_PATH": "/nonexistent", "DATA_PATH": "/nonexistent",
     })  # fmt: skip
 

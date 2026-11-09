@@ -169,7 +169,8 @@ class HistoryStore:
                 current = v
         return self.content(current) if current else None
 
-    def _all_paths(self) -> list[str]:
+    def paths(self) -> list[str]:
+        """Every vault path that has at least one version."""
         paths = {
             str(f.parent.relative_to(self.root))
             for f in self.root.rglob("*.json")
@@ -180,7 +181,7 @@ class HistoryStore:
     def deleted_under(self, prefix: str) -> dict[str, bytes]:
         """Files under `prefix` whose newest version is a tombstone, with their last content."""
         out: dict[str, bytes] = {}
-        for path in self._all_paths():
+        for path in self.paths():
             if not path.startswith(prefix):
                 continue
             versions = self.versions(path)

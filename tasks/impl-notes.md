@@ -41,6 +41,8 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T10] `get_schema` serves `AGENTS.md` to every credential, whatever its `--folders`, because it is the vault's rulebook. `list("")` lists the vault root, and a folder outside a credential's scope still shows when it leads to a scoped folder (e.g. `wiki/` for scope `wiki/concepts/`). Reversible: yes.
 - [T10] stdio mode re-verifies `VAULT_MCP_TOKEN` on every tool call, so revoking it takes effect without restarting the agent's server process. Reversible: yes.
 - [T10] `vault-mcp serve` listens on `0.0.0.0:8082` inside the container; the host side is published only on `${BIND_ADDR}` (default 127.0.0.1). The BIND_ADDR warning is printed at startup when it isn't loopback (checked against the container). Reversible: yes.
+- [T13] History records every vault file except `.git/`, `.trash/`, `.obsidian/workspace*`, `.obsidian/cache` and vault-mcp temp files. So Obsidian config under `.obsidian/` (app.json, plugin settings) is versioned too. Why: config changes are recoverable that way, and D22 only excluded layout and cache. Reversible: yes.
+- [T13] Attribution: an fs event that arrives while `git-sync` holds the vault lock marks that path's debounced burst as `git`; other events are `web`; startup and periodic scans record `unknown`. The watcher's `/health` runs on port 8083 inside the compose network only and reports unhealthy if the heartbeat is stale. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

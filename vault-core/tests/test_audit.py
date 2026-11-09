@@ -72,3 +72,12 @@ def test_concurrent_appends_from_processes_never_interleave(tmp_path: Path) -> N
     rows = [json.loads(line) for line in target.read_text().splitlines()]
     assert len(rows) == 800
     assert all(r["detail"] == r["detail"][0] * 4000 for r in rows)
+
+
+def test_has_id_finds_existing_entries_only(tmp_path: Path) -> None:
+    log = AuditLog(tmp_path / "audit.log")
+    assert not log.has_id("01ANY")
+    entry_id = log.append(service="s", tool="t", result="ok")
+    log.append(service="s", tool="t", result="ok", detail=f'mentions "id":"{entry_id}" in text')
+    assert log.has_id(entry_id)
+    assert not log.has_id(new_id())
