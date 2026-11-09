@@ -281,3 +281,23 @@ def test_save_between_crash_and_recovery_is_unconfirmed_and_both_contents_kept(
     assert contents[b"saved in the browser after the crash"].source == "unknown"
     assert [r["result"] for r in audit_rows(dirs, audit_id)] == ["unknown"]
     assert any(event == "history_unconfirmed" for event, _ in w.alerts.sent)  # type: ignore[attr-defined]
+
+
+def test_symlinks_out_of_the_vault_are_never_copied_into_history(
+    make_watcher: Callable[..., Watcher], dirs: tuple[Path, Path], tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside-secret.md"
+    outside.write_text("db_password=not-for-history")
+    (dirs[0] / "wiki" / "at-start.md").symlink_to(outside)
+    (dirs[0] / "wiki" / "real.md").write_text("real")
+    make_watcher()
+    wait_for(lambda: history(dirs).head("wiki/real.md") is not None)
+    (dirs[0] / "wiki" / "later.md").symlink_to(outside)
+    (dirs[0] / "wiki" / "marker.md").write_text("after the symlink")
+    wait_for(lambda: history(dirs).head("wiki/marker.md") is not None)
+    assert history(dirs).head("wiki/at-start.md") is None
+    assert history(dirs).head("wiki/later.md") is None
+    blobs = [p.read_bytes() for p in (dirs[1] / "history" / ".objects").rglob("*") if p.is_file()]
+    import gzip
+
+    assert all(b"not-for-history" not in gzip.decompress(b) for b in blobs)

@@ -130,6 +130,8 @@ class Recorder:
         if not is_tracked(rel):
             return False
         path = self.vault_dir / rel
+        if path.exists() and not path.resolve().is_relative_to(self.vault_dir.resolve()):
+            return False  # a symlink out of the vault: never copy outside files into history
         head = self.history.head(rel)
         if not path.is_file():
             if head is not None and head.sha256 is not None:
