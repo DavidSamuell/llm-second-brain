@@ -123,7 +123,7 @@ Commands used in verification:
 
 - [ ] **T13 — vault-watcher service: detection + history** · Decisions: D3, D6, D21, D22 · **watch**
   - watchdog observer + full scan; spool draining under the lock (startup, `.inbox` events, and before every vault event); prepared-entry recovery with audit repair (`recovered` / `aborted` / `unknown`) and alert; ack by deleting the entry after the pointer is fsynced; heartbeat file; debounce for non-MCP writers; attribution from the lock owner; startup baseline; daily GC; `/health`; Dockerfile; compose service.
-  - Acceptance: a shell edit creates a `web` version after the debounce; a committed write is recorded as `mcp` with `audit_id`, and its fs event is skipped as a duplicate; a delete creates a tombstone; events missed while stopped are caught by the scan; committed and prepared entries left by crashes are resolved at startup per the D21 recovery table.
+  - Acceptance: a shell edit creates a `web` version after the debounce; a committed write is recorded as `mcp` with `audit_id`, and its fs event is skipped as a duplicate; a delete creates a tombstone; events missed while stopped are caught by the scan; committed and prepared entries left by crashes are resolved at startup per the D21 recovery table; at startup, any file whose hash differs from its newest pointer is recorded (`source: unknown`), including content saved after a vault-mcp crash and before recovery (gap seen in T3).
   - Verify: `uv run pytest vault-watcher -k history` (temp dirs) + `docker compose up -d --wait`.
   - Deps: T3, T8, T12 · Files: `vault-watcher/src/vault_watcher/{main,events,recorder}.py`, `vault-watcher/Dockerfile`, `docker-compose.yml` · Scope: L (split by module if it grows)
 
