@@ -61,11 +61,25 @@ def test_resolve_in_vault_rejects_symlink_escaping_the_vault(tmp_path: Path) -> 
     assert exc.value.code == "forbidden"
 
 
-def test_resolve_in_vault_allows_symlink_that_stays_inside(tmp_path: Path) -> None:
+@pytest.mark.parametrize("raw", ["alias/page.md", "wiki/page-alias.md", "alias/new.md"])
+def test_resolve_in_vault_rejects_symlinks_even_inside_the_vault(tmp_path: Path, raw: str) -> None:
+    """Policy is checked on the path string, so an alias like wiki/x.md -> ../private/y.md
+    would otherwise inherit wiki/'s permissions. Tool paths never go through symlinks."""
     (tmp_path / "wiki").mkdir()
     (tmp_path / "wiki" / "page.md").write_text("x")
     (tmp_path / "alias").symlink_to(tmp_path / "wiki")
-    assert resolve_in_vault(tmp_path, "alias/page.md") == tmp_path.resolve() / "wiki" / "page.md"
+    (tmp_path / "wiki" / "page-alias.md").symlink_to(tmp_path / "wiki" / "page.md")
+    with pytest.raises(PathError) as exc:
+        resolve_in_vault(tmp_path, raw)
+    assert exc.value.code == "forbidden"
+
+
+def test_resolve_in_vault_accepts_a_vault_root_that_is_itself_a_symlink(tmp_path: Path) -> None:
+    (tmp_path / "real" / "wiki").mkdir(parents=True)
+    (tmp_path / "mounted").symlink_to(tmp_path / "real")
+    assert resolve_in_vault(tmp_path / "mounted", "wiki/new.md") == (
+        tmp_path / "real" / "wiki" / "new.md"
+    )
 
 
 def test_resolve_in_vault_rejects_hidden_paths(tmp_path: Path) -> None:

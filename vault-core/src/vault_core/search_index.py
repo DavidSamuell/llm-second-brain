@@ -15,7 +15,7 @@ from pathlib import Path
 
 from vault_core import frontmatter
 from vault_core.fsio import version_of
-from vault_core.paths import is_hidden
+from vault_core.paths import is_hidden, through_symlink
 from vault_core.policy import Policy, under
 
 _SCHEMA = """
@@ -126,17 +126,12 @@ class SearchIndex:
 
     def rebuild(self, vault_dir: Path) -> int:
         """Full rebuild from the vault (startup and `scripts/reindex`). Returns documents indexed."""
-        root = vault_dir.resolve()
         count = 0
         with self._db() as conn:
             conn.execute("DELETE FROM docs")
             for path in sorted(vault_dir.rglob("*.md")):
                 rel = path.relative_to(vault_dir).as_posix()
-                if (
-                    not path.is_file()
-                    or not self.indexable(rel)
-                    or not path.resolve().is_relative_to(root)
-                ):
+                if not path.is_file() or not self.indexable(rel) or through_symlink(vault_dir, rel):
                     continue
                 self._upsert(conn, rel, path.read_bytes())
                 count += 1

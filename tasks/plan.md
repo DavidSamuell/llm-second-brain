@@ -80,6 +80,7 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
 - Spec: §6.3 `--folders`, §6.5 `read.deny`, §16.7.
 - **Choice:**
   - Tool paths are vault-relative POSIX. Reject absolute paths, `..`, NUL, backslash, and any path whose `realpath` escapes `/vault`.
+  - **Tightened in T18:** any path that goes through a symlink is refused, even one pointing inside the vault, because policy is decided on the path string (`wiki/x.md -> ../private/y.md` would inherit wiki/'s permissions). The watcher records and indexes no symlinked paths either.
   - Never served or indexed: `.obsidian/`, `.git/`, `.trash/`, any dotfile, and `read.deny` prefixes.
   - Credential `folders` is a list of prefixes with a trailing slash. It limits **read, list, search, and write**. Effective write set = credential folders ∩ policy write rules (D9).
   - Matching is case-sensitive.

@@ -37,8 +37,18 @@ def is_hidden(path: str) -> bool:
     return any(segment.startswith(".") for segment in path.split("/"))
 
 
+def through_symlink(vault_root: Path, rel: str) -> bool:
+    """Whether `rel` (or any folder on its way) is a symlink. The vault root itself may be one."""
+    root = vault_root.resolve()
+    return (root / rel).resolve() != root / rel
+
+
 def resolve_in_vault(vault_root: Path, raw: str) -> Path:
-    """Resolve a tool path to an absolute path that is guaranteed to stay inside the vault."""
+    """Resolve a tool path to an absolute path inside the vault.
+
+    Symlinks are refused even when they point inside the vault: policy (folder scope,
+    read.deny, write.allow) is decided on the path string, so `wiki/x.md -> ../private/y.md`
+    would otherwise inherit wiki/'s permissions."""
     path = normalize(raw)
     if is_hidden(path):
         raise PathError("forbidden", f"hidden path: {path}")
@@ -46,4 +56,6 @@ def resolve_in_vault(vault_root: Path, raw: str) -> Path:
     target = (root / path).resolve()
     if not target.is_relative_to(root):
         raise PathError("forbidden", f"path escapes the vault: {path}")
+    if target != root / path:
+        raise PathError("forbidden", f"path goes through a symlink: {path}")
     return target

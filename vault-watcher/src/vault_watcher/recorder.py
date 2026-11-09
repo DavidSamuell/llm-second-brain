@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from vault_core.audit import AuditLog
 from vault_core.fsio import is_temp_name, version_of
 from vault_core.history import HistoryStore, Source, Spool, SpoolEntry, classify
+from vault_core.paths import through_symlink
 from vault_core.search_index import SearchIndex
 
 log = logging.getLogger(__name__)
@@ -140,7 +141,7 @@ class Recorder:
         if self.index is None:
             return
         path = self.vault_dir / rel
-        inside = path.is_file() and path.resolve().is_relative_to(self.vault_dir.resolve())
+        inside = path.is_file() and not through_symlink(self.vault_dir, rel)
         self.index.update(rel, path.read_bytes() if inside else None)
 
     # -- vault changes -----------------------------------------------------------------------
@@ -150,8 +151,10 @@ class Recorder:
         if not is_tracked(rel):
             return False
         path = self.vault_dir / rel
-        if path.exists() and not path.resolve().is_relative_to(self.vault_dir.resolve()):
-            return False  # a symlink out of the vault: never copy outside files into history
+        if path.exists() and through_symlink(self.vault_dir, rel):
+            return (
+                False  # symlinks are never followed: no outside files, no policy-bypassing aliases
+            )
         head = self.history.head(rel)
         if not path.is_file():
             if head is not None and head.sha256 is not None:

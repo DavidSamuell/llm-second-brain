@@ -182,3 +182,14 @@ def test_list_rejects_an_absolute_folder(
     with pytest.raises(ToolError) as exc:
         t.list_folder(cred, "/wiki")
     assert error_of(exc)["code"] == "invalid"
+
+
+def test_in_vault_aliases_cannot_bypass_read_deny_or_folder_scope(
+    vault: Path, policy: Policy, store: CredentialStore
+) -> None:
+    (vault / "wiki" / "alias.md").symlink_to(vault / "private" / "salaries.md")
+    t, cred = tools(vault, policy, store, folders=["wiki/"])
+    with pytest.raises(ToolError) as exc:
+        t.read(cred, "wiki/alias.md")
+    assert error_of(exc)["code"] == "forbidden"
+    assert "wiki/alias.md" not in [e["path"] for e in t.list_folder(cred, "wiki")["entries"]]

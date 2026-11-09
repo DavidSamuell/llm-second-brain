@@ -114,3 +114,13 @@ def test_snippet_marks_the_match(index: SearchIndex, tmp_path: Path) -> None:
     index.update("wiki/a.md", b"# A\n\nThe watcher keeps history for every change.\n")
     (hit,) = search(tmp_path / "index.db", "history")
     assert "[history]" in hit.snippet
+
+
+def test_rebuild_skips_aliases(index: SearchIndex, tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    (vault / "wiki").mkdir(parents=True)
+    (vault / "private").mkdir()
+    (vault / "private" / "p.md").write_text("# P\n\nconfidential\n")
+    (vault / "wiki" / "alias.md").symlink_to(vault / "private" / "p.md")
+    index.rebuild(vault)
+    assert search(tmp_path / "index.db", "confidential") == []

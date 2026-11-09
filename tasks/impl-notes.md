@@ -46,6 +46,7 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T16] `append` on a missing file returns `not_found` (create with `write`), so a typo in the path can't create a stray page. `append` starts the text on a new line if the file doesn't end with one. Reversible: yes.
 - [T16] For write tools the durable `ok` audit line is written by the writer itself, under the same id as the history version, so a successful write has exactly one audit line; refusals and failures are logged by the server wrapper. The locked part of a write runs in a worker thread so its fsyncs don't stall other requests. Reversible: yes.
 - [T18] `review_queue_add` is open to every write credential regardless of its `--folders` (the queue is how agents ask about pages they can't edit), but the `page` must be readable by the credential, so denied pages can't be named. Field text is flattened to one line and `[[`/`]]` are removed so an item can't break the task list or inject links. Reversible: yes.
+- [T18 review fix] D8 tightened: MCP tools, history and the search index ignore every path that goes through a symlink, including in-vault ones. A symlinked alias would otherwise carry its own path's permissions to the target. Vaults that rely on symlinks lose MCP access to those paths (the real paths still work). Reversible: yes, by checking policy on the canonical target instead.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

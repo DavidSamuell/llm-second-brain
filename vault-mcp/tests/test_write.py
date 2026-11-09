@@ -425,3 +425,14 @@ async def test_review_queue_refusals(
         await writer(vault, data, policy).review_queue_add(cred(store, scope), page, "i", "s")
     assert code(exc)["code"] == expected
     assert not (vault / "_system" / "review-queue.md").exists()
+
+
+async def test_writes_through_an_in_vault_alias_are_refused(
+    vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
+) -> None:
+    (vault / "wiki" / "alias.md").symlink_to(vault / "projects" / "alpha.md")
+    before = (vault / "projects" / "alpha.md").read_bytes()
+    with pytest.raises(ToolError) as exc:
+        await writer(vault, data, policy).append(cred(store), "wiki/alias.md", "agent text\n")
+    assert code(exc)["code"] == "forbidden"
+    assert (vault / "projects" / "alpha.md").read_bytes() == before
