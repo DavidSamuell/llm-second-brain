@@ -301,3 +301,20 @@ def test_symlinks_out_of_the_vault_are_never_copied_into_history(
     import gzip
 
     assert all(b"not-for-history" not in gzip.decompress(b) for b in blobs)
+
+
+def test_edits_and_mcp_writes_are_searchable_and_deletes_drop_out(
+    make_watcher: Callable[..., Watcher], dirs: tuple[Path, Path]
+) -> None:
+    from vault_core.search_index import search
+
+    db = dirs[1] / "index.db"
+    (dirs[0] / "wiki" / "existing.md").write_text("# Existing\n\nlighthouse\n")
+    make_watcher()
+    assert [h.path for h in search(db, "lighthouse")] == ["wiki/existing.md"]  # startup rebuild
+    (dirs[0] / "wiki" / "web.md").write_text("# Web\n\nharbour\n")
+    wait_for(lambda: [h.path for h in search(db, "harbour")] == ["wiki/web.md"])
+    mcp_write(dirs, "wiki/agent.md", b"# Agent\n\nbeacon\n")
+    wait_for(lambda: [h.path for h in search(db, "beacon")] == ["wiki/agent.md"])
+    (dirs[0] / "wiki" / "web.md").unlink()
+    wait_for(lambda: search(db, "harbour") == [])

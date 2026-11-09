@@ -128,11 +128,12 @@ Commands used in verification:
   - Deps: T3, T8, T12 · Files: `vault-watcher/src/vault_watcher/{main,events,recorder}.py`, `vault-watcher/Dockerfile`, `docker-compose.yml` · Scope: L (split by module if it grows)
   - **Status:** 12 watcher tests on real directories with a real watchdog observer (5 repeated runs stable; mutation checks on the startup scan, git attribution, audit repair, head dedupe, temp cleanup and the ignore list). In the compose stack (e2e, both profiles): the watcher is healthy, the startup scan records baselines, a host-side edit becomes a `web` version, and the heartbeat is fresh.
 
-- [ ] **T14 — Search index + MCP `search` tool** · Decisions: D8, D10, D23 · **watch**
+- [x] **T14 — Search index + MCP `search` tool** · Decisions: D8, D10, D23 · **watch**
   - FTS5 schema, incremental updates, rebuild at startup; `search(query, folder?, limit?)` in vault-mcp opening the database read-only with scope filtering.
   - Acceptance: `read.deny` files never appear in the database; folder scope filters results; FTS syntax characters in a query cause no error; ranking prefers title matches.
   - Verify: `uv run pytest vault-watcher -k index && uv run pytest vault-mcp -k search` + an e2e §16.7 search case.
   - Deps: T10, T13 · Files: `vault-watcher/src/vault_watcher/index.py`, `vault-mcp/src/vault_mcp/tools_search.py`, tests · Scope: M
+  - **Status:** index schema, writer and query are in `vault-core/src/vault_core/search_index.py` (shared, as D2 intends), and the watcher keeps the index current (startup rebuild, snapshots, MCP writes, deletes). Tests cover: deny, hidden and non-Markdown files never indexed; FTS syntax characters never error and `OR` is a plain word; title matches rank first; accents folded; scope applied in SQL before the limit; folder argument errors. e2e §16.7 search case passes in both profiles.
 
 - [ ] **T15 — history / reindex CLIs + scripts** · Decisions: D21, D23, D33 · **watch**
   - `vault-watcher history list|restore|restore-deleted`, `vault-watcher reindex`; bash wrappers `scripts/history`, `scripts/reindex`. A restore writes through the lock and is recorded as a new version.

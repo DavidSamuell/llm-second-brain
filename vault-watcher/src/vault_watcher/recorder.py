@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from vault_core.audit import AuditLog
 from vault_core.fsio import is_temp_name, version_of
 from vault_core.history import HistoryStore, Source, Spool, SpoolEntry, classify
+from vault_core.search_index import SearchIndex
 
 log = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class Recorder:
     data_dir: Path
     audit: AuditLog
     alerts: AlertSink
+    index: SearchIndex | None = None
     history: HistoryStore = field(init=False)
     spool: Spool = field(init=False)
     _scan_cache: dict[str, tuple[int, int]] = field(default_factory=dict, init=False)
@@ -66,6 +68,9 @@ class Recorder:
                 self.history.record_entry(entry)
             else:
                 self._recover(entry)
+            self._reindex(entry.new_path or entry.path)
+            if entry.new_path:
+                self._reindex(entry.path)
             self.spool.ack(entry)
         return len(entries)
 
@@ -123,6 +128,14 @@ class Recorder:
             "recovered interrupted MCP write %s on %s: %s", entry.audit_id, target_rel, outcome
         )
 
+    def _reindex(self, rel: str) -> None:
+        """Bring the search index in line with the file on disk (D23)."""
+        if self.index is None:
+            return
+        path = self.vault_dir / rel
+        inside = path.is_file() and path.resolve().is_relative_to(self.vault_dir.resolve())
+        self.index.update(rel, path.read_bytes() if inside else None)
+
     # -- vault changes -----------------------------------------------------------------------
 
     def snapshot(self, rel: str, source: Source) -> bool:
@@ -137,6 +150,7 @@ class Recorder:
             if head is not None and head.sha256 is not None:
                 self.history.record(rel, None, event="delete", source=source)
                 self._scan_cache.pop(rel, None)
+                self._reindex(rel)
                 return True
             return False
         data = path.read_bytes()
@@ -148,6 +162,8 @@ class Recorder:
             event="create" if head is None or head.sha256 is None else "modify",
             source=source,
         )
+        if self.index is not None:
+            self.index.update(rel, data)
         stat = path.stat()
         self._scan_cache[rel] = (stat.st_mtime_ns, stat.st_size)
         return True

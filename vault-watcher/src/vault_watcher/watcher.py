@@ -22,6 +22,8 @@ from watchdog.observers import Observer
 from vault_core.audit import AuditLog
 from vault_core.history import Source
 from vault_core.lock import lock_path, read_owner, vault_lock
+from vault_core.policy import Policy
+from vault_core.search_index import SearchIndex
 from vault_watcher.recorder import AlertSink, Recorder, is_tracked
 
 log = logging.getLogger(__name__)
@@ -39,6 +41,7 @@ class WatcherConfig:
     retention_days: int = 90
     min_versions: int = 10
     health_port: int | None = None
+    policy: Policy | None = None
 
 
 def lock_holder(data_dir: Path) -> str | None:
@@ -92,7 +95,11 @@ class Watcher:
         self.config = config
         self.alerts = alerts
         self.recorder = Recorder(
-            config.vault_dir, config.data_dir, AuditLog(config.data_dir / "audit.log"), alerts
+            config.vault_dir,
+            config.data_dir,
+            AuditLog(config.data_dir / "audit.log"),
+            alerts,
+            index=SearchIndex(config.data_dir / "index.db", config.policy),
         )
         self.heartbeat = config.data_dir / "vault-watcher" / "heartbeat"
         self._pending = _Pending(config.debounce_quiet_s, config.debounce_cap_s)
@@ -114,7 +121,15 @@ class Watcher:
         with vault_lock(self.config.data_dir, "vault-watcher"):
             drained = self.recorder.drain()
             changed = self.recorder.scan()
-        log.info("startup: %d spool entries resolved, %d files recorded", drained, changed)
+            indexed = (
+                self.recorder.index.rebuild(self.config.vault_dir) if self.recorder.index else 0
+            )
+        log.info(
+            "startup: %d spool entries resolved, %d files recorded, %d indexed",
+            drained,
+            changed,
+            indexed,
+        )
         self.heartbeat.touch()
         if self.config.health_port is not None:
             self._health = _health_server(

@@ -65,6 +65,7 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T10] Task list put `vault-mcp.example.yaml` in T29. → Did: added it in T10. Because: the compose service can't start without a policy file, and T10's acceptance runs the stack. T29 still owns copying it in `scripts/setup`. — `vault-mcp.example.yaml`
 - [T11] Plan D38 said §16.2 probes the host IP from a container on a separate network. → Did: two tests. (1) Connect to this host's LAN address directly; Docker's DNAT also applies to locally generated traffic, so a port published on `0.0.0.0` answers there. (2) The container probe, skipped with a reason when its control listener is unreachable. Because: this host's firewall (ufw) blocks container-to-host traffic, which makes the container probe environment-dependent. Test (1) was shown to fail with `BIND_ADDR=0.0.0.0`. — `e2e/test_deploy.py`
 - [T11] Added env var `MCP_POLICY_FILE` (default `./vault-mcp.yaml`) for the policy bind mount, so the e2e suite can use a temporary policy instead of overwriting a developer's `vault-mcp.yaml`. — `docker-compose.yml`
+- [T14] Task said: `vault-watcher/src/vault_watcher/index.py`. → Did: the index lives in `vault-core/src/vault_core/search_index.py`. Because: the watcher writes it and vault-mcp queries it, so both need the schema (D2's reason for vault-core). — `vault-core/src/vault_core/search_index.py`
 
 ## Surprises (things learned)
 - The repo started with only `SPEC.md`, `README.md` (18 B), and a stock Python `.gitignore`, so there are no existing conventions to follow.
@@ -92,6 +93,7 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T10] With `WS_ORIGINS=https://localhost` (D4's exact value for an unset `IGNIS_HOST`), the editor at `http://127.0.0.1:8081` still loaded and saved edits. Ignis seems to allow same-origin connections regardless of the list. Whether it rejects a *cross-origin* WebSocket is not verified yet; that belongs in the T41 security pass.
 - [T10] With bearer-only auth (no OAuth yet), a 401 from `/mcp` carries just `WWW-Authenticate: Bearer`, without `resource_metadata`. That arrives with the OAuth provider in T24 (§5.4 check-exposure expects it).
 - [T11] On this host, containers on a user-defined Docker network can't reach the host's LAN address (ufw default policy), while the host itself can. GitHub runners have no ufw, so the container probe is expected to run there.
+- [T14] My scripted Python string replacements fail silently when the target text doesn't match: two T14 wiring edits didn't apply, and a test failure briefly looked like a SQLite WAL problem until the review pointed at the missing wiring. Scripted edits now assert that their target exists.
 
 ## Open questions for the human
 _At the /build auto checkpoint (2026-11-09) the user approved "go with the defaults" for the items below. Where an item states a default, that default is being applied; the items stay listed for final confirmation. For the T1 restricted-mode question the conservative default is an **empty** default allowlist._

@@ -11,6 +11,7 @@ from types import FrameType
 
 from vault_core.alerts import AlertSender
 from vault_core.config import Settings, bind_addr_warning
+from vault_core.policy import load_policy
 from vault_watcher.watcher import Watcher, WatcherConfig
 
 HEALTH_PORT = 8083
@@ -34,6 +35,7 @@ def _cmd_run(settings: WatcherSettings, _: argparse.Namespace) -> int:
         retention_days=settings.history_retention_days,
         min_versions=settings.history_min_versions,
         health_port=HEALTH_PORT,
+        policy=load_policy(settings.policy_file),
     )
     watcher = Watcher(config, alerts=AlertSender(settings.alert_webhook, service="vault-watcher"))
 

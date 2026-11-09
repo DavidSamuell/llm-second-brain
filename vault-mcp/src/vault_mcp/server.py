@@ -19,6 +19,7 @@ from vault_core.policy import load_policy
 from vault_mcp.errors import VaultToolError
 from vault_mcp.store import Credential, CredentialStore
 from vault_mcp.tools_read import ReadTools
+from vault_mcp.tools_search import SearchTools
 
 T = TypeVar("T")
 
@@ -51,6 +52,7 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     store = CredentialStore(settings.data_dir / "tokens.db")
     audit = AuditLog(settings.data_dir / "audit.log")
     reads = ReadTools(settings.vault_dir, policy)
+    searches = SearchTools(settings.data_dir / "index.db", policy)
 
     mcp = FastMCP(
         "vault-mcp",
@@ -106,6 +108,12 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     def list_(folder: str = "") -> dict[str, Any]:
         """List one folder ("" for the vault root) with a frontmatter summary per Markdown page."""
         return audited("list", folder or "/", lambda cred: reads.list_folder(cred, folder))
+
+    @mcp.tool(name="search")
+    def search(query: str, folder: str | None = None, limit: int = 20) -> dict[str, Any]:
+        """Full-text search (title, headings, path, frontmatter, body). Words are matched
+        literally and all must appear; `folder` narrows the search to one folder."""
+        return audited("search", folder, lambda cred: searches.search(cred, query, folder, limit))
 
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:

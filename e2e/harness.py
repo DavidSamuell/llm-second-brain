@@ -21,9 +21,9 @@ TOKEN_RE = re.compile(r"vmcp_[A-Za-z0-9_-]{43}")
 AGENTS_MD = "---\nschema_version: 1\n---\n# Vault rules\n"
 SEED = {
     "AGENTS.md": AGENTS_MD,
-    "wiki/index.md": "---\ntitle: Wiki index\nmaintainer: agent\n---\n# Index\n",
-    "projects/alpha.md": "---\nmaintainer: human\n---\n# Alpha\n",
-    "private/salaries.md": "not for agents\n",
+    "wiki/index.md": "---\ntitle: Wiki index\nmaintainer: agent\n---\n# Index\n\nquarry\n",
+    "projects/alpha.md": "---\nmaintainer: human\n---\n# Alpha\n\nquarry\n",
+    "private/salaries.md": "not for agents, quarry\n",
 }
 
 
