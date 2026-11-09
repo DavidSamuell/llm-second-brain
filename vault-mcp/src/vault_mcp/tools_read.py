@@ -71,7 +71,7 @@ class ReadTools:
 
     def get_schema(self, cred: Credential) -> dict[str, Any]:
         """AGENTS.md is the vault's rulebook; every credential may read it."""
-        agents = self.vault_dir / "AGENTS.md"
+        _, agents = self._resolve("AGENTS.md")  # rejects a symlink pointing out of the vault
         try:
             content = agents.read_text()
         except FileNotFoundError:
@@ -122,6 +122,10 @@ class ReadTools:
         entries: list[dict[str, Any]] = []
         for child in sorted(target.iterdir(), key=lambda p: p.name):
             rel = prefix + child.name
+            try:
+                resolve_in_vault(self.vault_dir, rel)
+            except PathError:
+                continue  # hidden entries and symlinks that leave the vault are never listed
             if child.is_dir():
                 if self._dir_visible(cred, rel + "/"):
                     entries.append({"path": rel + "/", "type": "dir"})

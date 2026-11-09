@@ -146,3 +146,30 @@ def test_get_schema_returns_agents_md_and_schema_version(
     out = t.get_schema(cred)
     assert out["schema_version"] == 3
     assert out["content"] == (vault / "AGENTS.md").read_text()
+
+
+def test_get_schema_refuses_an_agents_md_symlink_out_of_the_vault(
+    tmp_path: Path, vault: Path, policy: Policy, store: CredentialStore
+) -> None:
+    outside = tmp_path / "outside-secret.txt"
+    outside.write_text("db_password=hunter2hunter2")
+    (vault / "AGENTS.md").unlink()
+    (vault / "AGENTS.md").symlink_to(outside)
+    t, cred = tools(vault, policy, store)
+    with pytest.raises(ToolError) as exc:
+        t.get_schema(cred)
+    assert error_of(exc)["code"] == "forbidden"
+    assert "hunter2" not in str(exc.value)
+
+
+def test_list_skips_symlinks_that_escape_the_vault(
+    tmp_path: Path, vault: Path, policy: Policy, store: CredentialStore
+) -> None:
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (outside_dir / "leak.md").write_text("---\ntitle: Leaked title\n---\n")
+    (vault / "wiki" / "escape.md").symlink_to(outside_dir / "leak.md")
+    (vault / "wiki" / "escape-dir").symlink_to(outside_dir)
+    t, cred = tools(vault, policy, store)
+    entries = t.list_folder(cred, "wiki")["entries"]
+    assert [e["path"] for e in entries] == ["wiki/concepts/", "wiki/index.md"]
