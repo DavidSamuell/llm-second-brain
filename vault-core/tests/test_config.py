@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from vault_core.config import Settings, bind_addr_warning
 
 

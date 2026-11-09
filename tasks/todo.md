@@ -74,7 +74,7 @@ Commands used in verification:
   - Verify: `uv run pytest vault-core -k "paths or policy"`.
   - Deps: T5 · Files: `vault-core/src/vault_core/{paths,policy,config}.py`, tests · Scope: M
 
-- [ ] **T7 — vault-core: lock, atomic write, version** · Decisions: D6, D7 · **watch**
+- [x] **T7 — vault-core: lock, atomic write, version** · Decisions: D6, D7 · **watch**
   - flock context manager (sync + async) with an owner file; atomic same-directory replace that preserves mode; sha256 versioning.
   - Acceptance: two processes contending serialize; interop with `flock(1)` proven; a crash mid-write leaves the old file intact; no temp files left behind.
   - Verify: `uv run pytest vault-core -k "lock or atomic"`, multi-process tests included.

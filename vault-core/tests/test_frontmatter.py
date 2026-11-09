@@ -1,4 +1,5 @@
 import pytest
+
 from vault_core.frontmatter import maintainer_of, parse
 
 

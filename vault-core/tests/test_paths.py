@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+
 from vault_core.paths import PathError, is_hidden, normalize, resolve_in_vault
 
 
