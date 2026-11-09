@@ -5,6 +5,9 @@ description = "Shared library for vault-mcp and vault-watcher: paths, policy, lo
 requires-python = ">=3.13,<3.14"
 license = "MIT"
 dependencies = [
+    "pydantic>=2.9,<3",
+    "pydantic-settings>=2.6,<3",
+    "pyyaml>=6,<7",
 ]
 
 [build-system]

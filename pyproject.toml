@@ -11,6 +11,7 @@ dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",
+    "types-pyyaml>=6",
 ]
 
 [tool.uv]
@@ -31,7 +32,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PTH", "ASYNC"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"*/tests/**" = ["S101"]
+"*/tests/**" = ["S101", "S104"]
 
 [tool.mypy]
 strict = true
