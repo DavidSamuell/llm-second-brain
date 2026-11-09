@@ -54,7 +54,7 @@ Commands used in verification:
 
 ## Phase 1 — Foundation + MCP read slice
 
-- [ ] **T4 — Project meta files** · Decisions: none · **delegate**
+- [x] **T4 — Project meta files** · Decisions: none · **delegate**
   - `LICENSE` (MIT, §17), `CHANGELOG.md` (Keep a Changelog, "Unreleased"), `README.md` with the §1 goal and a docs index.
   - Acceptance: files exist; LICENSE is the MIT text; README links every §14 doc path.
   - Verify: manual read.
