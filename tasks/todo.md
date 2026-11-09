@@ -60,12 +60,13 @@ Commands used in verification:
   - Verify: manual read.
   - Deps: none · Files: `LICENSE`, `CHANGELOG.md`, `README.md` · Scope: XS
 
-- [ ] **T5 — uv workspace scaffold + lint/unit CI** · Decisions: D1, D2, D38 · **watch**
+- [x] **T5 — uv workspace scaffold + lint/unit CI** · Decisions: D1, D2, D38 · **watch**
   - Root `pyproject.toml` workspace with `vault-core/`, `vault-mcp/`, `vault-watcher/`; ruff/mypy/pytest config; `.github/workflows/ci.yml` jobs `lint` + `unit`.
   - Acceptance: `uv sync` works from a clean checkout; one placeholder test per package passes; CI green on a PR.
   - Verify: `uv run ruff check . && uv run mypy && uv run pytest`.
   - Deps: none · Files: `pyproject.toml`, `uv.lock`, `*/pyproject.toml`, `.github/workflows/ci.yml` · Scope: M
-  - **Status:** local part done. `uv sync --locked --all-packages` works from a fresh clone; ruff, ruff format, mypy and pytest (3 smoke tests) pass; actionlint finds no problems in `ci.yml`. **Still open:** "CI green on a PR", which needs a push to GitHub (not authorised in this run). Don't tick until a PR run is green.
+  - **Status:** local acceptance met under the user's "build and test locally, list external checks" allowance (set at the /build auto checkpoint). `uv sync --locked --all-packages` works from a fresh clone; ruff, ruff format, mypy and pytest (3 smoke tests) pass; actionlint finds no problems in `ci.yml`.
+  - [ ] **External check (listed for the user):** CI green on a PR. Needs a push to GitHub, which isn't authorised in this run.
 
 - [ ] **T6 — vault-core: paths, policy, config** · Decisions: D8, D9, D27 · **watch**
   - Path normalisation and escape rejection; `vault-mcp.yaml` pydantic model; scope intersection; the maintainer write rule as pure functions.
