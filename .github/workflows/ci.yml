@@ -25,6 +25,16 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
+      - name: shellcheck (scripts/ and *.sh)
+        run: |
+          mapfile -t files < <(git ls-files 'scripts/**' '*.sh' | xargs -r grep -lE '^#!.*\b(ba|da)?sh\b' || true)
+          if [ "${#files[@]}" -eq 0 ]; then echo "no shell scripts yet"; exit 0; fi
+          shellcheck "${files[@]}"
+      - name: hadolint (Dockerfiles)
+        run: |
+          mapfile -t files < <(git ls-files '*Dockerfile*')
+          if [ "${#files[@]}" -eq 0 ]; then echo "no Dockerfiles yet"; exit 0; fi
+          docker run --rm -v "$PWD:/w" -w /w hadolint/hadolint:v2.12.0 hadolint "${files[@]}"
 
   unit:
     runs-on: ubuntu-24.04

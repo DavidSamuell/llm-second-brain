@@ -65,7 +65,7 @@ Commands used in verification:
   - Acceptance: `uv sync` works from a clean checkout; one placeholder test per package passes; CI green on a PR.
   - Verify: `uv run ruff check . && uv run mypy && uv run pytest`.
   - Deps: none · Files: `pyproject.toml`, `uv.lock`, `*/pyproject.toml`, `.github/workflows/ci.yml` · Scope: M
-  - **Status:** local acceptance met under the user's "build and test locally, list external checks" allowance (set at the /build auto checkpoint). `uv sync --locked --all-packages` works from a fresh clone; ruff, ruff format, mypy and pytest (3 smoke tests) pass; actionlint finds no problems in `ci.yml`.
+  - **Status:** local acceptance met under the user's "build and test locally, list external checks" allowance (set at the /build auto checkpoint). `uv sync --locked --all-packages` works from a fresh clone; ruff, ruff format, mypy and pytest (3 smoke tests) pass; actionlint finds no problems in `ci.yml`. The lint job also runs shellcheck on `scripts/**` + `*.sh` and hadolint on Dockerfiles (D38); both skip cleanly while no such files exist, and both steps were tested locally against a sample script and Dockerfile.
   - [ ] **External check (listed for the user):** CI green on a PR. Needs a push to GitHub, which isn't authorised in this run.
 
 - [ ] **T6 — vault-core: paths, policy, config** · Decisions: D8, D9, D27 · **watch**
