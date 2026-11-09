@@ -12,7 +12,7 @@ import pytest
 from fastmcp.exceptions import ToolError
 
 from vault_core.fsio import version_of
-from vault_core.history import HistoryStore
+from vault_core.history import HistoryStore, Spool
 from vault_core.policy import Policy
 from vault_mcp.store import Credential, CredentialStore
 from vault_mcp.writer import VaultWriter
@@ -355,3 +355,36 @@ async def test_section_tools_edit_through_the_same_pipeline(
     posts = mcp_versions(data, "wiki/guide.md")
     assert len(posts) == 2
     assert out["version"] == posts[0].sha256
+
+
+async def test_cancelling_a_write_holds_the_lock_until_the_locked_work_has_finished(
+    vault: Path,
+    data: Path,
+    policy: Policy,
+    store: CredentialStore,
+    watcher: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time as time_module
+
+    import vault_mcp.writer as writer_module
+
+    real_replace = writer_module.replace_from_temp
+
+    def slow_replace(tmp: Path, target: Path) -> None:
+        time_module.sleep(0.5)  # in the worker thread, inside the locked section
+        real_replace(tmp, target)
+
+    monkeypatch.setattr(writer_module, "replace_from_temp", slow_replace)
+    task = asyncio.create_task(
+        writer(vault, data, policy).write(
+            cred(store), "wiki/cancel.md", "landed\n", base_version=None
+        )
+    )
+    await asyncio.sleep(0.15)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    # The cancel must not return (and release the vault lock) while the rename is still pending.
+    assert (vault / "wiki" / "cancel.md").read_text() == "landed\n"
+    assert not list(Spool(data).inbox.glob("*.prepared"))

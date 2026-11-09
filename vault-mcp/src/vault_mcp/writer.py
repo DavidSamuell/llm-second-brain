@@ -12,7 +12,7 @@ import contextlib
 import os
 import secrets
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -149,8 +149,8 @@ class VaultWriter:
         async with self.lock.hold():
             for attempt in range(retries):
                 # Blocking file I/O and fsyncs run off the event loop; the async lock serialises writers.
-                outcome = await asyncio.to_thread(
-                    self._attempt, cred, tool, rel, target, build, base_version
+                outcome = await _finish_even_if_cancelled(
+                    asyncio.to_thread(self._attempt, cred, tool, rel, target, build, base_version)
                 )
                 if outcome is not None:
                     break
@@ -279,6 +279,24 @@ def _section_edit(path: str, edit: Callable[[str], str]) -> Callable[[bytes | No
         return edit(text).encode()
 
     return build
+
+
+async def _finish_even_if_cancelled[T](work: Awaitable[T]) -> T:
+    """A cancelled tool call must not release the vault lock while its worker thread is still
+    writing: wait for the thread (ignoring further cancellations), then re-raise."""
+    future = asyncio.ensure_future(work)
+    cancelled = False
+    while True:
+        try:
+            result = await asyncio.shield(future)
+        except asyncio.CancelledError:
+            if future.done():
+                raise
+            cancelled = True
+            continue
+        if cancelled:
+            raise asyncio.CancelledError
+        return result
 
 
 class _Changed(Exception):

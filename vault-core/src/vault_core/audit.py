@@ -14,6 +14,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from vault_core.fsio import fsync_dir
+
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 _last_ms = 0
 _last_rand = 0
@@ -63,6 +65,7 @@ class AuditLog:
         entry.update({k: v for k, v in fields.items() if v is not None})
         line = (json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n").encode()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        created = durable and not self.path.exists()
         fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o640)
         try:
             written = os.write(fd, line)
@@ -72,6 +75,8 @@ class AuditLog:
             os.close(fd)
         if written != len(line):
             raise OSError(f"short write to {self.path}: {written} of {len(line)} bytes")
+        if created:  # a new file's directory entry must survive a power loss too
+            fsync_dir(self.path.parent)
         return entry_id
 
     def has_id(self, entry_id: str) -> bool:
