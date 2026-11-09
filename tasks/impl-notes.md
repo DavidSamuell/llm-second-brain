@@ -1,7 +1,7 @@
 # Implementation notes: Docs Vault Kit
 Spec: `SPEC.md` (Draft v0.4)  Plan: `tasks/plan.md`  Tasks: `tasks/todo.md`  Started: 2026-11-09
 
-**Summary:** no code written yet. The entries below were captured during planning (they reference the plan's D-numbers). The deviation the reviewer must look at first is **D21**: MCP writes fail closed while vault-watcher is down.
+**Summary:** T1 (Ignis behaviour spike) is done; results are in `docs/LIMITATIONS.md`. No kit code yet. The deviation the reviewer must look at first is still **D21**: MCP writes fail closed while vault-watcher is down. T1's most important finding: an agent write drops a person's unsaved keystrokes in the same note (open question below).
 
 ## Decisions (not covered by the spec)
 Full rationale for each is in `tasks/plan.md` under the D-number. This list is only the index. Reversible = can be changed after release without migrating data or breaking clients.
@@ -52,12 +52,21 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [T20] Spec said: §6.4 `submit_source(title, content | url, origin)`. → Did: a `url` is stored as a stub and never fetched by the server. Because: server-side fetching means SSRF and egress risk, and §10.1 already has agents fetching sources themselves. — `tasks/plan.md:137`
 - [T28] Spec said: §8 plugins are "pre-installed from the template". → Did: `ignis-init` downloads the pinned GitHub release assets, verifies their sha256, and caches them in `${DATA_PATH}/ignis-plugins`; nothing is vendored in `vault-template/`. Because: avoids redistributing third-party plugin code and its licences. — `tasks/plan.md:296`
 - [T29] Spec said: §13 is the complete `.env.example`. → Did: added `VAULT_NAME`, `PUID`, `PGID`, `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROFILES`, `OAUTH_UPSTREAM_ISSUER`, `HISTORY_ACK_TIMEOUT`. Because: each one is needed by D4/D3/D5/D18/D21. — `tasks/plan.md:440`
-- [T29] Spec said: §8 `OBSIDIAN_VERSION` is pinned and "Ignis downloads this exact version". → Did: set it to exactly the version pinned by the `IGNIS_IMAGE` digest. Because: Ignis rejects anything older than its own pin and doesn't guarantee newer versions. — `tasks/plan.md:305`
+- [T29] Spec said: §8 `OBSIDIAN_VERSION` is pinned and "Ignis downloads this exact version". → Did: set it to exactly the version pinned by the `IGNIS_IMAGE` digest. Because: Ignis replaces any older value with its own pin (seen in T1) and doesn't guarantee newer versions. — `tasks/plan.md:310`
+- [T1] Task said: verify with "two browsers + one mobile". → Did: two isolated Chromium browser contexts (separate cookies and localStorage), plus Chromium device emulation of an iPhone 12. Because: no real mobile device is available in this environment. Real iOS/Android behaviour is listed as "Not verified" in `docs/LIMITATIONS.md`.
 
 ## Surprises (things learned)
 - The repo started with only `SPEC.md`, `README.md` (18 B), and a stock Python `.gitignore`, so there are no existing conventions to follow.
 - Ignis expects vaults under `VAULT_ROOT=/vaults/<name>` (one sub-folder per vault), listens on 8080 internally, keeps its state in `/app/data`, and caches Obsidian in `/app/obsidian-app`. Source: https://ignis.thiefling.com/docs/server/deploy/
-- Ignis `OBSIDIAN_VERSION` only accepts versions **at or above** the one Ignis pins. Ignis enforces no write protection and has no auth, but it has `WS_ORIGINS` for Origin allowlisting. Source: https://ignis.thiefling.com/docs/server/environment/
+- Ignis doesn't enforce write protection and has no auth, but it has `WS_ORIGINS` for Origin allowlisting. Source: https://ignis.thiefling.com/docs/server/environment/
+- [T1] An older `OBSIDIAN_VERSION` is **not rejected**. Ignis logs `… is older than this build's Obsidian 1.14.4; using 1.14.4.` and runs its pin, so §16.18 has to be checked from the `Obsidian (ready|already set up) (vX)` log line.
+- [T1] Pinned image `nobbe/ignis@sha256:2049be7dfbbee5ee9fa5c0ae56efd8555ec57f2ac3275448b1c4318b8af49bb5` = Ignis monorepo 0.9.0 with Obsidian 1.14.4. The image env already includes `IGNIS_OBSIDIAN_PIN=1.14.4` and the label `com.thiefling.ignis.obsidian-version`.
+- [T1] Obsidian's `app` is a global lexical binding, not a `window` property. `window.app` is `undefined`; a bare `app` works. Puppeteer's `page.evaluate` inside the omp browser runtime runs in an isolated world and can't see it, but CDP `Runtime.evaluate` can. This matters for the T38 Playwright nightly.
+- [T1] Workspace layout is shared through the vault's `.obsidian/workspace.json`; mobile clients use `workspace-mobile.json`.
+- [T1] Restricted mode (whether community plugins are on) is stored per browser in localStorage (`enable-plugin-<vault>`), not on the server.
+- [T1] Docker creates a missing bind-mount target as `root`, even inside the vault. This happened with the plugins directory and left it unusable by Ignis afterwards. D28 now says `ignis-init` must create these paths first.
+- [T1] Two people typing in one note at the same time: the last save wins, and the losing editor stays out of sync until its next save overwrites the other person's text.
+- [T1] If a file is atomically replaced while someone is typing in it, the editor reloads from disk and drops the keystrokes it hadn't saved yet.
 - FastMCP `OAuthProxy` keeps clients and tokens in its own encrypted key-value store and passes upstream tokens through, so it can't satisfy §6.3's single `tokens.db`. The abstract `OAuthProvider` hands all storage to the subclass. Source: https://gofastmcp.com/docs/v3/servers/auth/full-oauth-server.md
 - Docker Compose `include:` has open and recent interpolation bugs (docker/compose #12496, #13540, #13644), which is why D5 uses `COMPOSE_FILE`.
 
@@ -69,3 +78,5 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [ ] D24: is diff-only secret scanning on MCP writes acceptable, or must every `write` re-scan the whole file even when that blocks edits to pages that already contain a secret?
 - [ ] §13: approve the 8 new env vars.
 - [ ] §8 / D28: is downloading plugins from GitHub at startup OK, instead of shipping them in the template? (This needs network access on the first start.)
+- [ ] [T1] Restricted mode is per browser. Should the kit's default allowlist be **empty**, so nothing depends on community plugins? Or should USER-GUIDE tell every user to switch community plugins on once per browser? The kit can't set it on the server without modifying Ignis, which §2 excludes.
+- [ ] [T1] Should vault-mcp refuse writes (as `conflict`) to a note whose file changed within the last N seconds and isn't recorded in history yet? That's a sign someone is typing in it. It would reduce, not remove, the lost-keystrokes window seen in T1, and it's new behaviour the spec doesn't ask for. The default is to not add it and only document the limit.

@@ -299,12 +299,15 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
   - `ignis/ignis-plugins.yaml` entries look like `{id, repo, version, sha256: {main.js, manifest.json, styles.css?}, writable_data: bool}`.
   - A one-shot `ignis-init` service (kit Python image) runs `ignis/harden.py` before Ignis starts (`depends_on: service_completed_successfully`). It downloads GitHub release assets into `${DATA_PATH}/ignis-plugins/`, verifies the sha256 values, writes `.obsidian/community-plugins.json`, removes non-allowlisted plugin dirs, and resets managed `.obsidian/*.json` files from `vault-template/.obsidian/`.
   - Ignis gets `${DATA_PATH}/ignis-plugins` bind-mounted **read-only** over `/vaults/${VAULT_NAME}/.obsidian/plugins`. For plugins with `writable_data: true`, `data.json` is bind-mounted read-write as a single file.
+  - `ignis-init` creates `.obsidian/plugins/` and every single-file `data.json` mount target in the vault, owned by `PUID:PGID`, before Ignis starts. *(T1: Docker creates any missing bind-mount target as `root`, and Ignis can't use a root-owned plugins directory.)*
+- **T1 result:** the read-only mount works. Ignis starts, allowlisted plugins load, `saveData()` works through the single-file `data.json` mount, and installing from the UI fails with `ENOENT` (a control run with a writable directory installed successfully). No fallback is needed.
+- **T1 limit:** Obsidian keeps "restricted mode" in each browser's localStorage (`enable-plugin-<vault>`), so allowlisted plugins run only in browsers where the user has switched community plugins on. The kit can't set this on the server (see impl-notes open question).
 - **Rejected:** Vendoring plugin code into the template (third-party licences, stale code). Making `.obsidian/` entirely read-only, which breaks workspace state.
 - **Why:** Plugins are checksum-pinned and installs from the UI fail, which meets §16.17. Settings files that should change at runtime stay writable and are reverted at the next start.
 
 ### D29 — Obsidian version pinning
 - Spec: §8, §13, §16.18.
-- **Choice:** `.env.example` pins `IGNIS_IMAGE` by digest and sets `OBSIDIAN_VERSION` to **exactly** the version that digest pins. Ignis rejects older versions and does not guarantee newer ones. `docs/UPGRADING.md` changes both together. The e2e check reads the loaded version from Ignis' startup log.
+- **Choice:** `.env.example` pins `IGNIS_IMAGE` by digest and sets `OBSIDIAN_VERSION` to **exactly** the version that digest pins. `docs/UPGRADING.md` changes both together. Ignis does not guarantee newer versions. **T1 finding:** an *older* value doesn't fail startup; Ignis logs `OBSIDIAN_VERSION=<v> is older than this build's Obsidian <pin>; using <pin>.` and runs its pin. So the e2e check (§16.18) must assert that the startup log line `Obsidian (ready|already set up) (v<X>)` has X = `OBSIDIAN_VERSION`, not merely that the container started. Pin found in T1: digest `sha256:2049be7d…bb5` → Obsidian `1.14.4`.
 - **Rejected:** Leaving `OBSIDIAN_VERSION` unset.
 - **Why:** An explicit value makes §16.18 testable and makes upgrades visible in diffs.
 
@@ -360,7 +363,7 @@ Format for each decision: **Choice** / **Rejected** / **Why**. "Spec" lists the 
 - **Choice:**
   - bash + curl + openssl. Each §5.4 check prints PASS/FAIL/SKIP; the exit code is the number of FAILs.
   - The token comes from `CHECK_TOKEN` and is never passed as an argument.
-  - "Ignis without credentials is not the app" means the response does not contain Ignis's bootstrap marker; the marker is pinned during the T1 spike.
+  - "Ignis without credentials is not the app" means the response contains neither of Ignis's markers, `<meta name="apple-mobile-web-app-title" content="Ignis"/>` and `id="ignis-status"` (pinned in T1; the `<title>` is just `Obsidian`, which is too generic).
   - The raw-port probe connects to the host's public IPs on `IGNIS_PORT`/`MCP_PORT` and reports SKIP when no public IP exists.
 - **Rejected:** Python or a third-party scanner.
 - **Why:** It works on any host and in CI, and keeps the token out of process listings.
@@ -423,8 +426,9 @@ The watcher comes before the MCP write path because the D21 handoff needs a runn
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Ignis overwrites on-disk changes when it autosaves an open note (§16.12) | High | T1 spike before anything else; if it fails, document it and add a vault-mcp option to skip files recently written by web edits |
-| A read-only plugins mount makes Ignis/Obsidian error at startup | Med | Tested in T1; fallback is the reset-at-startup + periodic-revert loop without the RO mount |
+| An agent write while a person is typing in the same note drops their unsaved keystrokes (§16.12) | Med | **T1:** an idle open editor shows the new content within ~0.5 s and doesn't overwrite it, so §16.12 passes. Keystrokes typed but not yet saved when the write lands are lost. Documented in LIMITATIONS. Whether to add a guard against writing to notes with recent web edits is an open question in impl-notes. |
+| Two people typing in the same note at once: the last save wins silently | Med | **T1:** confirmed. It's an Ignis/Obsidian behaviour the kit can't change; documented in LIMITATIONS. |
+| ~~A read-only plugins mount makes Ignis/Obsidian error at startup~~ | — | **T1: resolved.** The read-only mount works; see D28. |
 | FastMCP `OAuthProvider` route paths can't be moved under `/oauth/*`, or Claude.ai rejects the metadata | High | T2 spike against the MCP Inspector and a real Claude.ai connector over a temporary tunnel; fallback: FastMCP default paths, with §5.1 docs updated to route the whole MCP host |
 | The window between Ignis writes and MCP compare-and-replace (Ignis takes no lock) | Med | Re-hash right before `os.replace`; document the residual race in LIMITATIONS |
 | Secret-regex false positives block legitimate agent writes | Med | Diff-only scan; high-confidence rules only; each reported false positive becomes a rule fix + fixture (no content-level bypass, D24) |

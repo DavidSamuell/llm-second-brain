@@ -16,7 +16,7 @@ Commands used in verification:
 
 ## Phase 0 — Risk spikes (throwaway code; findings recorded, code deleted)
 
-- [ ] **T1 — Ignis behaviour spike** · Decisions: D4, D28, D29, D35 · **watch**
+- [x] **T1 — Ignis behaviour spike** · Decisions: D4, D28, D29, D35 · **watch**
   - Run the pinned `nobbe/ignis` with the D4 mounts and record each §8 "verify during build" item:
     - whether workspace/layout state is shared between users
     - two users editing the same note
