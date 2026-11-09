@@ -222,13 +222,13 @@ class CredentialStore:
                 ) from None
         return token, self._require(cred_id)
 
-    def _get(self, cred_id: str) -> Credential | None:
+    def get(self, cred_id: str) -> Credential | None:
         with self._db() as conn:
             row = conn.execute("SELECT * FROM credentials WHERE id = ?", (cred_id,)).fetchone()
         return Credential._from_row(row) if row else None
 
     def _require(self, cred_id: str) -> Credential:
-        cred = self._get(cred_id)
+        cred = self.get(cred_id)
         if cred is None:
             raise RuntimeError(f"credential {cred_id} vanished during the operation")
         return cred

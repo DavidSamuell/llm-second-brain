@@ -1,0 +1,54 @@
+# Docs Vault Kit base stack (SPEC §4). Ingress overrides live in ingress/<name>/compose.yml and
+# are selected through COMPOSE_FILE in .env (plan D5). Required: VAULT_PATH and DATA_PATH.
+name: docs-vault
+
+x-run-as: &run-as
+  user: "${PUID:-1000}:${PGID:-1000}"
+
+services:
+  ignis:
+    image: ${IGNIS_IMAGE:-nobbe/ignis@sha256:2049be7dfbbee5ee9fa5c0ae56efd8555ec57f2ac3275448b1c4318b8af49bb5}
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      OBSIDIAN_VERSION: ${OBSIDIAN_VERSION:-1.14.4}
+      # Exact-match Origin allowlist for the editor's WebSocket (plan D4).
+      WS_ORIGINS: https://${IGNIS_HOST:-localhost}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vaults/${VAULT_NAME:-Docs}
+      - ${DATA_PATH:?set DATA_PATH in .env}/ignis:/app/data
+      - obsidian-app:/app/obsidian-app
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:${IGNIS_PORT:-8081}:8080
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s  # first start downloads Obsidian
+    restart: unless-stopped
+
+  vault-mcp:
+    <<: *run-as
+    image: ${VAULT_MCP_IMAGE:-docs-vault-kit/vault-mcp:local}
+    build:
+      context: .
+      dockerfile: vault-mcp/Dockerfile
+    environment:
+      BIND_ADDR: ${BIND_ADDR:-127.0.0.1}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+      - ./vault-mcp.yaml:/config/vault-mcp.yaml:ro
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:${MCP_PORT:-8082}:8082
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  obsidian-app:

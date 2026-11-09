@@ -42,6 +42,11 @@ def test_load_policy_reads_the_spec_example(policy: Policy) -> None:
     assert policy.secrets.reject_on_write is True
 
 
+def test_shipped_example_policy_matches_the_spec_defaults(policy: Policy) -> None:
+    example = Path(__file__).resolve().parents[2] / "vault-mcp.example.yaml"
+    assert load_policy(example) == policy
+
+
 @pytest.mark.parametrize(
     ("yaml_text", "needle"),
     [

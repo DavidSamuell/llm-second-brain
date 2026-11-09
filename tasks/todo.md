@@ -93,11 +93,12 @@ Commands used in verification:
   - Deps: T6 · Files: `vault-mcp/src/vault_mcp/{store,cli}.py`, `scripts/token`, tests · Scope: M
   - **Status:** store and CLI tested (39 tests; mutation checks on revocation, hash-only storage, scope and expiry). `scripts/token` passes shellcheck; it runs the CLI in the `vault-mcp` service, which T10 adds, so its end-to-end run happens in T10/T11.
 
-- [ ] **T10 — vault-mcp read slice + compose base** · Decisions: D3, D4, D5, D10, D13, D16 · **watch**
+- [x] **T10 — vault-mcp read slice + compose base** · Decisions: D3, D4, D5, D10, D13, D16 · **watch**
   - FastMCP server: streamable HTTP `/mcp`, stdio mode (`VAULT_MCP_TOKEN`), `/health`. Tools `get_schema`, `read`, `list` with bearer auth and scope/deny enforcement. Dockerfile. `docker-compose.yml` with `ignis` + `vault-mcp`, binding `${BIND_ADDR}`, plus the `BIND_ADDR=0.0.0.0` startup warning.
   - Acceptance: no/invalid token → 401 with `WWW-Authenticate`; a read token can read and list in scope and gets `forbidden` outside it; binary files return base64.
   - Verify: `docker compose up -d --wait` then `uv run pytest vault-mcp`.
   - Deps: T6, T7, T9 · Files: `vault-mcp/src/vault_mcp/{server,tools_read}.py`, `vault-mcp/Dockerfile`, `docker-compose.yml` · Scope: M
+  - **Status:** 64 vault-mcp tests (HTTP via uvicorn, stdio via subprocess; mutation checks on auth, scope and audit). Against the real compose stack: both services healthy; `/health` 200; `/mcp` without a token → 401 + `WWW-Authenticate: Bearer`; a token made with `scripts/token` reads `wiki/`, gets `forbidden` for `private/`, and every call is in `audit.log`; the BIND_ADDR warning shows for `0.0.0.0`; editing in Ignis works with the D4 `WS_ORIGINS` value.
 
 - [ ] **T11 — e2e harness + CI e2e job** · Decisions: D5, D38 · **watch**
   - `e2e/` pytest suite: brings up the stack with `INGRESS=local` and `none`, creates tokens through `docker compose exec`, uses the `fastmcp.Client`. Implement §16.2 (probe from a container on a separate network) and the read half of §16.5.

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
-from vault_core.config import Settings
+from vault_core.config import Settings, bind_addr_warning
+from vault_core.policy import PolicyError
 from vault_mcp.store import DEFAULT_EXPIRY, Credential, CredentialError, CredentialStore
 
 
@@ -95,6 +97,26 @@ def _cmd_revoke(store: CredentialStore, args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_serve(store: CredentialStore, args: argparse.Namespace) -> int:
+    from vault_mcp.server import build_server
+
+    settings = Settings() if args.data_dir is None else Settings(data_dir=args.data_dir)
+    if warning := bind_addr_warning(settings.bind_addr):
+        print(f"WARNING: {warning}", file=sys.stderr)
+    if args.stdio:
+        token = os.environ.get("VAULT_MCP_TOKEN", "")
+        if store.verify(token) is None:
+            print(
+                "error: VAULT_MCP_TOKEN is missing, invalid, expired, or revoked", file=sys.stderr
+            )
+            return 2
+        build_server(settings, stdio_token=token).run(transport="stdio", show_banner=False)
+    else:
+        server = build_server(settings)
+        server.run(transport="http", host=args.host, port=args.port, path="/mcp", show_banner=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vault-mcp", description="Docs Vault Kit MCP gateway")
     parser.add_argument(
@@ -127,6 +149,14 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = token_cmds.add_parser("revoke", help="revoke a credential by name or id")
     revoke.add_argument("credential")
     revoke.set_defaults(handler=_cmd_revoke)
+
+    serve = commands.add_parser("serve", help="run the MCP server")
+    serve.add_argument(
+        "--stdio", action="store_true", help="serve over stdio using $VAULT_MCP_TOKEN"
+    )
+    serve.add_argument("--host", default="0.0.0.0", help="HTTP listen address inside the container")  # noqa: S104
+    serve.add_argument("--port", type=int, default=8082)
+    serve.set_defaults(handler=_cmd_serve)
     return parser
 
 
@@ -136,7 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         store = CredentialStore(data_dir / "tokens.db")
         code: int = args.handler(store, args)
-    except CredentialError as exc:
+    except (CredentialError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return code
