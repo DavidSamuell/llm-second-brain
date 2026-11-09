@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Rebuild the search index from the vault (SPEC §7.2):
+#   scripts/reindex
+#
+# Runs inside the vault-watcher container, so the host needs only docker.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+if [ -n "$(docker compose ps --status running --quiet vault-watcher 2>/dev/null)" ]; then
+  exec docker compose exec -T vault-watcher vault-watcher reindex "$@"
+else
+  exec docker compose run --rm --no-deps -T vault-watcher vault-watcher reindex "$@"
+fi

@@ -135,15 +135,16 @@ Commands used in verification:
   - Deps: T10, T13 · Files: `vault-watcher/src/vault_watcher/index.py`, `vault-mcp/src/vault_mcp/tools_search.py`, tests · Scope: M
   - **Status:** index schema, writer and query are in `vault-core/src/vault_core/search_index.py` (shared, as D2 intends), and the watcher keeps the index current (startup rebuild, snapshots, MCP writes, deletes). Tests cover: deny, hidden and non-Markdown files never indexed; FTS syntax characters never error and `OR` is a plain word; title matches rank first; accents folded; scope applied in SQL before the limit; folder argument errors. e2e §16.7 search case passes in both profiles.
 
-- [ ] **T15 — history / reindex CLIs + scripts** · Decisions: D21, D23, D33 · **watch**
+- [x] **T15 — history / reindex CLIs + scripts** · Decisions: D21, D23, D33 · **watch**
   - `vault-watcher history list|restore|restore-deleted`, `vault-watcher reindex`; bash wrappers `scripts/history`, `scripts/reindex`. A restore writes through the lock and is recorded as a new version.
   - Acceptance: §16.14 passes, simulating Ignis edit and delete with filesystem writes; `restore --at` picks the right version.
   - Verify: `uv run pytest e2e -k "history_restore"`.
   - Deps: T13, T14 · Files: `vault-watcher/src/vault_watcher/cli.py`, `scripts/history`, `scripts/reindex` · Scope: S
+  - **Status:** 11 CLI tests (list; restore latest and `--at` by ISO time or listed timestamp; restore-deleted per folder; error cases; reindex). A restore writes under the lock (owner `restore`), is recorded as a new version (`kind: restore`), and is re-indexed. e2e §16.14 passes in both profiles. Wrappers pass shellcheck.
 
 ### Checkpoint B — after T12–T15
-- [ ] §16.14 passes (filesystem-simulated web edits)
-- [ ] The search e2e respects deny and scope rules
+- [x] §16.14 passes (filesystem-simulated web edits)
+- [x] The search e2e respects deny and scope rules
 
 ## Phase 3 — MCP write path, secret scan, ops monitor
 
