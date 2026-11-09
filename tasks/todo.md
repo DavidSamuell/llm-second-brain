@@ -80,7 +80,7 @@ Commands used in verification:
   - Verify: `uv run pytest vault-core -k "lock or atomic"`, multi-process tests included.
   - Deps: T5 · Files: `vault-core/src/vault_core/{lock,fsio}.py`, tests · Scope: S
 
-- [ ] **T8 — vault-core: audit, alerts, secret rules** · Decisions: D20, D24, D25 · **watch**
+- [x] **T8 — vault-core: audit, alerts, secret rules** · Decisions: D20, D24, D25 · **watch**
   - JSONL audit appender; webhook sender with Slack/Discord/generic shapes + dedupe; the curated secret rule set with a diff-only scan helper and masking.
   - Acceptance: each rule has positive and negative fixtures (including sha256 strings that must **not** match); alerts payload-tested against a local HTTP stub; concurrent audit appends never interleave.
   - Verify: `uv run pytest vault-core -k "audit or alerts or secrets"`.
