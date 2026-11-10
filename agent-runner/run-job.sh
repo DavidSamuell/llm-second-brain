@@ -44,7 +44,7 @@ if [ -n "${AGENT_COMMAND:-}" ]; then
   status=$?
 else
   args=(-p "$prompt" --output-format json --mcp-config "$STATE/mcp.json" --strict-mcp-config
-        --allowedTools "mcp__vault__*" --max-turns "${AGENT_MAX_TURNS:-200}")
+        --allowedTools "mcp__vault__*,WebFetch" --max-turns "${AGENT_MAX_TURNS:-200}")
   [ -z "${AGENT_MODEL:-}" ] || args+=(--model "$AGENT_MODEL")
   claude "${args[@]}" > "$out" 2> "$STATE/last-$JOB.err"
   status=$?

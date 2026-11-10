@@ -108,7 +108,7 @@ class SecretScanner:
     def _add_review_item(self, rel: str, masked: str) -> None:
         item = review_queue.format_item(
             rel, f"Possible secret ({masked})",
-            "Remove it from the page and rotate the credential; old versions stay in history until purged (scripts/history)",
+            "Remove it from the page and rotate the credential; older versions in history still contain it, so treat it as leaked",
             by="vault-watcher", owner="system", ts=datetime.now(UTC), item_id=new_id(), priority="high",
         )  # fmt: skip
         queue = self.vault_dir / review_queue.QUEUE_PATH
