@@ -352,7 +352,7 @@ Commands used in verification:
   - **Status:** `vault_watcher.backup` (CLI `vault-watcher backup|restore`) with host wrappers `scripts/backup [--include-config] [--out DIR]` and `scripts/restore <archive> [--force]`. Backup holds the vault lock, takes SQLite online-backup snapshots of every database, tars `vault/` + `data/` (no lock files, no WAL/SHM), optionally adds `config/`, writes `MANIFEST.json` with a sha256 per file, and leaves the archive at mode 600. Restore refuses while the stack is running, requires empty targets (or `--force`), checks every hash before writing, extracts with tarfile's `data` filter, puts config files in `./restored-config/` instead of over yours, then rebuilds the search index. 3 unit tests (a WAL-only commit survives, which the mutation check confirms; tampered archive; force) and e2e §16.16 in both profiles: backup → stop → wipe → restore → up gives back the page, the history, the old token and the Ignis state.
 
 ### Checkpoint G — after T34–T37
-- [ ] §16.16, 19, 20, 21, 22 green
+- [x] §16.16, 19, 20, 21, 22 green — local e2e in both profiles (`test_backup_restore`, `test_agent_runner` with a scripted AGENT_COMMAND, `test_git_sync`, `test_upgrade`). External: one agent-runner run with real Claude Code (listed under T35).
 
 ## Phase 8 — Release and docs
 
