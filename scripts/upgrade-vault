@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Update the vault's kit-managed files (AGENTS.md, templates, skills, managed .obsidian
+# settings) to this kit's vault-template/ (SPEC §9.1, plan D36).
+#
+#   scripts/upgrade-vault             show what would change, then ask before applying
+#   scripts/upgrade-vault --yes       apply without asking
+#   scripts/upgrade-vault --template DIR   use another template folder (testing)
+#
+# Never overwrites files you changed outside <!-- custom --> blocks, nor anything listed in the
+# vault's .vault-overrides (gitignore syntax). Runs inside the vault-watcher image.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+TEMPLATE=$PWD/vault-template
+YES=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --yes|-y) YES=1 ;;
+    --template) TEMPLATE=$(cd "$2" && pwd); shift ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+run() {
+  docker compose run --rm --no-deps -T -v "$TEMPLATE:/kit/vault-template:ro" vault-watcher upgrade-vault "$@"
+}
+
+report=$(run)
+printf '%s\n' "$report"
+if ! grep -qE '^  (add|update)' <<<"$report"; then
+  echo "nothing to apply"
+  exit 0
+fi
+if [ "$YES" != 1 ]; then
+  read -r -p "Apply the add/update changes above? [y/N] " answer
+  [[ $answer == [yY]* ]] || { echo "nothing changed"; exit 0; }
+fi
+run --apply | tail -n 1

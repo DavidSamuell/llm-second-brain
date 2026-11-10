@@ -30,9 +30,9 @@ class WatcherSettings(Settings):
     history_retention_days: int = 90
     history_min_versions: int = 10
     monitor_interval_s: float = 60.0  # D26
-    # ignis-init (D28); paths are inside the ignis-init container.
+    # ignis-init (D28) and upgrade-vault (D36); paths are inside the container.
     ignis_plugins_file: Path = Path("/kit/ignis-plugins.yaml")
-    ignis_template_dir: Path = Path("/kit/vault-template")
+    kit_template_dir: Path = Path("/kit/vault-template")
     ignis_plugin_base_url: str = "https://github.com"
     ignis_plugin_data_mounts: str = ""
     # name=url pairs on the compose network; heartbeats are checked only for enabled services.
@@ -223,7 +223,7 @@ def _cmd_harden_ignis(settings: WatcherSettings, args: argparse.Namespace) -> in
             return 0
         removed = ignis_harden.harden(
             allowlist=settings.ignis_plugins_file, vault_dir=settings.vault_dir, data_dir=settings.data_dir,
-            template_dir=settings.ignis_template_dir, base_url=settings.ignis_plugin_base_url,
+            template_dir=settings.kit_template_dir, base_url=settings.ignis_plugin_base_url,
             mounted=settings.ignis_plugin_data_mounts,
         )  # fmt: skip
     except ignis_harden.HardenError as exc:
@@ -233,6 +233,20 @@ def _cmd_harden_ignis(settings: WatcherSettings, args: argparse.Namespace) -> in
     print(
         f"ignis-init: allowlisted plugins: {', '.join(plugins) or 'none'}; removed: {', '.join(removed) or 'nothing'}"
     )
+    return 0
+
+
+def _cmd_upgrade_vault(settings: WatcherSettings, args: argparse.Namespace) -> int:
+    from vault_watcher import upgrade
+
+    if not (settings.kit_template_dir / "AGENTS.md").is_file():
+        raise CliError(f"no kit template at {settings.kit_template_dir}")
+    p = upgrade.plan(settings.vault_dir, settings.kit_template_dir)
+    print(upgrade.report(p), end="")
+    if not args.apply:
+        return 0
+    written = upgrade.apply(p, settings.vault_dir, settings.data_dir)
+    print(f"upgraded {len(written)} file(s); vault-watcher records their history")
     return 0
 
 
@@ -261,6 +275,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     reindex = commands.add_parser("reindex", help="rebuild the search index from the vault")
     reindex.set_defaults(handler=_cmd_reindex)
+
+    upgrade = commands.add_parser("upgrade-vault", help="show (or --apply) kit template updates")
+    upgrade.add_argument("--apply", action="store_true", help="write the changes shown")
+    upgrade.set_defaults(handler=_cmd_upgrade_vault)
 
     harden = commands.add_parser(
         "harden-ignis",

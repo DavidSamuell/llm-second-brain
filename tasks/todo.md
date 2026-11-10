@@ -329,11 +329,18 @@ Commands used in verification:
   - Verify: e2e with a stub `AGENT_COMMAND` emitting `total_cost_usd`; one manual run with real Claude Code.
   - Deps: T20, T27, T34 · Files: `agent-runner/**`, `docker-compose.yml` · Scope: M
 
-- [ ] **T36 — `scripts/upgrade-vault`** · Decisions: D6, D21, D36 · **watch**
+- [x] **T36 — `scripts/upgrade-vault`** · Decisions: D6, D21, D36 · **watch**
   - Schema compare; diff of AGENTS.md, templates, skills, and managed `.obsidian` files; manifest-based customisation detection; custom-block re-anchoring; `.vault-overrides`; apply on confirmation.
   - Acceptance: §16.22 (a newer template applies without touching `<!-- custom -->…<!-- /custom -->` blocks or override paths).
   - Verify: `uv run pytest vault-watcher -k upgrade` + e2e §16.22.
   - Deps: T26 · Files: `vault-watcher/src/vault_watcher/upgrade.py`, `scripts/upgrade-vault` · Scope: M
+  - **Status:** `vault_watcher.upgrade` builds a plan per managed file:
+    - add when the file is missing;
+    - update when it is unmodified kit content from any released version, carrying custom blocks over by heading (blocks whose heading is gone are kept at the end);
+    - customised (left alone, shown as a diff) when changed outside the custom blocks;
+    - override when matched by `.vault-overrides` (a gitignore subset: anchoring, `dir/`, `**`, `!`).
+
+    Changes are applied atomically under the vault lock as `upgrade-vault`. Manifest hashes now exclude custom-block contents (`kit_hash`). There is a `vault-watcher upgrade-vault [--apply]` CLI and a `scripts/upgrade-vault [--yes] [--template DIR]` wrapper. 13 unit tests with mutation checks; e2e §16.22: a newer template is applied, the custom block is kept, and the watcher records history.
 
 - [ ] **T37 — `scripts/backup` + `scripts/restore`** · Decisions: D4, D6, D37 · **watch**
   - Hot backup with SQLite online backup and a manifest; `--include-config`; restore with a stopped stack, followed by reindex.

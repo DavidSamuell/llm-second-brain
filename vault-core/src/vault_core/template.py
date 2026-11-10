@@ -1,8 +1,10 @@
 """The vault template's managed files and `.kit-manifest.json` (SPEC §9.1, plan D36).
 
-The manifest keeps, for every released `schema_version`, the sha256 of each kit-managed file.
+The manifest keeps, for every released `schema_version`, a sha256 of each kit-managed file
+taken with the inside of every `<!-- custom -->…<!-- /custom -->` block removed.
 `scripts/upgrade-vault` uses it to tell kit content from deployer edits: a vault file whose
-hash matches some released version's hash is unmodified kit content.
+hash (computed the same way) matches some released version is unmodified kit content, apart
+from its custom blocks, which the upgrade carries over.
 
 Regenerate after editing managed files: `uv run python -m vault_core.template vault-template`.
 """
@@ -12,6 +14,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -31,6 +34,15 @@ MANAGED = (
 )
 
 
+CUSTOM_BLOCK = re.compile(r"(<!-- custom -->)(.*?)(<!-- /custom -->)", re.DOTALL)
+
+
+def kit_hash(data: bytes) -> str:
+    """sha256 of the file with the inside of each custom block removed (markers kept)."""
+    text = data.decode("utf-8", "surrogateescape")
+    return hashlib.sha256(CUSTOM_BLOCK.sub(r"\1\3", text).encode("utf-8", "surrogateescape")).hexdigest()
+
+
 def is_managed(rel: str) -> bool:
     return any(fnmatch.fnmatchcase(rel, pattern) for pattern in MANAGED)
 
@@ -48,7 +60,7 @@ def managed_hashes(template_dir: Path) -> dict[str, str]:
     for path in sorted(template_dir.rglob("*")):
         rel = path.relative_to(template_dir).as_posix()
         if path.is_file() and is_managed(rel):
-            out[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+            out[rel] = kit_hash(path.read_bytes())
     return out
 
 
