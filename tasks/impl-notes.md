@@ -92,6 +92,7 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
   - `.env.example` lists `GIT_BRANCH`/`GIT_ADOPT_REMOTE`.
 
   Documented, not changed: no Host-header check in Ignis (matters for `local`), no history purge, no per-IP OAuth limits, Entra guests (`xms_edov`), oauth2-proxy and Google `hd`, the agent-runner token is unscoped and never expires, `audit.log` is not rotated.
+- [T35 follow-up] agent-runner also accepts `CLAUDE_CODE_OAUTH_TOKEN` (a Claude subscription token from `claude setup-token`) instead of `ANTHROPIC_API_KEY`; setup turns the `agent` profile on for either. Jobs then share that account's usage limits. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

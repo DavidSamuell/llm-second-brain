@@ -33,8 +33,8 @@ umask 022
 
 if [ -n "${AGENT_COMMAND:-}" ]; then
   echo "agent-runner: custom AGENT_COMMAND; the monthly budget is enforced only if it prints a JSON line with total_cost_usd" >&2
-elif [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-  echo "agent-runner: ANTHROPIC_API_KEY is not set; jobs will fail" >&2
+elif [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  echo "agent-runner: set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN (claude setup-token); jobs will fail" >&2
 fi
 [ -n "${AGENT_MONTHLY_BUDGET:-}" ] || echo "agent-runner: AGENT_MONTHLY_BUDGET is empty: spending is not capped" >&2
 

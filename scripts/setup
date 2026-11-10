@@ -115,7 +115,8 @@ if [ "$INTERACTIVE" = 1 ]; then
     fi
   fi
   ask GIT_REMOTE "Git remote for backups (empty = off)"
-  ask ANTHROPIC_API_KEY "Anthropic API key for the server-side agent (empty = off)" secret
+  ask ANTHROPIC_API_KEY "Anthropic API key for the server-side agent (empty = off or subscription token)" secret
+  [ -n "$(get ANTHROPIC_API_KEY)" ] || ask CLAUDE_CODE_OAUTH_TOKEN "Or a Claude subscription token from 'claude setup-token' (empty = off)" secret
   ask ALERT_WEBHOOK "Alert webhook URL (Slack/Discord/JSON, empty = off)"
 fi
 
@@ -158,7 +159,7 @@ set_val COMPOSE_PATH_SEPARATOR ":"
 set_val COMPOSE_FILE "$compose_files"
 profiles=()
 [ -z "$(get GIT_REMOTE)" ] || profiles+=(git)
-[ -z "$(get ANTHROPIC_API_KEY)$(get AGENT_COMMAND)" ] || profiles+=(agent)
+[ -z "$(get ANTHROPIC_API_KEY)$(get CLAUDE_CODE_OAUTH_TOKEN)$(get AGENT_COMMAND)" ] || profiles+=(agent)
 set_val COMPOSE_PROFILES "$(IFS=,; echo "${profiles[*]}")"
 
 # -- write .env -------------------------------------------------------------------------------------

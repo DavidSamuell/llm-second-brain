@@ -30,7 +30,7 @@ What runs (all in Docker Compose, project name `docs-vault`):
 | `cloudflared` | Cloudflare Tunnel | `INGRESS=cloudflare` |
 | `caddy`, `oauth2-proxy` | HTTPS and editor login | `INGRESS=caddy` |
 | `git-sync` | Pushes the vault to a git remote | `GIT_REMOTE` set |
-| `agent-runner` | Scheduled ingest and lint jobs | `ANTHROPIC_API_KEY` or `AGENT_COMMAND` set |
+| `agent-runner` | Scheduled ingest and lint jobs | `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or `AGENT_COMMAND` set |
 
 Two host folders hold all state:
 
@@ -180,7 +180,7 @@ The ingress guides show the values for `cloudflare`, `caddy` and each `none` rec
 
 1. Checks that `docker` and the `docker compose` plugin are installed.
 2. Validates the settings: `VAULT_PATH` and `DATA_PATH` must be absolute; for every profile except `local`, `IGNIS_HOST` and `MCP_HOST` must be real hostnames (setup refuses anything containing `example.com`); `cloudflare` needs `CF_TUNNEL_TOKEN`; `caddy` needs `ACME_EMAIL`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` and `OAUTH_ALLOWED_EMAIL_DOMAINS`.
-3. Derives values: `PUID`/`PGID` from your user; `OAUTH_COOKIE_SECRET` for `caddy` (generated once); `MCP_OAUTH_ISSUER=https://<MCP_HOST>` if it is empty and `MCP_OAUTH_ENABLED=true` (not for `local`); `COMPOSE_FILE` (the base file plus `ingress/<INGRESS>/compose.yml` for `cloudflare` and `caddy`, plus `compose.plugins.yml` if it exists); `COMPOSE_PROFILES` (`git` when `GIT_REMOTE` is set, `agent` when `ANTHROPIC_API_KEY` or `AGENT_COMMAND` is set).
+3. Derives values: `PUID`/`PGID` from your user; `OAUTH_COOKIE_SECRET` for `caddy` (generated once); `MCP_OAUTH_ISSUER=https://<MCP_HOST>` if it is empty and `MCP_OAUTH_ENABLED=true` (not for `local`); `COMPOSE_FILE` (the base file plus `ingress/<INGRESS>/compose.yml` for `cloudflare` and `caddy`, plus `compose.plugins.yml` if it exists); `COMPOSE_PROFILES` (`git` when `GIT_REMOTE` is set, `agent` when `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN` or `AGENT_COMMAND` is set).
 4. Writes `.env` (mode 600) in the layout of `.env.example`. Settings that aren't in `.env.example` are kept at the end.
 5. Copies `vault-mcp.example.yaml` to `vault-mcp.yaml` if that file doesn't exist. This is the agent policy: which folders agents may write, which they may never read, rate limits. Edit it to taste; restart `vault-mcp` and `vault-watcher` after changes.
 6. Creates `VAULT_PATH` and the folders under `DATA_PATH`, and checks your user can write them.
@@ -345,7 +345,8 @@ On a conflict, git-sync keeps your local copy as `<file>.conflict-<timestamp>.md
 
 `agent-runner` runs the kit's ingest and lint jobs on a schedule, through vault-mcp with its own token. It has no direct write access to the vault. The default Claude Code runner may use only the vault-mcp tools and Claude Code's `WebFetch` tool, which it uses to fetch sources that were submitted as a URL only. Fetched pages are treated as data, never as instructions, but they are still untrusted input reaching a model with write access to the vault; see [SECURITY.md](SECURITY.md). Turn it on with either:
 
-- `ANTHROPIC_API_KEY=...`: runs Claude Code headless (the default), or
+- `ANTHROPIC_API_KEY=...`: runs Claude Code headless (the default), billed per use, or
+- `CLAUDE_CODE_OAUTH_TOKEN=...`: runs Claude Code headless on a Claude subscription. Create the token on any machine where `claude` is logged in to that account with `claude setup-token`. Jobs then count against that account's usage limits (shared with its interactive use), and when the limit is reached jobs fail with an alert until it resets, or
 - `AGENT_COMMAND=...`: runs your own command instead.
 
 Then rerun setup. Setup adds the `agent` profile and creates the `agent-runner` token (scope `write`, owner `agent-runner@<DOMAIN>`, never expires), saved as `AGENT_RUNNER_TOKEN` in `.env`. Don't set that token by hand.

@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `scripts/check-exposure`: §5.4 checks (HTTPS, editor login, MCP 401 with OAuth discovery, bearer token, public OAuth metadata, raw ports) with PASS/FAIL/SKIP output; `scripts/setup` runs it.
 - `git-sync` service (`GIT_REMOTE`): commits and pushes the vault every `SYNC_INTERVAL`, keeps conflicting local edits as `.conflict-<ts>.md` files and alerts, optional Git LFS; setup creates an SSH deploy key.
 - `scripts/upgrade-vault`: shows and applies kit template updates (AGENTS.md, templates, skills, Obsidian settings), keeping `<!-- custom -->` blocks and anything in `.vault-overrides`.
-- `agent-runner` service (`ANTHROPIC_API_KEY` or `AGENT_COMMAND`): scheduled ingest and lint with Claude Code through vault-mcp only, a monthly budget (skip + alert), spend tracking, and git commit requests.
+- `agent-runner` service (`ANTHROPIC_API_KEY`, a Claude subscription token in `CLAUDE_CODE_OAUTH_TOKEN`, or `AGENT_COMMAND`): scheduled ingest and lint with Claude Code through vault-mcp only, a monthly budget (skip + alert), spend tracking, and git commit requests.
 - `scripts/backup` (hot, SQLite-safe, checksummed, optional config) and `scripts/restore` (verified, into stopped and empty folders, then reindex).
 - CI: nightly end-to-end run with Playwright browser checks against the pinned Ignis; release workflow publishing multi-arch images to GHCR on version tags; Dependabot.
 - Documentation: SETUP, UPGRADING, USER-GUIDE, CONNECT-AGENTS, IMPORTING, SECURITY (threat model, offboarding) and final LIMITATIONS.
