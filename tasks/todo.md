@@ -286,7 +286,7 @@ Commands used in verification:
   - Verify: manual deploy; check-exposure once T32 lands.
   - Deps: T29 · Files: `ingress/cloudflare/compose.yml`, `docs/ingress/cloudflare.md` · Scope: S
   - **Status:** `ingress/cloudflare/compose.yml` (pinned `cloudflared`, a token-based remote-managed tunnel, readiness healthcheck; merges with the base file) and `docs/ingress/cloudflare.md` (tunnel public hostnames to `ignis:8080` and `vault-mcp:8082`; an Access app on the editor; an Access Bypass app plus WAF skip on the MCP host; the 50-user and 100 MB limits; §5.1 checklist; verify with check-exposure). Validated with `docker compose config` only.
-  - [ ] **External check (listed for the user):** a real deploy on a Cloudflare domain: §16.1 cloudflare (< 30 min) and §16.3 (allowed user edits, disallowed user denied). **Done 2026-11-11:** deployed from Bookbot-GPU1 on `docs.bookbotkids.com` / `docs-mcp.bookbotkids.com` (Adrian's account, tunnel `docs-vault`, Access apps "Docs Vault editor" allowing `@bookbotkids.com` and "Docs Vault MCP" with Bypass). Setup, then `docker compose up` with cached images, took well under 30 min; all services healthy; `scripts/check-exposure` passes every check (certificates, editor behind login, `/mcp` 401 anonymous and accepts a bearer, OAuth metadata public, raw ports closed). **Open:** §16.3 by hand (a `@bookbotkids.com` user edits in the browser; a non-Bookbot email is refused).
+  - [ ] **External check (listed for the user):** a real deploy on a Cloudflare domain: §16.1 cloudflare (< 30 min) and §16.3 (allowed user edits, disallowed user denied). **Done 2026-11-11:** deployed from Bookbot-GPU1 on `docs.bookbotkids.com` / `docs-mcp.bookbotkids.com` (Adrian's account, tunnel `docs-vault`, Access apps "Docs Vault editor" allowing `@bookbotkids.com` and "Docs Vault MCP" with Bypass). Setup, then `docker compose up` with cached images, took well under 30 min; all services healthy; `scripts/check-exposure` passes every check (certificates, editor behind login, `/mcp` 401 anonymous and accepts a bearer, OAuth metadata public, raw ports closed). §16.3 confirmed by hand the same day: a `@bookbotkids.com` account edits, a non-Bookbot account is refused.
 
 - [x] **T31 — `caddy` profile + guide** · Decisions: D5, D39 · **watch**
   - `ingress/caddy/compose.yml` override (caddy + oauth2-proxy) selected through `COMPOSE_FILE`, plus `ingress/caddy/Caddyfile` and `docs/ingress/caddy.md`.
@@ -312,7 +312,7 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** a manual review of each recipe against §5.1, and a run of at least one recipe on a real host.
 
 ### Checkpoint F — after T30–T33
-- [ ] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts — **external (listed for the user):** cloudflare §16.1 and §16.4 done on bookbotkids.com (T30); cloudflare §16.3 by hand and all of caddy (needs a public VM) remain. Done locally: §16.4 e2e (pass and fail cases) and config validation of both profiles.
+- [ ] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts — **external (listed for the user):** cloudflare §16.1 and §16.4 done on bookbotkids.com (T30); cloudflare §16.3 confirmed by hand; caddy (needs a public VM) remains. Done locally: §16.4 e2e (pass and fail cases) and config validation of both profiles.
 
 ## Phase 7 — Optional services and lifecycle
 
