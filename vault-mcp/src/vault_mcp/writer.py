@@ -23,11 +23,12 @@ from vault_core.audit import AuditLog, new_id
 from vault_core.fsio import fsync_dir, replace_from_temp, version_of, write_temp_sibling
 from vault_core.history import HistoryStore, Spool
 from vault_core.lock import AsyncVaultLock
-from vault_core.paths import PathError, normalize, resolve_in_vault
+from vault_core.paths import PathError, is_hidden, normalize, resolve_in_vault, through_symlink
 from vault_core.policy import Decision, Policy, check_read, check_write
 from vault_core.secrets import scan_added_lines
 from vault_mcp import sections
 from vault_mcp.errors import VaultToolError
+from vault_mcp.links import VaultFiles, links_to, rebase_relative_links, rewrite_links
 from vault_mcp.store import Credential
 
 ANY: Final = object()  # "no base_version check" (append-style tools)
@@ -309,6 +310,207 @@ class VaultWriter:
                 )  # fmt: skip
             await asyncio.sleep(0.005)
 
+    # -- move (D12) ----------------------------------------------------------------------------
+
+    def _vault_files(self) -> tuple[VaultFiles, list[str]]:
+        """(link targets, pages to scan for links). Targets are every non-hidden, non-symlinked
+        file (Obsidian doesn't resolve links to dotfiles). The scan also includes hidden
+        Markdown pages, except Obsidian's trash and git internals, so a link in a page agents
+        can't see still blocks a move (D12) instead of being left stale."""
+        targets, pages = [], []
+        for p in self.vault_dir.rglob("*"):
+            rel = p.relative_to(self.vault_dir).as_posix()
+            if not p.is_file() or through_symlink(self.vault_dir, rel):
+                continue
+            if not is_hidden(rel):
+                targets.append(rel)
+            if rel.endswith(".md") and rel.split("/", 1)[0] not in (".trash", ".git"):
+                pages.append(rel)
+        return VaultFiles(targets), sorted(pages)
+
+    async def move(
+        self, cred: Credential, path: str, new_path: str, base_version: str
+    ) -> dict[str, Any]:
+        """Rename a page and update every link to it, or change nothing."""
+        if not cred.allows("write"):
+            raise VaultToolError("forbidden", "this credential is read-only", path=path)
+        rel, source = self._target(path)
+        new_rel, dest = self._target(new_path)
+        if rel == new_rel:
+            raise VaultToolError("invalid", "path and new_path are the same", path=rel)
+        if not self._heartbeat_fresh():
+            raise VaultToolError(
+                "history_pending", "vault-watcher is not running, so the move would have no history; nothing was changed",
+                path=rel, applied=False,
+            )  # fmt: skip
+        async with self.lock.hold():
+            committed, moved_version, updated = await _finish_even_if_cancelled(
+                asyncio.to_thread(
+                    self._attempt_move, cred, rel, source, new_rel, dest, base_version
+                )
+            )
+        for txn, result in committed:
+            await self._await_ack(txn, result)
+        return {
+            "path": new_rel,
+            "from_path": rel,
+            "version": moved_version,
+            "updated_links_in": updated,
+        }
+
+    def _check_writable(self, cred: Credential, rel: str, current: bytes | None) -> None:
+        maintainer = (
+            frontmatter.maintainer_of(current.decode("utf-8", "replace"))
+            if current is not None
+            else None
+        )
+        decision = check_write(
+            rel, self.policy, cred.folders, exists=current is not None, maintainer=maintainer
+        )
+        if not decision.allowed:
+            reason = decision.reason or "denied"
+            raise VaultToolError("forbidden", _REFUSALS[reason], path=rel, reason=reason)
+
+    def _attempt_move(
+        self, cred: Credential, rel: str, source: Path, new_rel: str, dest: Path, base_version: str
+    ) -> tuple[list[tuple[Path, WriteResult]], str, list[str]]:
+        if not source.is_file():
+            raise VaultToolError("not_found", "no such file", path=rel)
+        current = source.read_bytes()
+        self._check_writable(cred, rel, current)
+        self._check_writable(cred, new_rel, None)
+        if os.path.lexists(dest):
+            raise VaultToolError("conflict", "new_path already exists", path=rel, new_path=new_rel)
+        if base_version != version_of(current):
+            raise VaultToolError(
+                "conflict", "the file changed since you read it; read it again and retry",
+                path=rel, current_version=version_of(current),
+            )  # fmt: skip
+
+        # Preflight: every page linking to the file must be writable, or nothing happens.
+        files, pages = self._vault_files()
+        linkers: dict[str, bytes] = {}
+        visible_blockers: list[str] = []
+        hidden_blockers = 0
+        for other in pages:
+            if other == rel:
+                continue
+            data = (self.vault_dir / other).read_bytes()
+            if not links_to(data.decode("utf-8", "replace"), other, rel, files):
+                continue
+            maintainer = frontmatter.maintainer_of(data.decode("utf-8", "replace"))
+            if check_write(
+                other, self.policy, cred.folders, exists=True, maintainer=maintainer
+            ).allowed:
+                linkers[other] = data
+            elif check_read(other, self.policy, cred.folders).allowed:
+                visible_blockers.append(other)
+            else:
+                hidden_blockers += 1
+        if visible_blockers or hidden_blockers:
+            raise VaultToolError(
+                "forbidden",
+                "pages you can't edit link to this file, so it can't be moved without breaking their "
+                "links; propose the move with review_queue_add",
+                path=rel, blocking_files=visible_blockers, hidden_blockers=hidden_blockers,
+            )  # fmt: skip
+
+        # Build every new content up front.
+        text = current.decode("utf-8", "replace")
+        moved_text = rewrite_links(
+            rebase_relative_links(text, rel, new_rel), new_rel, rel, new_rel, files
+        )
+        plan: list[tuple[str, Path, bytes, bytes, str | None]] = [
+            (
+                o,
+                self.vault_dir / o,
+                data,
+                rewrite_links(data.decode("utf-8", "replace"), o, rel, new_rel, files).encode(),
+                None,
+            )
+            for o, data in linkers.items()
+        ]
+        plan.append((rel, dest, current, moved_text.encode(), new_rel))
+
+        # D21 for a group: prepare all, re-check all, apply all, audit all, commit all.
+        group_id = new_id()
+        staged: list[_Staged] = []
+        try:
+            for o, target, before, after, moved_to in plan:
+                audit_id = new_id()
+                txn = self.spool.prepare(
+                    audit_id,
+                    o,
+                    after,
+                    tool="move",
+                    credential_id=cred.id,
+                    new_path=moved_to,
+                    group_id=group_id,
+                )
+                staged.append(
+                    _Staged(
+                        o, self.vault_dir / o, target, txn, None, before, after, moved_to, audit_id
+                    )
+                )
+                target.parent.mkdir(parents=True, exist_ok=True)
+                staged[-1].tmp = write_temp_sibling(target, after, tag=secrets.token_hex(4))
+                head = self.history.head(o)
+                self.spool.write_pre(
+                    txn, before, record_pre=head is None or head.sha256 != version_of(before)
+                )
+            for s in staged:  # last-moment re-check of every file in the group
+                if not s.current_path.is_file() or s.current_path.read_bytes() != s.before:
+                    raise _Changed
+        except _Changed:
+            self._discard_group(staged)
+            raise VaultToolError(
+                "conflict", "a file changed while moving; nothing was changed; retry", path=rel
+            ) from None
+        except BaseException:
+            self._discard_group(staged)
+            raise
+        results: list[tuple[Path, WriteResult]] = []
+        for k, s in enumerate(staged):
+            assert s.tmp is not None  # noqa: S101 - set for every staged entry above
+            # D21 step 3 per file: a save to this file during the earlier replacements must
+            # not be overwritten. Stop here; the entries stay prepared, so vault-watcher
+            # classifies each (applied / aborted / unconfirmed) and alerts on the partial group.
+            unchanged = s.current_path.is_file() and s.current_path.read_bytes() == s.before
+            if not unchanged or (s.moved_to and os.path.lexists(s.target)):
+                for rest in staged[k:]:
+                    if rest.tmp is not None:
+                        with contextlib.suppress(FileNotFoundError):
+                            rest.tmp.unlink()
+                raise VaultToolError(
+                    "conflict",
+                    "a file changed while the move was being applied; the move is only partly "
+                    "applied and an alert was raised for a human to finish or undo it",
+                    path=rel, group_id=group_id, applied=[r.rel for r in staged[:k]],
+                    not_applied=[r.rel for r in staged[k:]],
+                )  # fmt: skip
+            replace_from_temp(s.tmp, s.target)
+            if s.moved_to:
+                s.current_path.unlink()
+                fsync_dir(s.current_path.parent)
+            self.audit.append(
+                id=s.audit_id, durable=True, service="vault-mcp", tool="move", result="ok",
+                credential_id=cred.id, credential_name=cred.name, owner=cred.owner, path=s.rel,
+                new_path=s.moved_to, old_version=version_of(s.before), new_version=version_of(s.after),
+                detail=None if s.moved_to else f"link update for move of {rel}", group_id=group_id,
+            )  # fmt: skip
+            results.append(
+                (s.txn, WriteResult(s.moved_to or s.rel, version_of(s.after), s.audit_id))
+            )
+        committed = [(self.spool.commit(txn), result) for txn, result in results]
+        return committed, version_of(plan[-1][3]), sorted(linkers)
+
+    def _discard_group(self, staged: list[_Staged]) -> None:
+        for s in staged:
+            self.spool.drop(s.txn)
+            if s.tmp is not None:
+                with contextlib.suppress(FileNotFoundError):
+                    s.tmp.unlink()
+
 
 def _section_edit(path: str, edit: Callable[[str], str]) -> Callable[[bytes | None], bytes]:
     def build(current: bytes | None) -> bytes:
@@ -341,6 +543,19 @@ async def _finish_even_if_cancelled[T](work: Awaitable[T]) -> T:
         if cancelled:
             raise asyncio.CancelledError
         return result
+
+
+@dataclass
+class _Staged:
+    rel: str
+    current_path: Path
+    target: Path
+    txn: Path
+    tmp: Path | None
+    before: bytes
+    after: bytes
+    moved_to: str | None
+    audit_id: str
 
 
 class _Changed(Exception):

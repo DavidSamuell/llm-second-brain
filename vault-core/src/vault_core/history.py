@@ -160,6 +160,11 @@ class HistoryStore:
                 audit_id=entry.audit_id, kind="post",
                 from_path=entry.path if entry.new_path else None, unconfirmed=unconfirmed,
             )  # fmt: skip
+            if entry.new_path:  # the old path: moved away, not deleted (restore-deleted skips it)
+                self.record(
+                    entry.path, None, event="rename", source="mcp", ts=entry.ts_post,
+                    audit_id=entry.audit_id, kind="moved-out", unconfirmed=unconfirmed,
+                )  # fmt: skip
 
     def content_at(self, path: str, at: datetime) -> bytes | None:
         """Content as it was at `at`: the newest version at or before it (None if deleted/absent)."""
@@ -179,13 +184,14 @@ class HistoryStore:
         return sorted(paths)
 
     def deleted_under(self, prefix: str) -> dict[str, bytes]:
-        """Files under `prefix` whose newest version is a tombstone, with their last content."""
+        """Files under `prefix` whose newest version is a delete, with their last content.
+        Files moved away (`event: rename`) are not deleted: their content lives at the new path."""
         out: dict[str, bytes] = {}
         for path in self.paths():
             if not path.startswith(prefix):
                 continue
             versions = self.versions(path)
-            if versions and versions[-1].sha256 is None:
+            if versions and versions[-1].event == "delete":
                 last = next((v for v in reversed(versions) if v.sha256 is not None), None)
                 if last is not None:
                     content = self.content(last)

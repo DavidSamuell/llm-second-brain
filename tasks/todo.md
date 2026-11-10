@@ -175,7 +175,7 @@ Commands used in verification:
   - Deps: T16 · Files: `vault-core/src/vault_core/review_queue.py`, `vault-mcp/src/vault_mcp/tools_write.py` · Scope: S
   - **Status:** format tests (single Obsidian task line, `#review` vs `#review/high`, newline and `[[` injection neutralised, creation with a header); writer tests (a folder-scoped credential can still add to the queue; denied pages and read tokens are refused; one history version per item); e2e §16.10 second half in both profiles.
 
-- [ ] **T19 — `move` + link rewriting** · Decisions: D8, D9, D12, D21 · **watch**
+- [x] **T19 — `move` + link rewriting** · Decisions: D8, D9, D12, D21 · **watch**
   - Obsidian-style link resolution; backlink preflight; all-or-nothing rename + link rewrites as one D21 transaction group; history and audit per touched file.
   - Acceptance:
     - Wikilink, alias, heading, embed, and relative markdown links are all updated.
@@ -184,6 +184,7 @@ Commands used in verification:
     - vault-mcp killed mid-group → the watcher alerts with the partly applied group.
   - Verify: `uv run pytest vault-mcp -k move`.
   - Deps: T16 · Files: `vault-mcp/src/vault_mcp/{links,tools_move}.py`, tests · Scope: M
+  - **Status:** 14 link tests (resolution by path suffix, ties to the linking folder, aliases, headings, embeds, relative Markdown links, code ignored, ambiguous new names fall back to full paths, relative links inside the moved page rebased) and 14 move tests: every link style updated; one history version and audit line per touched file with a shared `group_id`; human-page, read-denied, out-of-scope and hidden-page linkers each block the whole move (hidden ones as a count only); trash ignored; refusals change nothing; vault-mcp killed mid-group → `move_partial` alert; a browser save between two group replacements isn't overwritten. Mutation checks on blockers, the hidden-page scan, the per-file re-check and old-path removal.
 
 - [ ] **T20 — Source lifecycle tools + lease sweeper** · Decisions: D10, D14, D21 · **watch**
   - `submit_source`, `claim_source`, `complete_source`, `release_source`; `/data/state.db` leases; 60 s sweeper.

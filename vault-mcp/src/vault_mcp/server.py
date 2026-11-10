@@ -181,6 +181,14 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
             lambda cred: writer.review_queue_add(cred, page, issue, suggestion),
         )
 
+    @mcp.tool(name="move")
+    async def move(path: str, new_path: str, base_version: str) -> dict[str, Any]:
+        """Rename a page and update every link to it in one step. If any page you can't edit
+        links to it, nothing is changed: propose the move with review_queue_add instead."""
+        return await audited_write(
+            "move", path, lambda cred: writer.move(cred, path, new_path, base_version)
+        )
+
     @mcp.custom_route("/health", methods=["GET"])
     async def health(_: Request) -> JSONResponse:
         return JSONResponse({"status": "ok"})

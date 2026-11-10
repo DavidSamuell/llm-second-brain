@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 from vault_core.audit import AuditLog
 from vault_core.fsio import is_temp_name, version_of
-from vault_core.history import HistoryStore, Source, Spool, SpoolEntry, classify
+from vault_core.history import HistoryStore, Outcome, Source, Spool, SpoolEntry, classify
 from vault_core.paths import through_symlink
 from vault_core.search_index import SearchIndex
 
@@ -62,31 +62,71 @@ class Recorder:
     # -- spool -----------------------------------------------------------------------------
 
     def drain(self) -> int:
-        """Record committed transactions and resolve orphaned prepared ones. Returns the count."""
+        """Record committed transactions and resolve orphaned prepared ones. Returns the count.
+
+        Three passes, so a crash part-way can't lose a group's outcome: (1) record/recover
+        every entry, (2) alert on every partly applied move group, (3) only then acknowledge.
+        Recovery and recording are idempotent, so a crash before (3) just repeats them."""
         entries = self.spool.entries()
+        groups: dict[str, set[Outcome]] = {}
         for entry in entries:
             if entry.state == "committed":
                 self.history.record_entry(entry)
+                outcome: Outcome = "applied"
             else:
-                self._recover(entry)
+                outcome = self._recover(entry)
+            if entry.group_id:
+                groups.setdefault(entry.group_id, set()).add(outcome)
             self._reindex(entry.new_path or entry.path)
             if entry.new_path:
                 self._reindex(entry.path)
+        for group_id, outcomes in groups.items():
+            if len(outcomes) > 1 or "unconfirmed" in outcomes:
+                # D12: a move rewrites several files; an interrupted one may be half applied.
+                self.alerts.send(
+                    "move_partial", "high",
+                    "An interrupted move was only partly applied; check its links and files.",
+                    {"group_id": group_id, "outcomes": sorted(outcomes)}, subject=group_id,
+                )  # fmt: skip
+        for entry in entries:
             self.spool.ack(entry)
         return len(entries)
 
-    def _recover(self, entry: SpoolEntry) -> None:
+    def _classify(self, entry: SpoolEntry) -> Outcome:
+        target = self.vault_dir / (entry.new_path or entry.path)
+        current = version_of(target.read_bytes()) if target.is_file() else None
+        if entry.new_path is None:
+            return classify(
+                current,
+                pre_sha256=entry.pre_sha256,
+                post_sha256=entry.post_sha256,
+                pre_known=entry.pre_known,
+            )
+        # A move: the new path decides. If the new file landed, finish the move by removing
+        # the old path when it still holds exactly the pre-move content.
+        source = self.vault_dir / entry.path
+        if current == entry.post_sha256:
+            if (
+                source.is_file()
+                and entry.pre_known
+                and version_of(source.read_bytes()) == entry.pre_sha256
+            ):
+                source.unlink()
+            return "applied"
+        if (
+            current is None
+            and source.is_file()
+            and version_of(source.read_bytes()) == entry.pre_sha256
+        ):
+            return "aborted"
+        return "unconfirmed"
+
+    def _recover(self, entry: SpoolEntry) -> Outcome:
         target_rel = entry.new_path or entry.path
         target = self.vault_dir / target_rel
         for leftover in target.parent.glob(f".{target.name}.vault-mcp-*.tmp"):
             leftover.unlink(missing_ok=True)
-        current = version_of(target.read_bytes()) if target.is_file() else None
-        outcome = classify(
-            current,
-            pre_sha256=entry.pre_sha256,
-            post_sha256=entry.post_sha256,
-            pre_known=entry.pre_known,
-        )
+        outcome = self._classify(entry)
         fields: dict[str, Any] = {
             "path": entry.path,
             "new_path": entry.new_path,
@@ -135,6 +175,7 @@ class Recorder:
         log.warning(
             "recovered interrupted MCP write %s on %s: %s", entry.audit_id, target_rel, outcome
         )
+        return outcome
 
     def _reindex(self, rel: str) -> None:
         """Bring the search index in line with the file on disk (D23)."""
