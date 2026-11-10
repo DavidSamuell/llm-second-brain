@@ -63,6 +63,7 @@ services:
       HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
       HISTORY_MIN_VERSIONS: ${HISTORY_MIN_VERSIONS:-10}
       ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+      MONITOR_INTERVAL_S: ${MONITOR_INTERVAL_S:-60}
     volumes:
       - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
       - ${DATA_PATH:?set DATA_PATH in .env}:/data

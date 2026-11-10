@@ -92,6 +92,7 @@ def start(profile: str) -> Stack:
         "COMPOSE_FILE": "docker-compose.yml:e2e/compose.e2e.yml",
         "COMPOSE_PATH_SEPARATOR": ":",
         "ALERT_WEBHOOK": "http://webhook-stub:8099/hook",
+        "MONITOR_INTERVAL_S": "2",
         "E2E_ALERTS_DIR": str(root / "alerts"),
         "VAULT_PATH": str(vault),
         "DATA_PATH": str(data),

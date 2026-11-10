@@ -207,11 +207,12 @@ Commands used in verification:
   - Deps: T13, T18 · Files: `vault-watcher/src/vault_watcher/secret_scan.py`, tests · Scope: S
   - **Status:** 5 watcher tests (a browser save gives one high alert, one masked `#review/high` item and one audit line, the key appears in no output, and the page is untouched; no repeat for an unchanged finding; the queue write is recorded in history as `system` and doesn't re-trigger the scan; a new path is a new finding; dedupe survives a restart; clean pages and binaries stay quiet). e2e §16.13 filesystem half in both profiles, through the webhook stub. MCP writes are scanned by the watcher too (after commit/recovery), which matters when `reject_on_write` is off.
 
-- [ ] **T23 — Ops monitor + healthchecks** · Decisions: D25, D26 · **watch**
+- [x] **T23 — Ops monitor + healthchecks** · Decisions: D25, D26 · **watch**
   - Compose healthchecks for all services; a watcher monitor loop (peer `/health`, heartbeat age, disk > 80 %).
   - Acceptance: stopping vault-mcp → alert after 3 failed checks; a fake disk-usage provider at 81 % → alert; no Docker socket mounted anywhere.
   - Verify: `uv run pytest vault-watcher -k monitor` + an e2e case stopping vault-mcp.
   - Deps: T13 · Files: `vault-watcher/src/vault_watcher/monitor.py`, `docker-compose.yml` · Scope: S
+  - **Status:** 6 monitor tests (alert on the 3rd consecutive failure, once per outage, a recovery notice, a distinct subject per outage so the sender's hourly dedupe can't hide a second outage, one success resets the count, a crashing probe counts as a failure, disk 80 % ok / 81 % alert, heartbeat checked only for enabled services, HTTP probe). e2e in both profiles: stopping vault-mcp gives a `service_unhealthy` alert, restarting it gives `service_recovered`; the resolved compose config and every ingress override contain no `docker.sock`. Compose healthchecks already exist for ignis, vault-mcp and vault-watcher; git-sync and agent-runner get theirs in Phase 4 (the monitor already checks their heartbeats once their state directories exist).
 
 ### Checkpoint C — after T16–T23
 - [ ] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e
