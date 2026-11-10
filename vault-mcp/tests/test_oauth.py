@@ -1025,3 +1025,25 @@ def test_google_requires_a_workspace_account(google: Stack) -> None:
     }
     _, callback = sign_in_upstream(google)
     assert callback.status_code == 303
+
+
+def test_offboarding_cancels_unused_approval_codes_and_admin_actions_are_audited(
+    data: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from vault_mcp.cli import main
+
+    assert (
+        main(["--data-dir", str(data), "oauth", "approve-code", "--owner", "leaver@example.com"])
+        == 0
+    )
+    code = capsys.readouterr().out.strip()
+    assert (
+        main(["--data-dir", str(data), "oauth", "revoke-codes", "--owner", "Leaver@example.com"])
+        == 0
+    )
+    grants = OAuthStore(CredentialStore(data / "tokens.db"))
+    req = grants.create_request("client", {"redirect_uri": REDIRECT})
+    assert req is not None
+    assert grants.login_with_approval_code(req, code) is not None  # cancelled
+    tools = [json.loads(x)["tool"] for x in (data / "audit.log").read_text().splitlines()]
+    assert tools == ["oauth_approve_code", "oauth_revoke_codes"]

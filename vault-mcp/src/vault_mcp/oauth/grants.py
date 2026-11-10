@@ -2,8 +2,10 @@
 authorization codes, approval codes, and grants.
 
 A grant is a `credentials` row (`kind = 'oauth'`), so `token list` shows it and `token revoke`
-ends it: its access and refresh tokens stop working on the next request. Every secret
-(request ids, browser nonces, codes, tokens) is stored as sha256 only.
+ends it: its access and refresh tokens stop working on the next request. Request ids, browser
+nonces, CSRF tokens, codes and tokens are stored as sha256 only. Stored in plain text: DCR
+client secrets (the SDK compares them as given) and, for up to 15 minutes, the upstream PKCE
+verifier and OIDC nonce of a sign-in in progress.
 """
 
 from __future__ import annotations
@@ -250,6 +252,15 @@ class OAuthStore:
                 (_iso(self.store.now() - GLOBAL_WINDOW),),
             ).fetchone()
         return int(row[0])
+
+    def revoke_approval_codes(self, owner: str) -> int:
+        """Cancel every unused code for `owner` (offboarding). Returns how many."""
+        with self.store.db() as conn:
+            cur = conn.execute(
+                "UPDATE approval_codes SET used_at = ? WHERE lower(owner) = lower(?) AND used_at IS NULL",
+                (_iso(self.store.now()), owner),
+            )
+            return int(cur.rowcount)
 
     def login_with_approval_code(self, req: str, code: str) -> str | None:
         """Consume a code for this request. Returns None on success, else a user-facing reason.

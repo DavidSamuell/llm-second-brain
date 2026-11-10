@@ -124,6 +124,21 @@ class Monitor:
             self._thread.join(timeout=10)
 
 
+def ignis_server_plugin_check(data_dir: Path, allowed: str) -> Check:
+    """Alert when someone switches on an Ignis server plugin that isn't allowed (Headless Sync can
+    copy the whole vault to a personal Obsidian Sync account). ignis-init turns them off again at
+    the next start."""
+    allowed_ids = {p.strip() for p in allowed.split(",") if p.strip()}
+
+    def probe() -> str | None:
+        from vault_watcher.ignis_harden import enabled_server_plugins
+
+        unexpected = [p for p in enabled_server_plugins(data_dir) if p not in allowed_ids]
+        return f"Ignis server plugin(s) enabled: {', '.join(unexpected)}" if unexpected else None
+
+    return Check("ignis-server-plugins", "ignis_server_plugin_enabled", probe)
+
+
 def default_checks(
     peers: dict[str, str],
     heartbeats: dict[str, Path],

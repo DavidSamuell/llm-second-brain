@@ -6,7 +6,7 @@
 #   scripts/backup [--include-config] [--out DIR]
 #
 # Writes DIR/vault-backup-<UTC>.tar.gz (mode 600; default DIR: ./backups). --include-config adds
-# .env and vault-mcp.yaml, which contain secrets: store such archives accordingly.
+# .env (which contains secrets) and vault-mcp.yaml (policy): store such archives accordingly.
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

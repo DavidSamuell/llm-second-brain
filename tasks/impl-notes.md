@@ -80,6 +80,18 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 - [T34] git-sync uses util-linux `flock` (Alpine's BusyBox `flock` has no `-w`). Commit requests are consumed once the commit lands; several requests in one cycle produce one commit named after the oldest. Pushing is paused (a `blocked` file, plus an alert) only when a rebase can't be resolved automatically. Reversible: yes.
 - [T35] agent-runner mounts only `${DATA_PATH}/agent-runner`, `${DATA_PATH}/git-sync/requests` and the vault's `skills/` (read-only), not AGENTS.md: the agent reads the rules through `get_schema`, and setup creates those data folders so Docker never creates them as root. Claude Code may only use `mcp__vault__*` tools, so it can't read files around the policy. Commit requests are written only when `GIT_REMOTE` is set. The `ingest` prompt caps a run at `INGEST_MAX_SOURCES` (default 10). Reversible: yes.
 - [T40 review] agent-runner may use Claude Code's `WebFetch` besides the vault tools, so it can fetch URL-only sources (D14); it still has no file-system or shell tools. `INGEST_MAX_SOURCES` and `AGENT_MAX_TURNS` are passed through compose. `scripts/oauth approve-code` wraps the CLI. The secret-scan review item no longer points to a history purge command that doesn't exist; it says older versions still contain the secret. Open: Claude.ai's "published identity" (client ID metadata documents) is not supported; connectors must choose dynamic registration (checked in the Claude.ai connector run).
+- [T41 review] Fixes from the security docs pass:
+  - `ignis-init` resets Ignis server plugin settings (`DATA_PATH/ignis/plugin-config.json`) at each start unless `IGNIS_SERVER_PLUGINS` allows them, and the monitor alerts (`ignis_server_plugin_enabled`) when one is switched on. Headless Sync could otherwise copy the whole vault to a personal Obsidian Sync account.
+  - Admin CLI actions are audited (`vault-mcp-cli`).
+  - `scripts/oauth revoke-codes --owner` exists.
+  - A `vault-mcp-token` secret rule was added.
+  - git-sync gets a passwd entry for any PUID (ssh refused uid 1000 without one).
+  - Backups include folders, so empty Ignis folders come back.
+  - The watcher falls back to the periodic scan with a sysctl hint when inotify limits are hit (D22).
+  - Setup asks for the Entra tenant / OIDC issuer, and sets `MCP_OAUTH_ENABLED=false` for `INGRESS=local` without an issuer.
+  - `.env.example` lists `GIT_BRANCH`/`GIT_ADOPT_REMOTE`.
+
+  Documented, not changed: no Host-header check in Ignis (matters for `local`), no history purge, no per-IP OAuth limits, Entra guests (`xms_edov`), oauth2-proxy and Google `hd`, the agent-runner token is unscoped and never expires, `audit.log` is not rotated.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

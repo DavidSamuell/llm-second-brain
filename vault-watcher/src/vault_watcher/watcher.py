@@ -6,6 +6,7 @@ watchdog threads only queue paths; the spool directory wakes the worker for MCP 
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import logging
 import os
@@ -106,6 +107,7 @@ class Watcher:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._observer = Observer()
+        self._observing = True
         self._thread: threading.Thread | None = None
         self._health: ThreadingHTTPServer | None = None
 
@@ -117,7 +119,20 @@ class Watcher:
         self.heartbeat.parent.mkdir(parents=True, exist_ok=True)
         self._observer.schedule(_VaultEvents(self), str(vault), recursive=True)
         self._observer.schedule(_InboxEvents(self._wake), str(inbox), recursive=False)
-        self._observer.start()  # before the startup scan, so nothing slips between the two
+        try:
+            self._observer.start()  # before the startup scan, so nothing slips between the two
+        except (
+            OSError
+        ) as exc:  # D22: inotify limits reached; the periodic scan still records changes
+            if exc.errno not in (errno.ENOSPC, errno.EMFILE):
+                raise
+            log.warning(
+                "inotify limit reached (%s): changes are recorded only by the periodic scan every %ss. "
+                "On the Docker host, raise the limits: sysctl -w fs.inotify.max_user_watches=524288 "
+                "fs.inotify.max_user_instances=512 (persist them in /etc/sysctl.d/)",
+                exc.strerror, int(self.config.scan_interval_s),
+            )  # fmt: skip
+            self._observing = False
         with vault_lock(self.config.data_dir, "vault-watcher"):
             drained = self.recorder.drain()
             changed = self.recorder.scan()
@@ -141,8 +156,9 @@ class Watcher:
     def stop(self) -> None:
         self._stop.set()
         self._wake.set()
-        self._observer.stop()
-        self._observer.join(5)
+        if self._observing:
+            self._observer.stop()
+            self._observer.join(5)
         if self._thread:
             self._thread.join(10)
         if self._health:

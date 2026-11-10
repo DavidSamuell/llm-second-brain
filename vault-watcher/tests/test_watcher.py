@@ -361,3 +361,29 @@ def test_recovery_is_idempotent_if_the_watcher_dies_before_acknowledging(
     assert sum(1 for event, _ in sink.sent if event == "history_unconfirmed") >= alerts
     kinds = [(v.kind, v.audit_id) for v in history(dirs).versions("wiki/a.md") if v.audit_id]
     assert len(kinds) == len(set(kinds)), "duplicate history pointers"
+
+
+def test_inotify_limits_fall_back_to_the_periodic_scan_with_a_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    import errno
+
+    from watchdog.observers.api import BaseObserver
+
+    def no_watches(self: object) -> None:
+        raise OSError(errno.ENOSPC, "inotify watch limit reached")
+
+    monkeypatch.setattr(BaseObserver, "start", no_watches)
+    vault, data = tmp_path / "vault", tmp_path / "data"
+    (vault / "wiki").mkdir(parents=True)
+    (vault / "wiki" / "a.md").write_text("# A\n")
+    w = Watcher(
+        WatcherConfig(vault_dir=vault, data_dir=data, heartbeat_interval_s=0.1),
+        alerts=RecordingAlerts(),
+    )
+    w.start()
+    try:
+        assert "fs.inotify.max_user_watches" in caplog.text
+        assert HistoryStore(data).head("wiki/a.md") is not None  # the startup scan still ran
+    finally:
+        w.stop()

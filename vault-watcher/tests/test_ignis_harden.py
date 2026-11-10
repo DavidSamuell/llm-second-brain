@@ -194,3 +194,22 @@ def test_invalid_allowlist_entries_are_rejected(tmp_path: Path, entry: dict[str,
 
 def test_the_shipped_allowlist_is_valid() -> None:
     load_allowlist(Path(__file__).resolve().parents[2] / "ignis" / "ignis-plugins.yaml")
+
+
+def test_ignis_server_plugins_are_reset_at_start_and_flagged_while_running(
+    tmp_path: Path, dirs: tuple[Path, Path]
+) -> None:
+    from vault_watcher.ignis_harden import enabled_server_plugins
+    from vault_watcher.monitor import ignis_server_plugin_check
+
+    vault, data = dirs
+    config = data / "ignis" / "plugin-config.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps({"headless-sync": {"enabledVaults": ["Docs"]}}))
+    check = ignis_server_plugin_check(data, "")
+    assert check.probe() == "Ignis server plugin(s) enabled: headless-sync"
+    assert ignis_server_plugin_check(data, "headless-sync").probe() is None  # explicitly allowed
+    harden(allowlist=allowlist(tmp_path), vault_dir=vault, data_dir=data, template_dir=TEMPLATE,
+           base_url="https://github.com", mounted="", get=Releases())  # fmt: skip
+    assert enabled_server_plugins(data) == []
+    assert check.probe() is None

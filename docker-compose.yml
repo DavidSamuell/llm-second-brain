@@ -17,6 +17,7 @@ services:
     environment:
       IGNIS_PLUGIN_BASE_URL: ${IGNIS_PLUGIN_BASE_URL:-https://github.com}
       IGNIS_PLUGIN_DATA_MOUNTS: ${IGNIS_PLUGIN_DATA_MOUNTS:-}
+      IGNIS_SERVER_PLUGINS: ${IGNIS_SERVER_PLUGINS:-}
     volumes:
       - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
       - ${DATA_PATH:?set DATA_PATH in .env}:/data
@@ -95,6 +96,7 @@ services:
       HISTORY_MIN_VERSIONS: ${HISTORY_MIN_VERSIONS:-10}
       ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
       MONITOR_INTERVAL_S: ${MONITOR_INTERVAL_S:-60}
+      IGNIS_SERVER_PLUGINS: ${IGNIS_SERVER_PLUGINS:-}
     volumes:
       - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
       - ${DATA_PATH:?set DATA_PATH in .env}:/data

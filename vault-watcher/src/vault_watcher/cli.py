@@ -20,7 +20,7 @@ from vault_core.lock import vault_lock
 from vault_core.paths import PathError, normalize
 from vault_core.policy import Policy, PolicyError, load_policy
 from vault_core.search_index import SearchIndex
-from vault_watcher.monitor import Monitor, default_checks
+from vault_watcher.monitor import Monitor, default_checks, ignis_server_plugin_check
 from vault_watcher.watcher import Watcher, WatcherConfig
 
 HEALTH_PORT = 8083
@@ -35,6 +35,7 @@ class WatcherSettings(Settings):
     kit_template_dir: Path = Path("/kit/vault-template")
     ignis_plugin_base_url: str = "https://github.com"
     ignis_plugin_data_mounts: str = ""
+    ignis_server_plugins: str = ""  # Ignis server plugins allowed to stay enabled (empty: none)
     # name=url pairs on the compose network; heartbeats are checked only for enabled services.
     monitor_peers: str = "vault-mcp=http://vault-mcp:8082/health,ignis=http://ignis:8080/"
     monitor_heartbeats: str = "git-sync=git-sync/heartbeat,agent-runner=agent-runner/heartbeat"
@@ -74,14 +75,17 @@ def _cmd_run(settings: WatcherSettings, _: argparse.Namespace) -> int:
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
     monitor = Monitor(
-        default_checks(
-            peers=_pairs(settings.monitor_peers),
-            heartbeats={
-                k: settings.data_dir / v for k, v in _pairs(settings.monitor_heartbeats).items()
-            },
-            disks=[settings.vault_dir, settings.data_dir],
-            heartbeat_max_age_s=3 * settings.monitor_interval_s,
-        ),
+        [
+            *default_checks(
+                peers=_pairs(settings.monitor_peers),
+                heartbeats={
+                    k: settings.data_dir / v for k, v in _pairs(settings.monitor_heartbeats).items()
+                },
+                disks=[settings.vault_dir, settings.data_dir],
+                heartbeat_max_age_s=3 * settings.monitor_interval_s,
+            ),
+            ignis_server_plugin_check(settings.data_dir, settings.ignis_server_plugins),
+        ],
         AlertSender(settings.alert_webhook, service="vault-watcher"),
     )
     watcher.start()
@@ -224,7 +228,7 @@ def _cmd_harden_ignis(settings: WatcherSettings, args: argparse.Namespace) -> in
         removed = ignis_harden.harden(
             allowlist=settings.ignis_plugins_file, vault_dir=settings.vault_dir, data_dir=settings.data_dir,
             template_dir=settings.kit_template_dir, base_url=settings.ignis_plugin_base_url,
-            mounted=settings.ignis_plugin_data_mounts,
+            mounted=settings.ignis_plugin_data_mounts, server_plugins=settings.ignis_server_plugins,
         )  # fmt: skip
     except ignis_harden.HardenError as exc:
         print(f"ignis-init: {exc}", file=sys.stderr)

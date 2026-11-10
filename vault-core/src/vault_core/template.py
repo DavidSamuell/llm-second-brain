@@ -40,7 +40,9 @@ CUSTOM_BLOCK = re.compile(r"(<!-- custom -->)(.*?)(<!-- /custom -->)", re.DOTALL
 def kit_hash(data: bytes) -> str:
     """sha256 of the file with the inside of each custom block removed (markers kept)."""
     text = data.decode("utf-8", "surrogateescape")
-    return hashlib.sha256(CUSTOM_BLOCK.sub(r"\1\3", text).encode("utf-8", "surrogateescape")).hexdigest()
+    return hashlib.sha256(
+        CUSTOM_BLOCK.sub(r"\1\3", text).encode("utf-8", "surrogateescape")
+    ).hexdigest()
 
 
 def is_managed(rel: str) -> bool:

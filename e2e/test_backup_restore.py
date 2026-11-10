@@ -19,6 +19,14 @@ def script(stack: Stack, *args: str) -> subprocess.CompletedProcess[str]:
                           capture_output=True, text=True, timeout=600, check=False)  # fmt: skip
 
 
+def tree(root: Path) -> dict[str, str]:
+    """Every file and folder under root, with file contents (folders map to "")."""
+    return {
+        p.relative_to(root).as_posix(): (p.read_text(errors="replace") if p.is_file() else "")
+        for p in sorted(root.rglob("*"))
+    }
+
+
 def wipe(folder: Path) -> None:
     for child in folder.iterdir():
         shutil.rmtree(child) if child.is_dir() else child.unlink()
@@ -37,12 +45,8 @@ def test_16_16_backup_wipe_restore(stack: Stack, tmp_path: Path) -> None:
             )
 
     asyncio.run(edit())
-    # Ignis keeps its server state in DATA_PATH/ignis (plan D4); it writes there once a browser
-    # session exists, so stand in for that with a file of the same kind.
-    (data / "ignis" / "e2e-session.json").write_text('{"workspace": "kept"}')
-    ignis_state = sorted(
-        p.relative_to(data).as_posix() for p in (data / "ignis").rglob("*") if p.is_file()
-    )
+    ignis_state = tree(data / "ignis")  # what this Ignis actually wrote (plan D4); nothing faked
+    assert ignis_state, "Ignis wrote nothing to DATA_PATH/ignis"
     history_before = stack.compose(
         "exec", "-T", "vault-watcher", "vault-watcher", "history", "list", "wiki/index.md"
     ).stdout
@@ -62,10 +66,8 @@ def test_16_16_backup_wipe_restore(stack: Stack, tmp_path: Path) -> None:
     assert up.returncode == 0, up.stderr
 
     assert "added before the backup" in (vault / "wiki" / "index.md").read_text()
-    assert (
-        sorted(p.relative_to(data).as_posix() for p in (data / "ignis").rglob("*") if p.is_file())
-        >= ignis_state
-    )
+    restored_ignis = tree(data / "ignis")
+    assert ignis_state.items() <= restored_ignis.items()  # Ignis may add more after restarting
     history_after = stack.compose(
         "exec", "-T", "vault-watcher", "vault-watcher", "history", "list", "wiki/index.md"
     ).stdout

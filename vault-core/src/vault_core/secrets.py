@@ -44,6 +44,8 @@ RULES: tuple[Rule, ...] = (
     Rule("github-token", re.compile(r"\bgh[pousr]_[0-9A-Za-z]{36,255}\b")),
     Rule("github-fine-grained-pat", re.compile(r"\bgithub_pat_[0-9A-Za-z_]{82}\b")),
     Rule("gitlab-pat", re.compile(r"\bglpat-[0-9A-Za-z_-]{20}\b")),
+    # The kit's own credentials: vault-mcp bearer, OAuth access and refresh tokens.
+    Rule("vault-mcp-token", re.compile(r"\bvmcp[ar]?_[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])")),
     Rule("slack-token", re.compile(r"\bxox[abposr]-[0-9]{8,}-[0-9A-Za-z-]{16,}")),
     Rule(
         "slack-webhook",

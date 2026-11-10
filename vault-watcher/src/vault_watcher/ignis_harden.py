@@ -203,12 +203,38 @@ def compose_override(plugins: list[Plugin]) -> str:
     return header + yaml.safe_dump(doc, sort_keys=False)
 
 
+def reset_server_plugins(data_dir: Path, allowed: str) -> bool:
+    """Ignis' own server plugins (e.g. Headless Sync, which can copy the whole vault to a
+    personal Obsidian Sync account) can be switched on by anyone who can open the editor. Unless
+    IGNIS_SERVER_PLUGINS allows some, their configuration is removed at every start, so they
+    start disabled. Returns whether anything was reset."""
+    config = data_dir / "ignis" / "plugin-config.json"
+    if allowed.strip() or not config.exists():
+        return False
+    config.unlink()
+    return True
+
+
+def enabled_server_plugins(data_dir: Path) -> list[str]:
+    """Server plugins enabled for any vault, from Ignis' plugin-config.json."""
+    config = data_dir / "ignis" / "plugin-config.json"
+    try:
+        data = json.loads(config.read_text())
+    except (FileNotFoundError, ValueError):
+        return []
+    return sorted(
+        pid for pid, entry in data.items() if isinstance(entry, dict) and entry.get("enabledVaults")
+    )
+
+
 def harden(
     *, allowlist: Path, vault_dir: Path, data_dir: Path, template_dir: Path, base_url: str, mounted: str,
-    get: Callable[[str], bytes] = fetch,
+    server_plugins: str = "", get: Callable[[str], bytes] = fetch,
 ) -> list[str]:  # fmt: skip
     plugins = load_allowlist(allowlist)
     check_data_mounts(plugins, mounted)
     removed = install(plugins, data_dir / "ignis-plugins", base_url, get)
     write_settings(vault_dir, template_dir, plugins, data_dir / "ignis-plugin-data")
+    if reset_server_plugins(data_dir, server_plugins):
+        removed.append("ignis server plugin settings")
     return removed

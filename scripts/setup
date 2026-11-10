@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
     --no-start) START=0 ;;
     --adopt) ADOPT=yes ;;
     --env-file) ENV_FILE=$2; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
   esac
   shift
@@ -105,6 +105,10 @@ if [ "$INTERACTIVE" = 1 ]; then
   if [ "$(get INGRESS)" != local ]; then
     ask OAUTH_UPSTREAM_PROVIDER "Agent connector sign-in: google | microsoft | github | oidc | none"
     if [ "$(get OAUTH_UPSTREAM_PROVIDER)" != none ]; then
+      case "$(get OAUTH_UPSTREAM_PROVIDER)" in
+        microsoft) ask OAUTH_UPSTREAM_TENANT "Connector sign-in: Microsoft Entra tenant id or domain" ;;
+        oidc) ask OAUTH_UPSTREAM_ISSUER "Connector sign-in: OIDC issuer URL (https://…)" ;;
+      esac
       ask OAUTH_UPSTREAM_CLIENT_ID "Connector sign-in: OAuth client id"
       ask OAUTH_UPSTREAM_CLIENT_SECRET "Connector sign-in: OAuth client secret" secret
       ask OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS "Connector sign-in: allowed email domains"
@@ -139,7 +143,8 @@ fi
 set_val PUID "$(id -u)"
 set_val PGID "$(id -g)"
 if [ "$INGRESS" = local ]; then
-  [ -n "$(get MCP_OAUTH_ISSUER)" ] || true  # no public MCP host: OAuth stays off (bearer tokens only)
+  # No public MCP host: OAuth can't work; say so instead of logging a warning at every start.
+  [ -n "$(get MCP_OAUTH_ISSUER)" ] || set_val MCP_OAUTH_ENABLED false
 elif [ -z "$(get MCP_OAUTH_ISSUER)" ] && [ "$(get MCP_OAUTH_ENABLED)" = true ]; then
   set_val MCP_OAUTH_ISSUER "https://$(get MCP_HOST)"
 fi
@@ -250,10 +255,10 @@ remote=$(get GIT_REMOTE)
 if [[ $remote == git@* || $remote == ssh://* ]] && [ ! -f "$DATA_PATH/git-sync/ssh/id_ed25519" ]; then
   say "creating an SSH deploy key for git-sync"
   mkdir -p "$DATA_PATH/git-sync/ssh"
-  "${COMPOSE[@]}" --profile git run --rm --no-deps -T --entrypoint ssh-keygen git-sync \
+  "${COMPOSE[@]}" --profile git run --rm --no-deps -T --entrypoint /usr/local/bin/ensure-user git-sync ssh-keygen \
     -q -t ed25519 -N "" -C "docs-vault git-sync" -f /data/git-sync/ssh/id_ed25519 >/dev/null
   git_host=${remote#ssh://}; git_host=${git_host#*@}; git_host=${git_host%%[:/]*}
-  "${COMPOSE[@]}" --profile git run --rm --no-deps -T --entrypoint ssh-keyscan git-sync -t ed25519,rsa "$git_host" \
+  "${COMPOSE[@]}" --profile git run --rm --no-deps -T --entrypoint /usr/local/bin/ensure-user git-sync ssh-keyscan -t ed25519,rsa "$git_host" \
     > "$DATA_PATH/git-sync/ssh/known_hosts" 2>/dev/null || warn "could not fetch $git_host's host key; add it to $DATA_PATH/git-sync/ssh/known_hosts"
   say "add this public key to the repository as a deploy key WITH write access:"
   cat "$DATA_PATH/git-sync/ssh/id_ed25519.pub"

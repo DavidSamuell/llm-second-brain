@@ -20,6 +20,7 @@ POSITIVES = {
     "github-token": j("gh", "p_", "a1B2" * 9),
     "github-fine-grained-pat": j("github_", "pat_", "11ABCDEFG0", "x" * 72),
     "gitlab-pat": j("gl", "pat-", "aB3dE5gH7jK9mN1pQ3sT"),
+    "vault-mcp-token": j("vm", "cp_", "Zq3" * 14, "x"),
     "slack-token": j("xo", "xb-", "1234567890-1234567890123-", "aBcDeFgHiJkLmNoPqRsTuVwX"),
     "slack-webhook": j("https://hooks.", "slack.com/services/", "T0123ABCD/B0123ABCD/", "a1" * 12),
     "stripe-key": j("sk", "_live_", "51H", "aB3" * 10),

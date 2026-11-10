@@ -21,6 +21,9 @@ def site(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
     (data / "locks").mkdir(parents=True)
     (data / "ignis").mkdir()
     (data / "ignis" / "state.json").write_text('{"user": "settings"}')
+    (data / "ignis" / "plugins" / "headless-sync" / "ob-home").mkdir(
+        parents=True
+    )  # as Ignis leaves it
     db = sqlite3.connect(data / "tokens.db")
     db.execute("PRAGMA journal_mode=WAL")
     db.execute("CREATE TABLE t (v TEXT)")
@@ -51,6 +54,7 @@ def test_backup_then_restore_reproduces_vault_data_and_databases(
     restore(archive, new_vault, new_data, restored_config)
     assert (new_vault / "wiki" / "page.md").read_text() == "# Page\n"
     assert (new_data / "ignis" / "state.json").read_text() == '{"user": "settings"}'
+    assert (new_data / "ignis" / "plugins" / "headless-sync" / "ob-home").is_dir()
     rows = sqlite3.connect(new_data / "tokens.db").execute("SELECT v FROM t").fetchall()
     assert rows == [("committed in WAL",)]
     assert (restored_config / ".env").read_text() == "SECRET=1\n"

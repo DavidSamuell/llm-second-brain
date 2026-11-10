@@ -82,7 +82,17 @@ def create_backup(
             manifest["files"][name] = _sha(path)
             tar.add(path, arcname=name, recursive=False)
 
+        def add_dirs(root: Path, prefix: str) -> None:
+            """Folders too, so empty ones (Ignis creates some) come back on restore."""
+            for d in sorted(p for p in root.rglob("*") if p.is_dir() and not p.is_symlink()):
+                rel = d.relative_to(root).as_posix()
+                if prefix == "data" and (rel + "/").startswith(SKIP_DATA):
+                    continue
+                tar.add(d, arcname=f"{prefix}/{rel}", recursive=False)
+
         with vault_lock(data_dir, "backup"):
+            add_dirs(vault_dir, "vault")
+            add_dirs(data_dir, "data")
             for path in _files(vault_dir):
                 add(path, f"vault/{path.relative_to(vault_dir).as_posix()}")
             for path in _files(data_dir):
