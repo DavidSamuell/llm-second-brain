@@ -33,7 +33,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `agent-runner` service (`ANTHROPIC_API_KEY` or `AGENT_COMMAND`): scheduled ingest and lint with Claude Code through vault-mcp only, a monthly budget (skip + alert), spend tracking, and git commit requests.
 - `scripts/backup` (hot, SQLite-safe, checksummed, optional config) and `scripts/restore` (verified, into stopped and empty folders, then reindex).
 - CI: nightly end-to-end run with Playwright browser checks against the pinned Ignis; release workflow publishing multi-arch images to GHCR on version tags; Dependabot.
+- Documentation: SETUP, UPGRADING, USER-GUIDE, CONNECT-AGENTS, IMPORTING, SECURITY (threat model, offboarding) and final LIMITATIONS.
 
 ### Security
 
+- OAuth hardening from the Checkpoint D review (`docs/reviews/2026-11-10-oauth-security-review.md`).
+- Ignis server plugins (e.g. Headless Sync) are reset at each start unless `IGNIS_SERVER_PLUGINS` allows them, and an alert fires when one is enabled.
+- Admin CLI actions are audited; `scripts/oauth revoke-codes` cancels a person's unused approval codes.
 - Tool paths that go through a symlink are refused, even when the target is inside the vault, and the watcher doesn't record or index them, so an alias can't carry one folder's permissions to another.

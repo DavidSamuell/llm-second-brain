@@ -369,11 +369,13 @@ Commands used in verification:
     - actionlint is clean. The disclosure contact is in SECURITY.md (T41).
   - [ ] **External check (listed for the user):** a nightly run on GitHub, and a test tag publishing amd64 + arm64 images (needs `packages: write` on the repository; `gh auth refresh -s write:packages` for local pushes).
 
-- [ ] **T39 — SETUP.md + UPGRADING.md** · Decisions: D5, D29, D34 · **watch**
+- [x] **T39 — SETUP.md + UPGRADING.md** · Decisions: D5, D29, D34 · **watch**
   - Server requirements (CPU/RAM/disk, amd64/arm64), setup walkthrough per profile, upgrade procedure with the Ignis/Obsidian pin pair and a smoke test.
   - Acceptance: a person new to the kit completes §16.1 using only SETUP.md.
   - Verify: manual dry run by someone other than the author.
   - Deps: T29–T32 · Files: `docs/SETUP.md`, `docs/UPGRADING.md` · Scope: S
+  - **Status:** written by a delegated agent from the code. SETUP covers requirements (all pinned images are multi-arch with arm64; sizing is measured idle memory, labelled as a starting point), setup modes, every INGRESS profile, OAuth and upstream rules, tokens, git-sync, agent-runner, alerts, backups, check-exposure and troubleshooting. UPGRADING covers kit upgrades, the Ignis/Obsidian pin pair (D29) with log verification, upgrade-vault, the automatic tokens.db migration and a smoke test. Gaps it found were fixed (setup prompts and help, `.env.example`, TARGETARCH, inotify hint).
+  - [ ] **External check (listed for the user):** a dry run of §16.1 using only SETUP.md, by someone other than the author.
 
 - [x] **T40 — USER-GUIDE.md, CONNECT-AGENTS.md, IMPORTING.md** · Decisions: D14, D15, D16, D17 · **watch**
   - The non-technical editing and review-queue guide; per-client agent setup (Claude Code, Cursor, Codex, Claude.ai, ChatGPT); the importing flow, where agents fetch content themselves (D14).
@@ -383,11 +385,16 @@ Commands used in verification:
   - **Status:** written by a delegated agent from the code: the user guide (editing, maintainer, review queue, sources, history, secrets, limits), connecting agents (tokens; Claude Code, Cursor, Codex, Claude.ai and ChatGPT; skills; all 14 tools; error codes) and importing (submit_source, URL stubs, adoption, bulk ingest, prompt injection). Gaps it found were fixed in code: `scripts/oauth`, `WebFetch` for agent-runner, ingest caps in compose, and the review-item text. Still open: Claude.ai's "published identity" option isn't supported, so use dynamic registration.
   - [ ] **External check (listed for the user):** connect each client by hand. Every client section is labelled "not yet tested against a live client".
 
-- [ ] **T41 — SECURITY.md + LIMITATIONS.md (final)** · Decisions: D6, D16, D17, D20, D24, D28 · **watch**
+- [x] **T41 — SECURITY.md + LIMITATIONS.md (final)** · Decisions: D6, D16, D17, D20, D24, D28 · **watch**
   - Threat model, Ignis having no auth, plugin allowlist, token/OAuth lifecycle, secrets, offboarding checklist; LIMITATIONS covering T1 results, the Ignis/MCP write race, web attribution, Ignis legal basis, Obsidian terms.
   - Acceptance: every §14 bullet for both docs is covered; the offboarding checklist revokes bearer tokens + OAuth grants + IdP access.
   - Verify: `security-auditor` review of the docs against the code.
   - Deps: T1, T24, T28 · Files: `docs/SECURITY.md`, `docs/LIMITATIONS.md` · Scope: S
+  - **Status:** written by a `security-auditor` agent, checked against the code and the pinned Ignis image (WS_ORIGINS is enforced; cross-site writes are refused).
+    - SECURITY.md covers the threat model, Ignis having no auth, the plugin allowlist and Ignis server plugins, bearer and OAuth lifecycles with the Checkpoint D remainders, secrets, rate limits, audit, symlinks, data at rest, disclosure via GitHub private vulnerability reporting, and an offboarding checklist (`scripts/token revoke`, `scripts/oauth revoke-codes`, IdP and ingress removal).
+    - LIMITATIONS.md keeps the T1 results and adds the write race, attribution, restricted mode, symlinks, search, the Cloudflare/Tailscale limits, and the Ignis AGPL licence and Obsidian terms.
+    - Gaps it found were fixed in code: the Ignis server-plugin reset plus alert, admin audit, revoke-codes, and the `vault-mcp-token` rule. The rest are documented.
+  - [ ] **External check (listed for the user):** enable private vulnerability reporting in the GitHub repository settings.
 
 ### Checkpoint H — complete
 - [ ] All 22 §16 acceptance tests pass (CI e2e + nightly + documented manual runs)

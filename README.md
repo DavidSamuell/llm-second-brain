@@ -8,7 +8,31 @@ An open-source, self-hostable kit for running a shared Obsidian documentation va
 
 The kit contains no documentation content, only what is needed to deploy, secure, and operate a vault. A deployer brings (or creates) the vault, picks how to publish it, edits `.env`, and runs `docker compose up`.
 
-> **Status:** under development. The specification is in [`SPEC.md`](SPEC.md), and the build plan is in [`tasks/plan.md`](tasks/plan.md). Documents linked below that don't exist yet are added by the tasks that build each part.
+> **Status:** pre-release (v0.1.0 candidate). Everything in [`SPEC.md`](SPEC.md) is built and tested locally; checks that need real domains, servers or third-party accounts are listed in [`tasks/todo.md`](tasks/todo.md) as external checks. The build plan is in [`tasks/plan.md`](tasks/plan.md).
+
+## Quick start
+
+```bash
+git clone https://github.com/DavidSamuell/llm-second-brain.git docs-vault-kit
+cd docs-vault-kit
+scripts/setup          # asks for folders and how to publish (start with INGRESS=local), then starts the stack
+scripts/token create --name alice-laptop --owner alice@example.com --scope write
+```
+
+Then follow [`docs/SETUP.md`](docs/SETUP.md) to publish it and [`docs/CONNECT-AGENTS.md`](docs/CONNECT-AGENTS.md) to connect agents.
+
+## What runs
+
+| Service | Role |
+|---|---|
+| `ignis` (+ one-shot `ignis-init`) | Obsidian in the browser; plugin allowlist and managed settings applied before each start |
+| `vault-mcp` | MCP gateway for agents: bearer tokens and OAuth 2.1, policy, version-checked writes, sources, rate limits, audit |
+| `vault-watcher` | Version history for every change, full-text search index, secret scan, ops monitor |
+| `git-sync` (optional) | Commits and pushes the vault to `GIT_REMOTE`, keeps conflicts as `.conflict` files |
+| `agent-runner` (optional) | Scheduled ingest and lint with Claude Code (or `AGENT_COMMAND`) under a monthly budget |
+| `cloudflared` / `caddy` + `oauth2-proxy` | Ingress profiles (`INGRESS=cloudflare` / `caddy`) |
+
+Operator scripts: `scripts/setup`, `token`, `history`, `reindex`, `check-exposure`, `upgrade-vault`, `backup`, `restore`.
 
 ## Documentation
 
