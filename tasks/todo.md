@@ -215,8 +215,8 @@ Commands used in verification:
   - **Status:** 6 monitor tests (alert on the 3rd consecutive failure, once per outage, a recovery notice, a distinct subject per outage so the sender's hourly dedupe can't hide a second outage, one success resets the count, a crashing probe counts as a failure, disk 80 % ok / 81 % alert, heartbeat checked only for enabled services, HTTP probe). e2e in both profiles: stopping vault-mcp gives a `service_unhealthy` alert, restarting it gives `service_recovered`; the resolved compose config and every ingress override contain no `docker.sock`. Compose healthchecks already exist for ignis, vault-mcp and vault-watcher; git-sync and agent-runner get theirs in Phase 4 (the monitor already checks their heartbeats once their state directories exist).
 
 ### Checkpoint C — after T16–T23
-- [ ] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e
-- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim
+- [ ] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e — **local run green (48 passed, 2 expected firewall skips, both profiles); CI run needs a push, which is not authorised**
+- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **not run: it spends your Claude usage; steps are in the Checkpoint C report**
 
 ## Phase 4 — OAuth
 

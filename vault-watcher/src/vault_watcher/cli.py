@@ -70,7 +70,9 @@ def _cmd_run(settings: WatcherSettings, _: argparse.Namespace) -> int:
     monitor = Monitor(
         default_checks(
             peers=_pairs(settings.monitor_peers),
-            heartbeats={k: settings.data_dir / v for k, v in _pairs(settings.monitor_heartbeats).items()},
+            heartbeats={
+                k: settings.data_dir / v for k, v in _pairs(settings.monitor_heartbeats).items()
+            },
             disks=[settings.vault_dir, settings.data_dir],
             heartbeat_max_age_s=3 * settings.monitor_interval_s,
         ),

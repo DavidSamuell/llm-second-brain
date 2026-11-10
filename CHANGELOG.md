@@ -15,3 +15,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `vault-mcp` `search` tool; `scripts/history` (`list`, `restore [--at]`, `restore-deleted`) and `scripts/reindex`.
 - CI: lint (ruff, mypy, shellcheck, hadolint), unit, and end-to-end jobs.
 - `docs/LIMITATIONS.md`: Ignis behaviour verified against the pinned image (shared layout, concurrent edits, on-disk changes while a note is open, mobile layout, read-only plugins mount, pinned Obsidian version, check-exposure markers).
+- `vault-mcp` write tools: `write`, `append`, `replace_section`, `insert_after`, `review_queue_add`, and `move` (Obsidian-style link updates; refused if a page the agent can't edit links to the file). Every write gets a history version and an audit entry before it returns.
+- `vault-mcp` source lifecycle: `submit_source`, `claim_source`, `complete_source`, `release_source`, with leases in `/data/state.db` and a sweeper that returns expired claims to `raw/`.
+- Per-credential rate limits from `vault-mcp.yaml` (`rate_limited` error with `retry_after_s`); `rate_limit_repeated` alert.
+- `vault-watcher` secret scan of every changed text file: high alert, masked `#review/high` review-queue item, audit entry; the secret is never repeated.
+- `vault-watcher` ops monitor: alerts when vault-mcp or Ignis is unhealthy, a heartbeat is stale, or `/vault` or `/data` is over 80 % full. New settings: `MONITOR_INTERVAL_S`, `MONITOR_PEERS`, `MONITOR_HEARTBEATS`. `ALERT_WEBHOOK` now also reaches vault-mcp.
+
+### Security
+
+- Tool paths that go through a symlink are refused, even when the target is inside the vault, and the watcher doesn't record or index them, so an alias can't carry one folder's permissions to another.
