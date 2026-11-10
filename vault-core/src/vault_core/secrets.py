@@ -24,7 +24,7 @@ class Rule:
 class Finding:
     rule: str
     line: int  # 1-based, in the scanned text
-    fingerprint: str  # sha256(match)[:16]; dedupe key that never reveals the secret
+    fingerprint: str  # sha256(match), the D24 dedupe key; never the secret itself
 
     def masked(self) -> str:
         return f"{self.rule} at line {self.line}"
@@ -108,7 +108,7 @@ def _scan_line(line: str, lineno: int) -> list[Finding]:
         for match in rule.pattern.finditer(line):
             value = match.group(rule.group) if rule.group else match.group(0)
             if _plausible(rule, value):
-                digest = hashlib.sha256(match.group(0).encode()).hexdigest()[:16]
+                digest = hashlib.sha256(match.group(0).encode()).hexdigest()
                 found.append(Finding(rule.id, lineno, digest))
     return found
 

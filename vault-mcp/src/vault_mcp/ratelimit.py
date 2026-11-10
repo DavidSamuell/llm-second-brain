@@ -32,9 +32,18 @@ class AlertSink(Protocol):
     ) -> bool: ...
 
 
+def _in_thread(send: Callable[[], object]) -> None:
+    threading.Thread(target=send, name="alert", daemon=True).start()
+
+
 class RateLimiter:
     def __init__(
-        self, limits: RateLimits, *, alerts: AlertSink, clock: Callable[[], float] = time.monotonic
+        self,
+        limits: RateLimits,
+        *,
+        alerts: AlertSink,
+        clock: Callable[[], float] = time.monotonic,
+        dispatch: Callable[[Callable[[], object]], None] | None = None,
     ) -> None:
         self.limits = limits
         self.alerts = alerts
@@ -44,6 +53,8 @@ class RateLimiter:
         self._hits: dict[str, deque[float]] = defaultdict(deque)
         self._alerted: dict[str, float] = {}
         self._lock = threading.Lock()
+        # check() runs on the event loop: webhook delivery (up to 5 s) goes to its own thread.
+        self._dispatch = dispatch or _in_thread
 
     @staticmethod
     def _retry_after(window: deque[float], now: float, span: float, limit: int) -> float | None:
@@ -83,8 +94,13 @@ class RateLimiter:
         last = self._alerted.get(credential_id)
         if len(hits) >= HITS_FOR_ALERT and (last is None or now - last >= ALERT_EVERY):
             self._alerted[credential_id] = now
-            self.alerts.send(
-                "rate_limit_repeated", "warning",
-                f"A credential hit its rate limit {len(hits)} times in 10 minutes.",
-                {"credential_id": credential_id}, subject=credential_id,
-            )  # fmt: skip
+            message = f"A credential hit its rate limit {len(hits)} times in 10 minutes."
+            self._dispatch(
+                lambda: self.alerts.send(
+                    "rate_limit_repeated",
+                    "warning",
+                    message,
+                    {"credential_id": credential_id},
+                    subject=credential_id,
+                )
+            )

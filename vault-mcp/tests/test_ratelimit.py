@@ -38,9 +38,18 @@ class Alerts:
         return True
 
 
+def run_now(send: Any) -> None:
+    send()
+
+
 def limiter(clock: Clock, alerts: Alerts, **limits: int) -> RateLimiter:
     base = {"requests_per_minute": 120, "writes_per_minute": 30, "writes_per_day": 2000}
-    return RateLimiter(RateLimits(**(base | limits)), alerts=alerts, clock=clock)
+    return RateLimiter(
+        RateLimits(**(base | limits)),
+        alerts=alerts,
+        clock=clock,
+        dispatch=run_now,
+    )
 
 
 def code_and_retry(exc: pytest.ExceptionInfo[ToolError]) -> tuple[str, float]:
@@ -141,3 +150,24 @@ async def test_16_8_server_returns_rate_limited_over_mcp(vault, data, tmp_path, 
     assert json.loads(str(exc.value))["code"] == "rate_limited"
     rows = [json.loads(x) for x in (data / "audit.log").read_text().splitlines()]
     assert rows[-1]["result"] == "rate_limited"
+
+
+def test_alert_delivery_does_not_block_the_caller(clock: Clock) -> None:
+    import threading
+    import time as time_module
+
+    release = threading.Event()
+
+    class SlowAlerts(Alerts):
+        def send(self, *args: Any, **kwargs: Any) -> bool:
+            release.wait(5)  # a webhook that hangs
+            return super().send(*args, **kwargs)
+
+    rl = RateLimiter(RateLimits(requests_per_minute=1), alerts=SlowAlerts(), clock=clock)
+    rl.check("c", write=False)
+    start = time_module.monotonic()
+    for _ in range(5):
+        with pytest.raises(ToolError):
+            rl.check("c", write=False)
+    assert time_module.monotonic() - start < 1
+    release.set()

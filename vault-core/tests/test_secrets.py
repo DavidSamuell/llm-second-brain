@@ -85,7 +85,7 @@ def test_findings_never_carry_the_secret() -> None:
     secret = POSITIVES["stripe-key"]
     (finding,) = scan_text(secret)
     assert secret not in repr(finding)
-    assert finding.fingerprint == hashlib.sha256(secret.encode()).hexdigest()[:16]
+    assert finding.fingerprint == hashlib.sha256(secret.encode()).hexdigest()
     assert finding.masked() == "stripe-key at line 1"
 
 

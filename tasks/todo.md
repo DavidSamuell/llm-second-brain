@@ -216,7 +216,11 @@ Commands used in verification:
 
 ### Checkpoint C — after T16–T23
 - [ ] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e — **local run green (48 passed, 2 expected firewall skips, both profiles); CI run needs a push, which is not authorised**
-- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **not run: it spends your Claude usage; steps are in the Checkpoint C report**
+- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **not run (it spends the user's Claude usage).** Steps:
+  1. `docker compose up -d`, then `scripts/token create --name claude-cli --owner you@example.com --scope write`
+  2. `claude mcp add --transport http vault http://127.0.0.1:8082/mcp --header "Authorization: Bearer <token>"`
+  3. In `claude`: "Call get_schema, read wiki/index.md, append a line to a wiki/ page, submit_source a short note, then claim_source it."
+  4. Pass: every call succeeds, `audit.log` has an `ok` line per call, and `scripts/history list <page>` shows the append as `mcp`.
 
 ## Phase 4 — OAuth
 
