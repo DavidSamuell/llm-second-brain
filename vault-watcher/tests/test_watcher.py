@@ -52,7 +52,8 @@ def dirs(tmp_path: Path) -> tuple[Path, Path]:
 def make_watcher(dirs: tuple[Path, Path]) -> Iterator[Callable[..., Watcher]]:
     started: list[Watcher] = []
 
-    def make(**overrides: Any) -> Watcher:
+    def make(*, events: bool = False, **overrides: Any) -> Watcher:
+        """`events=True` for tests that wait for live file events (they need inotify)."""
         vault, data = dirs
         cfg = WatcherConfig(
             vault_dir=vault,
@@ -66,7 +67,7 @@ def make_watcher(dirs: tuple[Path, Path]) -> Iterator[Callable[..., Watcher]]:
         w = Watcher(cfg, alerts=RecordingAlerts())
         w.start()
         started.append(w)
-        if not w._observing:  # these tests exercise inotify-driven behaviour
+        if events and not w._observing:
             pytest.skip("this host has no inotify watches left (fs.inotify.max_user_watches)")
         return w
 
@@ -122,7 +123,7 @@ def test_heartbeat_is_kept_fresh(
 def test_shell_edit_becomes_a_web_version_after_the_debounce(
     make_watcher: Callable[..., Watcher], dirs: tuple[Path, Path]
 ) -> None:
-    make_watcher()
+    make_watcher(events=True)
     page = dirs[0] / "wiki" / "a.md"
     page.write_text("one")
     page.write_text("two")  # rapid saves coalesce
@@ -165,7 +166,7 @@ def test_delete_creates_a_tombstone(
 ) -> None:
     page = dirs[0] / "wiki" / "a.md"
     page.write_text("x")
-    make_watcher()
+    make_watcher(events=True)
     wait_for(lambda: history(dirs).head("wiki/a.md") is not None)
     page.unlink()
     wait_for(lambda: (h := history(dirs).head("wiki/a.md")) is not None and h.event == "delete")
@@ -198,7 +199,7 @@ def test_ignored_paths_are_not_recorded(
     (vault / ".git" / "HEAD").write_text("ref")
     (vault / "wiki" / ".page.md.vault-mcp-abc.tmp").write_text("temp")
     (vault / "wiki" / "real.md").write_text("real")
-    make_watcher()
+    make_watcher(events=True)
     wait_for(lambda: history(dirs).head("wiki/real.md") is not None)
     recorded = {
         str(p.parent.relative_to(dirs[1] / "history"))
@@ -213,7 +214,7 @@ def test_edits_while_git_sync_holds_the_lock_are_attributed_to_git(
 ) -> None:
     page = dirs[0] / "wiki" / "a.md"
     page.write_text("base")
-    make_watcher()
+    make_watcher(events=True)
     wait_for(lambda: history(dirs).head("wiki/a.md") is not None)
     with vault_lock(dirs[1], "git-sync"):
         page.write_text("pulled from remote")
@@ -292,7 +293,7 @@ def test_symlinks_out_of_the_vault_are_never_copied_into_history(
     outside.write_text("outside-the-vault marker: must never reach history")
     (dirs[0] / "wiki" / "at-start.md").symlink_to(outside)
     (dirs[0] / "wiki" / "real.md").write_text("real")
-    make_watcher()
+    make_watcher(events=True)
     wait_for(lambda: history(dirs).head("wiki/real.md") is not None)
     (dirs[0] / "wiki" / "later.md").symlink_to(outside)
     (dirs[0] / "wiki" / "marker.md").write_text("after the symlink")
@@ -312,7 +313,7 @@ def test_edits_and_mcp_writes_are_searchable_and_deletes_drop_out(
 
     db = dirs[1] / "index.db"
     (dirs[0] / "wiki" / "existing.md").write_text("# Existing\n\nlighthouse\n")
-    make_watcher()
+    make_watcher(events=True)
     assert [h.path for h in search(db, "lighthouse")] == ["wiki/existing.md"]  # startup rebuild
     (dirs[0] / "wiki" / "web.md").write_text("# Web\n\nharbour\n")
     wait_for(lambda: [h.path for h in search(db, "harbour")] == ["wiki/web.md"])
