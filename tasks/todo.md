@@ -276,7 +276,7 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** a timed fresh deploy on a clean VM (§16.1 local, < 30 min).
 
 ### Checkpoint E — after T26–T29
-- [ ] §16.1 (local), 12, 17, 18 pass; nightly-style Ignis checks run manually
+- [x] §16.1 (local), 12, 17, 18 pass; nightly-style Ignis checks run manually — full local e2e run 2026-11-10: 62 passed, 2 skipped (firewall). §16.1 local is automated by `test_16_1_local_fresh_deploy_comes_up_healthy`; the timed run on a clean VM is listed under T29. §16.17 and §16.18 pass in both profiles. §16.12 (Ignis shows an agent's edit, with no overwrite) was verified by hand in T1 (docs/LIMITATIONS.md); the nightly Playwright run comes with T38.
 
 ## Phase 6 — Ingress
 
