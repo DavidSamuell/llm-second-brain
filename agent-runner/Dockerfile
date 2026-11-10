@@ -17,13 +17,16 @@ RUN apt-get update \
  && echo "${!sha}  /usr/local/bin/supercronic" | sha256sum -c - \
  && chmod +x /usr/local/bin/supercronic \
  && npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
- && npm cache clean --force
+ && npm cache clean --force \
+ && chmod 666 /etc/passwd
 COPY scripts/lib/alert.sh /usr/local/lib/kit/alert.sh
+# PUID may not be 1000 (the image's node user): ensure-user adds a passwd entry at start.
+COPY git-sync/ensure-user.sh /usr/local/bin/ensure-user
 COPY agent-runner/entrypoint.sh /usr/local/bin/agent-runner
 COPY agent-runner/run-job.sh /usr/local/bin/run-job
 # The kit's skills, used when the vault has none of its own (D30).
 COPY vault-template/skills /opt/kit-skills
 USER node
 ENV HOME=/home/node
-ENTRYPOINT ["/usr/local/bin/agent-runner"]
+ENTRYPOINT ["/usr/local/bin/ensure-user", "/usr/local/bin/agent-runner"]
 CMD ["cron"]

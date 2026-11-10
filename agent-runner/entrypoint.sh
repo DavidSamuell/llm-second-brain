@@ -7,6 +7,9 @@ set -euo pipefail
 
 STATE=${DATA_DIR:-/data}/agent-runner
 export ALERT_SERVICE=agent-runner ALERT_STATE_DIR=$STATE/alerts
+# Claude Code keeps its config under HOME; the image's /home/node belongs to uid 1000, which
+# PUID may not be, so HOME lives in the service's own state folder.
+export HOME=$STATE/home
 mkdir -p "$STATE" "$HOME/.claude/skills"
 : "${VAULT_MCP_TOKEN:?AGENT_RUNNER_TOKEN is not set (run scripts/setup)}"
 export VAULT_MCP_URL=${VAULT_MCP_URL:-http://vault-mcp:8082/mcp}

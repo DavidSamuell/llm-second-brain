@@ -129,7 +129,9 @@ done
 if [ "$INGRESS" != local ]; then
   for key in IGNIS_HOST MCP_HOST; do
     host=$(get "$key")
-    [[ $host =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] && [[ $host != *example.com* ]] || die "set $key to your real hostname"
+    if ! [[ $host =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] || [[ $host == *example.com* ]]; then
+      die "set $key to your real hostname"
+    fi
   done
 fi
 [ "$INGRESS" != cloudflare ] || [ -n "$(get CF_TUNNEL_TOKEN)" ] || die "INGRESS=cloudflare needs CF_TUNNEL_TOKEN"
