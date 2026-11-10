@@ -63,6 +63,9 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
 ## Surprises (T24)
 - FastMCP turns `invalid_grant` from the token endpoint into HTTP **401**, not 400 (the MCP spec requires 401 for invalid tokens). Tests assert 401.
 - The SDK's RFC 7009 revocation handler requires a `client_secret` form field even for public clients (it is declared without a default). Public clients that omit it get 400 and nothing is revoked. Revocation through `token revoke` is unaffected; we kept the SDK handler and document the quirk.
+- [T25] D18 named authlib. vault-mcp instead uses `httpx` for the code exchange and `joserfc` (authlib's own JOSE backend; `authlib.jose` is deprecated in 1.9) to verify ID tokens. That is one small dependency and no client framework. Upstream sign-in uses PKCE and an OIDC nonce; the authorization request id is the `state`. Reversible: yes.
+- [T25] Microsoft sign-in requires `OAUTH_UPSTREAM_TENANT` (a tenant id or domain, never `common`/`organizations`/`consumers`). A multi-tenant login would accept any tenant's self-asserted email (the "nOAuth" class of bug). Inside that tenant, the `email` claim (or `preferred_username`) is trusted, because Entra ID doesn't send `email_verified`. Reversible: yes.
+- [T25] Anyone who signs in upstream with an allowed email domain may grant `write`, but can narrow it to read on the consent page. An upstream provider without `OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS` refuses to start, so a misconfigured Google login can't admit every Google account. When an upstream is set, the approval-code form is turned off. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.

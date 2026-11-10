@@ -175,11 +175,33 @@ class OAuthStore:
         )  # fmt: skip
 
     def identify(self, req: str, owner: str, max_scope: Scope) -> None:
+        """Signed in upstream: record who, and forget the one-time upstream values."""
         with self.store.db() as conn:
             conn.execute(
-                "UPDATE auth_requests SET owner = ?, max_scope = ? WHERE hash = ?",
+                "UPDATE auth_requests SET owner = ?, max_scope = ?, upstream_verifier = NULL, upstream_nonce = NULL"
+                " WHERE hash = ?",
                 (owner, max_scope, _hash(req)),
             )
+
+    def start_upstream(self, req: str) -> tuple[str, str]:
+        """PKCE verifier and OIDC nonce for the identity-provider round trip."""
+        verifier, nonce = secrets.token_urlsafe(48), secrets.token_urlsafe(24)
+        with self.store.db() as conn:
+            conn.execute(
+                "UPDATE auth_requests SET upstream_verifier = ?, upstream_nonce = ? WHERE hash = ?",
+                (verifier, nonce, _hash(req)),
+            )
+        return verifier, nonce
+
+    def upstream_values(self, req: str) -> tuple[str, str] | None:
+        with self.store.db() as conn:
+            row = conn.execute(
+                "SELECT upstream_verifier, upstream_nonce FROM auth_requests WHERE hash = ? AND expires_at > ?",
+                (_hash(req), _iso(self.store.now())),
+            ).fetchone()
+        if row is None or row["upstream_verifier"] is None:
+            return None
+        return row["upstream_verifier"], row["upstream_nonce"]
 
     def drop_request(self, req: str) -> None:
         with self.store.db() as conn:

@@ -8,6 +8,7 @@ dependencies = [
     "vault-core",
     "fastmcp==3.4.11",
     "markdown-it-py>=3,<5",
+    "joserfc>=1.0,<2",
 ]
 
 [build-system]

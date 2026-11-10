@@ -125,7 +125,11 @@ def _cmd_serve(store: CredentialStore, args: argparse.Namespace) -> int:
             return 2
         build_server(settings, stdio_token=token).run(transport="stdio", show_banner=False)
     else:
-        server = build_server(settings)
+        try:
+            server = build_server(settings)
+        except ValueError as exc:  # invalid OAUTH_UPSTREAM_* settings: refuse to start
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
         server.run(transport="http", host=args.host, port=args.port, path="/mcp", show_banner=False)
     return 0
 

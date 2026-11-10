@@ -78,6 +78,8 @@ CREATE TABLE auth_requests (
     owner TEXT,
     max_scope TEXT,
     attempts INTEGER NOT NULL DEFAULT 0,
+    upstream_verifier TEXT,
+    upstream_nonce TEXT,
     expires_at TEXT NOT NULL
 );
 CREATE TABLE auth_codes (

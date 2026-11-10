@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 from urllib.parse import urlparse
 
+import httpx
 from fastmcp import FastMCP
 from mcp.server.auth.provider import construct_redirect_uri
 from starlette.requests import Request
@@ -21,6 +22,7 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 from vault_core.audit import AuditLog
 from vault_mcp.oauth.grants import PendingRequest, scope_from_oauth
 from vault_mcp.oauth.provider import VaultOAuthProvider
+from vault_mcp.oauth.upstream import LoginRefused, Upstream
 
 COOKIE = "vmcp_oauth"
 _HEADERS = {
@@ -55,12 +57,17 @@ def error_page(message: str, status: int = 400) -> HTMLResponse:
 
 
 class OAuthPages:
-    def __init__(self, provider: VaultOAuthProvider, audit: AuditLog) -> None:
+    def __init__(
+        self, provider: VaultOAuthProvider, audit: AuditLog, upstream: Upstream | None = None
+    ) -> None:
         self.provider = provider
         self.grants = provider.grants
         self.audit = audit
+        self.upstream = upstream
         self.secure_cookie = provider.issuer.startswith("https://")
-        self.login_start: LoginStart = self._approval_form_start
+        self.login_start: LoginStart = (
+            self._upstream_start if upstream else self._approval_form_start
+        )
 
     # -- helpers --------------------------------------------------------------------------------
 
@@ -104,6 +111,61 @@ class OAuthPages:
     ) -> Response:
         return self._approval_form(req)
 
+    # -- upstream identity provider (D18) ----------------------------------------------------
+
+    async def _upstream_start(
+        self, request: Request, req: str, pending: PendingRequest
+    ) -> Response:
+        assert self.upstream is not None  # noqa: S101 - only installed with an upstream
+        nonce_cookie, _ = await asyncio.to_thread(self.grants.bind_browser, req)
+        verifier, oidc_nonce = await asyncio.to_thread(self.grants.start_upstream, req)
+        try:
+            target = await self.upstream.authorize_url(req, oidc_nonce, verifier)
+        except (httpx.HTTPError, LoginRefused):
+            return error_page(
+                "The sign-in service is not reachable right now. Try again in a minute.", 502
+            )
+        return self._with_cookie(
+            RedirectResponse(target, status_code=302, headers=_HEADERS), nonce_cookie
+        )
+
+    async def callback(self, request: Request) -> Response:
+        """The identity provider sends the browser back here; `state` is the request id."""
+        req = request.query_params.get("state") or ""
+        pending = await self._pending(req)
+        if self.upstream is None or pending is None:
+            return error_page(
+                "This sign-in has expired or is not valid. Start the connection again from your app."
+            )
+        if not self.grants.cookie_matches(pending, request.cookies.get(COOKIE)):
+            return error_page(
+                "This sign-in was started in another browser. Start again from your app."
+            )
+        values = await asyncio.to_thread(self.grants.upstream_values, req)
+        code = request.query_params.get("code")
+        if values is None or not code:
+            await asyncio.to_thread(self.grants.drop_request, req)
+            return error_page(
+                "Sign-in was cancelled or failed at the identity provider. Start again from your app."
+            )
+        verifier, oidc_nonce = values
+        try:
+            email = await self.upstream.email(code, verifier, oidc_nonce)
+        except (LoginRefused, httpx.HTTPError) as exc:
+            await asyncio.to_thread(self.grants.drop_request, req)
+            reason = (
+                str(exc)
+                if isinstance(exc, LoginRefused)
+                else "The sign-in service is not reachable right now."
+            )
+            await asyncio.to_thread(
+                self.audit.append, service="vault-mcp", tool="oauth_login", result="forbidden",
+                client_id=pending.client_id, upstream=self.upstream.name, detail=reason,
+            )  # fmt: skip
+            return error_page(reason, 403)
+        await asyncio.to_thread(self.grants.identify, req, email, "write")
+        return RedirectResponse(f"/oauth/consent?req={req}", status_code=303, headers=_HEADERS)
+
     async def login(self, request: Request) -> Response:
         req = request.query_params.get("req")
         pending = await self._pending(req)
@@ -116,6 +178,10 @@ class OAuthPages:
         return await self.login_start(request, req, pending)
 
     async def login_submit(self, request: Request) -> Response:
+        if self.upstream is not None:
+            return error_page(
+                "Sign in with your organisation's account: start again from your app.", 405
+            )
         form = await request.form()
         req, csrf, code = (str(form.get(k) or "") for k in ("req", "csrf", "code"))
         pending = await self._pending(req)
@@ -215,6 +281,7 @@ class OAuthPages:
         mcp.custom_route("/oauth/login", methods=["POST"])(self.login_submit)
         mcp.custom_route("/oauth/consent", methods=["GET"])(self.consent)
         mcp.custom_route("/oauth/consent", methods=["POST"])(self.consent_submit)
+        mcp.custom_route("/oauth/callback", methods=["GET"])(self.callback)
 
 
 def _requested(pending: PendingRequest) -> Literal["read", "write"]:

@@ -1,4 +1,4 @@
-"""OAuth 2.1 authorization server (SPEC §6.3 (2), §16.6 local part; plan D16/D17)."""
+"""OAuth 2.1 authorization server and upstream sign-in (SPEC §6.3 (2), §16.6 local part; plan D16-D18)."""
 
 import base64
 import hashlib
@@ -9,7 +9,7 @@ import socket
 import threading
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -20,11 +20,19 @@ import uvicorn
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
 from fastmcp.exceptions import ToolError
+from joserfc import jwt
+from joserfc.jwk import RSAKey
 from mcp.client.auth import OAuthClientProvider
 from mcp.shared.auth import OAuthClientInformationFull, OAuthClientMetadata, OAuthToken
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse, RedirectResponse
+from starlette.routing import Route
 
 from vault_core.config import Settings
+from vault_mcp import server as server_module
 from vault_mcp.oauth.grants import OAuthStore
+from vault_mcp.oauth.upstream import GitHubUpstream, OIDCUpstream, build_upstream
 from vault_mcp.server import build_server
 from vault_mcp.store import CredentialStore
 
@@ -604,3 +612,296 @@ async def test_oauth_use_is_shown_as_last_used_in_token_list(server: Server) -> 
     await call(server.url, tokens["access_token"], "read", {"path": "wiki/index.md"})
     grant = next(c for c in server.store.list_credentials() if c.kind == "oauth")
     assert grant.last_used_at is not None
+
+
+# -- upstream sign-in (T25, plan D18) ---------------------------------------------------------
+
+CLIENT_ID, CLIENT_SECRET = "kit-client", "kit-secret"
+
+
+@dataclass
+class MockIdP:
+    """One OIDC provider and one GitHub-like provider. `identity` controls who signs in."""
+
+    url: str = ""
+    key: RSAKey = field(default_factory=lambda: RSAKey.generate_key(2048, parameters={"kid": "k1"}))
+    identity: dict[str, Any] = field(
+        default_factory=lambda: {"email": "alice@example.com", "email_verified": True}
+    )
+    github_emails: list[dict[str, Any]] = field(default_factory=list)
+    tamper: str | None = None  # "nonce" | "key" | "aud"
+    codes: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def app(self) -> Starlette:
+        async def discovery(_: Request) -> JSONResponse:
+            return JSONResponse({"issuer": self.url, "authorization_endpoint": f"{self.url}/authorize",
+                                 "token_endpoint": f"{self.url}/token", "jwks_uri": f"{self.url}/jwks"})  # fmt: skip
+
+        async def authorize(request: Request) -> RedirectResponse:
+            q = request.query_params
+            code = secrets.token_urlsafe(16)
+            self.codes[code] = dict(q)
+            return RedirectResponse(
+                f"{q['redirect_uri']}?{urlencode({'code': code, 'state': q['state']})}", 302
+            )
+
+        async def token(request: Request) -> JSONResponse:
+            form = await request.form()
+            grant = self.codes.pop(str(form["code"]), None)
+            if grant is None or form["client_secret"] != CLIENT_SECRET:
+                return JSONResponse({"error": "invalid_grant"}, 400)
+            challenge = (
+                base64.urlsafe_b64encode(
+                    hashlib.sha256(str(form["code_verifier"]).encode()).digest()
+                )
+                .rstrip(b"=")
+                .decode()
+            )
+            if challenge != grant["code_challenge"]:
+                return JSONResponse({"error": "invalid_grant"}, 400)
+            claims = {"iss": self.url, "aud": "someone-else" if self.tamper == "aud" else CLIENT_ID, "sub": "u1",
+                      "exp": int(time.time()) + 300, "iat": int(time.time()),
+                      "nonce": "wrong" if self.tamper == "nonce" else grant.get("nonce"), **self.identity}  # fmt: skip
+            key = (
+                RSAKey.generate_key(2048, parameters={"kid": "k1"})
+                if self.tamper == "key"
+                else self.key
+            )
+            id_token = jwt.encode({"alg": "RS256", "kid": "k1"}, claims, key)
+            return JSONResponse(
+                {"access_token": "upstream-at", "token_type": "Bearer", "id_token": id_token}
+            )
+
+        async def jwks(_: Request) -> JSONResponse:
+            return JSONResponse({"keys": [self.key.as_dict(private=False)]})
+
+        async def gh_authorize(request: Request) -> RedirectResponse:
+            return await authorize(request)
+
+        async def gh_token(request: Request) -> JSONResponse:
+            form = await request.form()
+            if self.codes.pop(str(form["code"]), None) is None:
+                return JSONResponse({"error": "bad_verification_code"})
+            return JSONResponse(
+                {"access_token": "gho_upstream", "token_type": "bearer", "scope": "user:email"}
+            )
+
+        async def gh_emails(request: Request) -> JSONResponse:
+            assert request.headers["authorization"] == "Bearer gho_upstream"
+            return JSONResponse(self.github_emails)
+
+        return Starlette(routes=[
+            Route("/.well-known/openid-configuration", discovery), Route("/authorize", authorize),
+            Route("/token", token, methods=["POST"]), Route("/jwks", jwks),
+            Route("/login/oauth/authorize", gh_authorize), Route("/login/oauth/access_token", gh_token, methods=["POST"]),
+            Route("/user/emails", gh_emails),
+        ])  # fmt: skip
+
+
+def _run(app: Any) -> Iterator[str]:
+    port = free_port()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning"))
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    server.should_exit = True
+    thread.join(5)
+
+
+@dataclass
+class Stack:
+    url: str
+    idp: MockIdP
+    store: CredentialStore
+    data: Path
+
+
+def _stack(
+    vault: Path, data: Path, policy_file: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> Iterator[Stack]:
+    idp = MockIdP()
+    for idp_url in _run(idp.app()):
+        idp.url = idp_url
+        port = free_port()
+        issuer = f"http://127.0.0.1:{port}"
+
+        def fake_build(*_: Any, idp_url: str = idp_url, **kw: Any) -> Any:
+            if kind == "github":
+                return GitHubUpstream(
+                    CLIENT_ID,
+                    CLIENT_SECRET,
+                    kw["redirect_uri"],
+                    frozenset({"example.com"}),
+                    web=idp_url,
+                    api=idp_url,
+                )
+            return OIDCUpstream(
+                "oidc",
+                idp_url,
+                CLIENT_ID,
+                CLIENT_SECRET,
+                kw["redirect_uri"],
+                frozenset({"example.com"}),
+            )
+
+        monkeypatch.setattr(server_module, "build_upstream", fake_build)
+        app = server_module.build_server(
+            Settings(
+                vault_dir=vault, data_dir=data, policy_file=policy_file, mcp_oauth_issuer=issuer
+            )
+        ).http_app(path="/mcp")
+        server = uvicorn.Server(
+            uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
+        )
+        thread = threading.Thread(target=server.run, daemon=True)
+        thread.start()
+        deadline = time.monotonic() + 10
+        while not server.started:
+            assert time.monotonic() < deadline
+            time.sleep(0.05)
+        yield Stack(issuer, idp, CredentialStore(data / "tokens.db"), data)
+        server.should_exit = True
+        thread.join(5)
+
+
+@pytest.fixture
+def oidc(
+    vault: Path, data: Path, policy_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Stack]:
+    yield from _stack(vault, data, policy_file, monkeypatch, "oidc")
+
+
+@pytest.fixture
+def github(
+    vault: Path, data: Path, policy_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Stack]:
+    yield from _stack(vault, data, policy_file, monkeypatch, "github")
+
+
+def sign_in_upstream(
+    stack: Stack, browser: httpx.Client | None = None
+) -> tuple[httpx.Client, httpx.Response]:
+    """Drive the browser: our /authorize → our login → the IdP → our callback."""
+    http = browser or httpx.Client()
+    client = register(http, stack.url)
+    login = start(http, stack.url, client, pkce()[1])
+    to_idp = http.get(login)
+    assert to_idp.status_code == 302, to_idp.text
+    back = http.get(to_idp.headers["location"])  # the IdP signs the user in and redirects back
+    assert back.status_code == 302
+    return http, http.get(back.headers["location"])
+
+
+def test_oidc_sign_in_sets_the_owner_from_the_verified_email(oidc: Stack) -> None:
+    http = httpx.Client()
+    client = register(http, oidc.url)
+    verifier, challenge = pkce()
+    to_idp = http.get(start(http, oidc.url, client, challenge))
+    callback = http.get(http.get(to_idp.headers["location"]).headers["location"])
+    assert callback.status_code == 303, callback.text
+    done = consent(http, oidc.url, callback.headers["location"])
+    code = parse_qs(urlparse(done.headers["location"]).query)["code"][0]
+    token = http.post(f"{oidc.url}/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": REDIRECT,
+                                                "client_id": client["client_id"], "code_verifier": verifier})  # fmt: skip
+    assert token.status_code == 200
+    grant = next(c for c in oidc.store.list_credentials() if c.kind == "oauth")
+    assert (grant.owner, grant.scope) == ("alice@example.com", "write")
+
+
+@pytest.mark.parametrize(
+    ("identity", "tamper", "message"),
+    [
+        ({"email": "eve@evil.example", "email_verified": True}, None, "use this vault"),
+        ({"email": "alice@example.com", "email_verified": False}, None, "not verified"),
+        ({"email": "alice@example.com"}, None, "not verified"),
+        ({"email": "alice@example.com", "email_verified": True}, "nonce", "not valid"),
+        ({"email": "alice@example.com", "email_verified": True}, "key", "not valid"),
+        ({"email": "alice@example.com", "email_verified": True}, "aud", "not valid"),
+    ],
+)
+def test_oidc_refusals(
+    oidc: Stack, identity: dict[str, Any], tamper: str | None, message: str
+) -> None:
+    oidc.idp.identity, oidc.idp.tamper = identity, tamper
+    _, callback = sign_in_upstream(oidc)
+    assert callback.status_code == 403
+    assert message in callback.text
+    audit = [json.loads(x) for x in (oidc.data / "audit.log").read_text().splitlines()]
+    assert [r["result"] for r in audit if r["tool"] == "oauth_login"] == ["forbidden"]
+
+
+def test_a_callback_in_another_browser_is_refused(oidc: Stack) -> None:
+    alice = httpx.Client()
+    client = register(alice, oidc.url)
+    to_idp = alice.get(start(alice, oidc.url, client, pkce()[1]))
+    back = alice.get(to_idp.headers["location"])
+    assert (
+        httpx.get(back.headers["location"]).status_code == 400
+    )  # no cookie: someone else's browser
+
+
+def test_github_uses_only_the_primary_verified_email(github: Stack) -> None:
+    github.idp.github_emails = [
+        {"email": "alice@example.com", "primary": False, "verified": True},
+        {"email": "alice@other.example", "primary": True, "verified": True},
+    ]
+    _, callback = sign_in_upstream(github)
+    assert callback.status_code == 403  # the allowed address is not the primary one
+    github.idp.github_emails = [{"email": "alice@example.com", "primary": True, "verified": False}]
+    _, callback = sign_in_upstream(github)
+    assert callback.status_code == 403
+    assert "not verified" in callback.text
+    github.idp.github_emails = [{"email": "Alice@Example.com", "primary": True, "verified": True}]
+    http, callback = sign_in_upstream(github)
+    assert callback.status_code == 303
+    done = consent(http, github.url, callback.headers["location"])
+    code = parse_qs(urlparse(done.headers["location"]).query)["code"][0]
+    assert code.startswith("vmcpc_")
+
+
+def test_approval_code_form_is_off_when_an_upstream_is_configured(oidc: Stack) -> None:
+    r = httpx.post(f"{oidc.url}/oauth/login", data={"req": "x", "csrf": "y", "code": "z"})
+    assert r.status_code == 405
+
+
+@pytest.mark.parametrize(
+    ("provider", "kwargs", "message"),
+    [
+        ("google", {"allowed_domains": ""}, "ALLOWED_EMAIL_DOMAINS"),
+        ("google", {"client_secret": None}, "CLIENT_SECRET"),
+        ("microsoft", {"tenant": "common"}, "TENANT"),
+        ("microsoft", {"tenant": None}, "TENANT"),
+        ("oidc", {"issuer": "http://idp.example"}, "ISSUER"),
+        ("okta", {}, "OAUTH_UPSTREAM_PROVIDER"),
+    ],
+)
+def test_bad_upstream_settings_refuse_to_start(
+    provider: str, kwargs: dict[str, Any], message: str
+) -> None:
+    base: dict[str, Any] = {"client_id": "id", "client_secret": "s", "allowed_domains": "example.com",
+                            "redirect_uri": "https://mcp.example/oauth/callback", "issuer": "https://idp.example", "tenant": "contoso.com"}  # fmt: skip
+    with pytest.raises(ValueError, match=message):
+        build_upstream(provider, **(base | kwargs))
+
+
+def test_none_means_approval_codes_and_google_is_oidc() -> None:
+    assert (
+        build_upstream(
+            "none", client_id=None, client_secret=None, allowed_domains="", redirect_uri="x"
+        )
+        is None
+    )
+    google = build_upstream(
+        "google",
+        client_id="i",
+        client_secret="s",
+        allowed_domains="Example.com, @corp.example",
+        redirect_uri="x",
+    )
+    assert isinstance(google, OIDCUpstream)
+    assert google.issuer == "https://accounts.google.com"
+    assert google.allowed_domains == frozenset({"example.com", "corp.example"})

@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     alert_webhook: str | None = None  # SPEC §12 ALERT_WEBHOOK
     mcp_oauth_enabled: bool = True  # SPEC §13; OAuth also needs MCP_OAUTH_ISSUER
     mcp_oauth_issuer: str | None = None  # public https URL of the MCP host
+    # D18: who may sign in through OAuth; empty or "none" means admin approval codes.
+    oauth_upstream_provider: str = "none"
+    oauth_upstream_client_id: str | None = None
+    oauth_upstream_client_secret: str | None = None
+    oauth_upstream_allowed_email_domains: str = ""
+    oauth_upstream_issuer: str | None = None  # provider=oidc
+    oauth_upstream_tenant: str | None = None  # provider=microsoft
 
 
 def bind_addr_warning(bind_addr: str) -> str | None:

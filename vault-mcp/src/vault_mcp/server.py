@@ -21,6 +21,7 @@ from vault_core.policy import load_policy
 from vault_mcp.errors import VaultToolError
 from vault_mcp.oauth.pages import OAuthPages
 from vault_mcp.oauth.provider import VaultOAuthProvider
+from vault_mcp.oauth.upstream import build_upstream
 from vault_mcp.ratelimit import RateLimiter
 from vault_mcp.sources import SourceTools
 from vault_mcp.store import Credential, CredentialStore
@@ -89,7 +90,16 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         auth=None if stdio_token is not None else (oauth or BearerVerifier(store)),
     )
     if oauth is not None:
-        OAuthPages(oauth, audit).register(mcp)
+        upstream = build_upstream(
+            settings.oauth_upstream_provider,
+            client_id=settings.oauth_upstream_client_id,
+            client_secret=settings.oauth_upstream_client_secret,
+            allowed_domains=settings.oauth_upstream_allowed_email_domains,
+            redirect_uri=f"{oauth.issuer}/oauth/callback",
+            issuer=settings.oauth_upstream_issuer,
+            tenant=settings.oauth_upstream_tenant,
+        )
+        OAuthPages(oauth, audit, upstream).register(mcp)
 
     def current() -> Credential:
         if stdio_token is not None:
