@@ -66,9 +66,17 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     )
 
     sources = SourceTools(writer)
-    limiter = RateLimiter(
-        policy.rate_limits, alerts=AlertSender(settings.alert_webhook, service="vault-mcp")
-    )
+    alerts = AlertSender(settings.alert_webhook, service="vault-mcp")
+    limiter = RateLimiter(policy.rate_limits, alerts=alerts)
+
+    def oauth_event(event: str, details: dict[str, Any]) -> None:
+        """Security events from the OAuth server: audited; refresh-token reuse also alerts."""
+        audit.append(service="vault-mcp", tool=event, result="revoked", **details)
+        if event == "oauth_refresh_reuse":
+            alerts.send(
+                event, "high", "An OAuth refresh token was used twice; the grant was revoked (possible token theft).",
+                details, subject=str(details.get("credential_id")),
+            )  # fmt: skip
 
     @asynccontextmanager
     async def lifespan(_: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
@@ -79,7 +87,7 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
             sweeper.cancel()
 
     oauth = (
-        VaultOAuthProvider(store, settings.mcp_oauth_issuer)
+        VaultOAuthProvider(store, settings.mcp_oauth_issuer, oauth_event)
         if stdio_token is None and settings.mcp_oauth_enabled and settings.mcp_oauth_issuer
         else None
     )
@@ -99,7 +107,7 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
             issuer=settings.oauth_upstream_issuer,
             tenant=settings.oauth_upstream_tenant,
         )
-        OAuthPages(oauth, audit, upstream).register(mcp)
+        OAuthPages(oauth, audit, upstream, alerts).register(mcp)
 
     def current() -> Credential:
         if stdio_token is not None:

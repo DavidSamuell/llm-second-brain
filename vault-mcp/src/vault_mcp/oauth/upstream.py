@@ -67,6 +67,11 @@ class OIDCUpstream:
     allowed_domains: frozenset[str]
     require_email_verified: bool = True
     email_claims: tuple[str, ...] = ("email",)
+    # Google: only Workspace accounts carry `hd`; a personal Google account registered with a
+    # work address does not, and would outlive the person's employment.
+    require_hosted_domain: bool = False
+    # Microsoft: a tenant configured by domain name discovers its GUID issuer.
+    issuer_pattern: str | None = None
     _meta: dict[str, Any] | None = field(default=None, init=False)
 
     async def _metadata(self) -> dict[str, Any]:
@@ -75,10 +80,13 @@ class OIDCUpstream:
                 r = await http.get(self.issuer.rstrip("/") + "/.well-known/openid-configuration")
                 r.raise_for_status()
                 meta = dict(r.json())
-            if meta.get("issuer") != self.issuer:
-                raise LoginRefused(
-                    "The identity provider's configuration doesn't match its issuer."
-                )
+            discovered = str(meta.get("issuer", ""))
+            if discovered != self.issuer:
+                if self.issuer_pattern is None or not re.fullmatch(self.issuer_pattern, discovered):
+                    raise LoginRefused(
+                        "The identity provider's configuration doesn't match its issuer."
+                    )
+                self.issuer = discovered
             self._meta = meta
         return self._meta
 
@@ -121,7 +129,15 @@ class OIDCUpstream:
         if self.require_email_verified and claims.get("email_verified") is not True:
             raise LoginRefused("Your email address is not verified with the identity provider.")
         email = next((str(claims[c]) for c in self.email_claims if claims.get(c)), "")
-        return check_domain(email, self.allowed_domains)
+        email = check_domain(email, self.allowed_domains)
+        if (
+            self.require_hosted_domain
+            and str(claims.get("hd", "")).lower() != email.rsplit("@", 1)[1].lower()
+        ):
+            raise LoginRefused(
+                "Sign in with your organisation's Google Workspace account, not a personal Google account."
+            )
+        return email
 
 
 @dataclass
@@ -193,8 +209,9 @@ def build_upstream(
         raise ValueError("OAUTH_UPSTREAM_CLIENT_ID and OAUTH_UPSTREAM_CLIENT_SECRET are required")
     if provider == "google":
         return OIDCUpstream(
-            "google", "https://accounts.google.com", client_id, client_secret, redirect_uri, domains
-        )
+            "google", "https://accounts.google.com", client_id, client_secret, redirect_uri, domains,
+            require_hosted_domain=True,
+        )  # fmt: skip
     if provider == "microsoft":
         if not tenant or tenant.lower() in _MULTI_TENANT or not _TENANT_RE.match(tenant):
             raise ValueError(
@@ -203,6 +220,7 @@ def build_upstream(
         return OIDCUpstream(
             "microsoft", f"https://login.microsoftonline.com/{tenant}/v2.0", client_id, client_secret, redirect_uri,
             domains, require_email_verified=False, email_claims=("email", "preferred_username"),
+            issuer_pattern=r"https://login\.microsoftonline\.com/[0-9a-f-]{36}/v2\.0",
         )  # fmt: skip
     if provider == "oidc":
         if not issuer or not issuer.startswith("https://"):

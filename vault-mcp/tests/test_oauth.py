@@ -524,19 +524,19 @@ def test_mcp_oauth_enabled_false_disables_every_oauth_route(
 # -- store-level guards -------------------------------------------------------------------------------
 
 
-def test_thirty_failed_sign_ins_lock_every_request_for_ten_minutes(data: Path) -> None:
-    from datetime import UTC, datetime, timedelta
+def test_failed_codes_never_lock_out_a_correct_code(data: Path) -> None:
+    """A server-wide lockout would let anyone block every sign-in (review M5); failures only alert."""
+    from datetime import timedelta
 
-    clock = {"now": datetime(2026, 11, 10, tzinfo=UTC)}
-    grants = OAuthStore(CredentialStore(data / "tokens.db", now=lambda: clock["now"]))
-    good = grants.create_approval_code("a@example.com", "read", timedelta(hours=2))
-    for i in range(30):
-        req = grants.create_request("client", {"redirect_uri": REDIRECT})
+    grants = OAuthStore(CredentialStore(data / "tokens.db"))
+    good = grants.create_approval_code("a@example.com", "read", timedelta(hours=1))
+    for i in range(40):
+        req = grants.create_request(f"client-{i}", {"redirect_uri": REDIRECT})
+        assert req is not None
         assert grants.login_with_approval_code(req, f"WRONG{i:05d}") is not None
-    req = grants.create_request("client", {"redirect_uri": REDIRECT})
-    assert "Too many failed sign-in attempts" in str(grants.login_with_approval_code(req, good))
-    clock["now"] += timedelta(minutes=11)
-    req = grants.create_request("client", {"redirect_uri": REDIRECT})
+    assert grants.recent_failures() == 40
+    req = grants.create_request("client-real", {"redirect_uri": REDIRECT})
+    assert req is not None
     assert grants.login_with_approval_code(req, good) is None
 
 
@@ -740,12 +740,13 @@ def _stack(
                     api=idp_url,
                 )
             return OIDCUpstream(
-                "oidc",
+                "oidc" if kind == "oidc" else "google",
                 idp_url,
                 CLIENT_ID,
                 CLIENT_SECRET,
                 kw["redirect_uri"],
                 frozenset({"example.com"}),
+                require_hosted_domain=kind == "google",
             )
 
         monkeypatch.setattr(server_module, "build_upstream", fake_build)
@@ -773,6 +774,13 @@ def oidc(
     vault: Path, data: Path, policy_file: Path, monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[Stack]:
     yield from _stack(vault, data, policy_file, monkeypatch, "oidc")
+
+
+@pytest.fixture
+def google(
+    vault: Path, data: Path, policy_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[Stack]:
+    yield from _stack(vault, data, policy_file, monkeypatch, "google")
 
 
 @pytest.fixture
@@ -905,3 +913,115 @@ def test_none_means_approval_codes_and_google_is_oidc() -> None:
     assert isinstance(google, OIDCUpstream)
     assert google.issuer == "https://accounts.google.com"
     assert google.allowed_domains == frozenset({"example.com", "corp.example"})
+
+
+# -- Checkpoint D review fixes ----------------------------------------------------------------------
+
+
+def authorize_raw(server: Server, client: dict[str, Any], **overrides: str) -> httpx.Response:
+    q = {"response_type": "code", "client_id": client["client_id"], "redirect_uri": REDIRECT, "state": "s",
+         "code_challenge": pkce()[1], "code_challenge_method": "S256", "scope": "vault:read"} | overrides  # fmt: skip
+    return httpx.get(f"{server.url}/authorize?{urlencode(q)}")
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"scope": "admin"},
+        {"state": "x" * 600},
+        {"code_challenge": "short"},
+        {"code_challenge": "c" * 5000},
+    ],
+)
+def test_authorize_errors_show_a_page_instead_of_redirecting_to_the_app(
+    server: Server, overrides: dict[str, str]
+) -> None:
+    """No open redirect on the vault's hostname, and no huge rows (review M1, M2)."""
+    client = register(httpx.Client(), server.url)
+    r = authorize_raw(server, client, **overrides)
+    assert r.status_code == 400
+    assert "location" not in r.headers
+
+
+def test_pending_sign_ins_are_capped_per_client(
+    server: Server, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vault_mcp.oauth import grants as grants_module
+
+    monkeypatch.setattr(grants_module, "MAX_PENDING_PER_CLIENT", 3)
+    client = register(httpx.Client(), server.url)
+    assert [authorize_raw(server, client).status_code for _ in range(4)] == [302, 302, 302, 400]
+
+
+@pytest.mark.parametrize(
+    "uri", ["https://claude.ai@evil.example/cb", "ms-msdt:/id", "search-ms:query=x"]
+)
+def test_registration_rejects_deceptive_and_os_handler_redirects(server: Server, uri: str) -> None:
+    r = httpx.post(
+        f"{server.url}/register",
+        json={"redirect_uris": [uri], "client_name": "x", "token_endpoint_auth_method": "none"},
+    )
+    assert r.status_code == 400
+
+
+def test_consent_says_the_name_is_unverified_and_shows_only_the_hostname(server: Server) -> None:
+    http = httpx.Client()
+    client = register(http, server.url, name="Claude")
+    signed = sign_in(http, start(http, server.url, client, pkce()[1]), server.approval_code())
+    page = http.get(server.url + signed.headers["location"]).text
+    assert "not verified" in page
+    assert "<strong>127.0.0.1</strong>" in page
+
+
+def test_registration_floods_evict_unused_clients_instead_of_locking_out(
+    data: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from vault_mcp.oauth import grants as grants_module
+
+    monkeypatch.setattr(grants_module, "MAX_CLIENTS", 5)
+    grants = OAuthStore(CredentialStore(data / "tokens.db"))
+    for i in range(5):
+        assert grants.add_client(f"flood-{i}", {"client_id": f"flood-{i}"})
+    assert grants.add_client("real-app", {"client_id": "real-app"})
+    assert grants.get_client("flood-0") is None
+    assert grants.get_client("real-app") is not None
+
+
+def test_a_concurrent_refresh_replay_revokes_the_grant(server: Server) -> None:
+    client, tokens, _ = full_flow(server)
+    grants = OAuthStore(server.store)
+    grants.rotate(client["client_id"], tokens["refresh_token"])  # the legitimate use wins the race
+    from vault_mcp.oauth.grants import GrantError
+
+    with pytest.raises(
+        GrantError
+    ):  # the replay arrives in the same instant, past load_refresh_token
+        grants.rotate(client["client_id"], tokens["refresh_token"])
+    assert [
+        c.status(server.store.now()) for c in server.store.list_credentials() if c.kind == "oauth"
+    ] == ["revoked"]
+
+
+def test_refresh_reuse_is_audited(server: Server) -> None:
+    client, tokens, _ = full_flow(server)
+    assert refresh(server.url, client, tokens["refresh_token"]).status_code == 200
+    assert refresh(server.url, client, tokens["refresh_token"]).status_code == 401
+    audit = [json.loads(x) for x in (server.data / "audit.log").read_text().splitlines()]
+    assert [r["result"] for r in audit if r["tool"] == "oauth_refresh_reuse"] == ["revoked"]
+
+
+def test_google_requires_a_workspace_account(google: Stack) -> None:
+    google.idp.identity = {
+        "email": "alice@example.com",
+        "email_verified": True,
+    }  # personal account, work address
+    _, callback = sign_in_upstream(google)
+    assert callback.status_code == 403
+    assert "Workspace" in callback.text
+    google.idp.identity = {
+        "email": "alice@example.com",
+        "email_verified": True,
+        "hd": "example.com",
+    }
+    _, callback = sign_in_upstream(google)
+    assert callback.status_code == 303

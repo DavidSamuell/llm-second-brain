@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 import html
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
 import httpx
@@ -20,9 +20,22 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from vault_core.audit import AuditLog
-from vault_mcp.oauth.grants import PendingRequest, scope_from_oauth
+from vault_mcp.oauth.grants import GLOBAL_FAILURES, PendingRequest, scope_from_oauth
 from vault_mcp.oauth.provider import VaultOAuthProvider
 from vault_mcp.oauth.upstream import LoginRefused, Upstream
+
+
+class AlertSink(Protocol):
+    def send(
+        self,
+        event: str,
+        severity: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+        *,
+        subject: str = "",
+    ) -> bool: ...
+
 
 COOKIE = "vmcp_oauth"
 _HEADERS = {
@@ -58,11 +71,16 @@ def error_page(message: str, status: int = 400) -> HTMLResponse:
 
 class OAuthPages:
     def __init__(
-        self, provider: VaultOAuthProvider, audit: AuditLog, upstream: Upstream | None = None
+        self,
+        provider: VaultOAuthProvider,
+        audit: AuditLog,
+        upstream: Upstream | None = None,
+        alerts: AlertSink | None = None,
     ) -> None:
         self.provider = provider
         self.grants = provider.grants
         self.audit = audit
+        self.alerts = alerts
         self.upstream = upstream
         self.secure_cookie = provider.issuer.startswith("https://")
         self.login_start: LoginStart = (
@@ -163,7 +181,11 @@ class OAuthPages:
                 client_id=pending.client_id, upstream=self.upstream.name, detail=reason,
             )  # fmt: skip
             return error_page(reason, 403)
-        await asyncio.to_thread(self.grants.identify, req, email, "write")
+        try:
+            await asyncio.to_thread(self.grants.identify, req, email, "write")
+        except ValueError:
+            await asyncio.to_thread(self.grants.drop_request, req)
+            return error_page("Your account's email address can't be used here.", 403)
         return RedirectResponse(f"/oauth/consent?req={req}", status_code=303, headers=_HEADERS)
 
     async def login(self, request: Request) -> Response:
@@ -195,6 +217,17 @@ class OAuthPages:
             )
         reason = await asyncio.to_thread(self.grants.login_with_approval_code, req, code)
         if reason is not None:
+            await asyncio.to_thread(
+                self.audit.append, service="vault-mcp", tool="oauth_login", result="forbidden",
+                client_id=pending.client_id, detail="wrong approval code",
+            )  # fmt: skip
+            failures = await asyncio.to_thread(self.grants.recent_failures)
+            if failures >= GLOBAL_FAILURES and self.alerts is not None:
+                await asyncio.to_thread(
+                    self.alerts.send, "oauth_code_guessing", "high",
+                    f"{failures} wrong approval codes in 10 minutes: someone may be guessing codes.",
+                    {"failures": failures}, subject="approval-codes",
+                )  # fmt: skip
             if await self._pending(req) is None:
                 return error_page(reason, 429)
             return self._approval_form(req, reason)
@@ -215,9 +248,9 @@ class OAuthPages:
             )
         client = await asyncio.to_thread(self.grants.get_client, pending.client_id) or {}
         name = str(client.get("client_name") or "An unnamed app")
-        redirect_host = urlparse(str(pending.params["redirect_uri"])).netloc or str(
-            pending.params["redirect_uri"]
-        )
+        parsed_redirect = urlparse(str(pending.params["redirect_uri"]))
+        # Only the hostname (or app scheme): never `user@host`, which can look like another site.
+        redirect_host = parsed_redirect.hostname or f"{parsed_redirect.scheme}: app"
         allowed = _allowed(pending)
         nonce, csrf = await asyncio.to_thread(self.grants.bind_browser, req)
         write_choice = (
@@ -228,9 +261,11 @@ class OAuthPages:
         )
         response = page(
             "Allow access to the docs vault?",
-            f"<p><strong>{html.escape(name)}</strong> wants to use the docs vault as "
-            f"<strong>{html.escape(pending.owner)}</strong>.</p>"
-            f"<dl><dt>App</dt><dd>{html.escape(name)}</dd><dt>Sends you back to</dt><dd>{html.escape(redirect_host)}</dd>"
+            f"<p>An app calling itself <strong>{html.escape(name)}</strong> wants to use the docs vault as "
+            f"<strong>{html.escape(pending.owner)}</strong>. Only allow it if you just started connecting "
+            f"this app yourself.</p>"
+            f"<dl><dt>Name (chosen by the app, not verified)</dt><dd>{html.escape(name)}</dd>"
+            f"<dt>Sends you back to</dt><dd><strong>{html.escape(redirect_host)}</strong></dd>"
             f"<dt>Requested</dt><dd>{'read and edit' if _requested(pending) == 'write' else 'read only'}</dd></dl>"
             f"<form method=post action='/oauth/consent'>"
             f"<input type=hidden name=req value='{html.escape(req, quote=True)}'>"

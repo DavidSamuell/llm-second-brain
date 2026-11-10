@@ -8,32 +8,54 @@ tokens and `vmcpa_` OAuth access tokens resolve to a `credentials` row on every 
 from __future__ import annotations
 
 import asyncio
-from urllib.parse import urlparse
+import base64
+import html
+import secrets
+from urllib.parse import parse_qs, urlparse
 
 from fastmcp.server.auth import AccessToken, OAuthProvider
+from mcp.server.auth.handlers.authorize import AuthorizationHandler
 from mcp.server.auth.handlers.metadata import MetadataHandler
 from mcp.server.auth.provider import (
     AuthorizationCode,
     AuthorizationParams,
+    AuthorizeError,
     RefreshToken,
     RegistrationError,
     TokenError,
 )
-from mcp.server.auth.routes import build_metadata, cors_middleware
+from mcp.server.auth.routes import _body_limited, _cors, build_metadata, cors_middleware
 from mcp.server.auth.settings import ClientRegistrationOptions, RevocationOptions
 from mcp.shared.auth import OAuthClientInformationFull, OAuthToken
-from starlette.routing import Route
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.routing import Route, request_response
 
 from vault_mcp.oauth.grants import (
     ACCESS_TTL,
     OAUTH_SCOPES,
     GrantError,
     OAuthStore,
+    SecurityEvent,
 )
 from vault_mcp.store import CredentialStore
 
 VALID_SCOPES = ["vault:read", "vault:write"]
-_FORBIDDEN_SCHEMES = {"javascript", "data", "file", "vbscript", "about", "blob"}
+# Script/data schemes, and OS protocol handlers that launch local programs (ms-msdt:, search-ms:…).
+_FORBIDDEN_SCHEMES = {
+    "javascript",
+    "data",
+    "file",
+    "vbscript",
+    "about",
+    "blob",
+    "search",
+    "search-ms",
+    "shell",
+    "help",
+    "jar",
+}
+MAX_STATE, MAX_RESOURCE = 512, 512
 _LOOPBACK = {"localhost", "127.0.0.1", "[::1]", "::1"}
 
 
@@ -42,7 +64,11 @@ def redirect_uri_allowed(uri: str) -> bool:
     (native apps, e.g. `cursor://`). Never script/data/file schemes."""
     parsed = urlparse(uri)
     scheme = parsed.scheme.lower()
-    if not scheme or scheme in _FORBIDDEN_SCHEMES or parsed.fragment:
+    if not scheme or scheme in _FORBIDDEN_SCHEMES or scheme.startswith("ms-") or parsed.fragment:
+        return False
+    if (
+        "@" in parsed.netloc
+    ):  # `https://claude.ai@evil.example/` would read as claude.ai on the consent page
         return False
     if scheme == "https":
         return bool(parsed.hostname)
@@ -52,7 +78,9 @@ def redirect_uri_allowed(uri: str) -> bool:
 
 
 class VaultOAuthProvider(OAuthProvider):
-    def __init__(self, store: CredentialStore, issuer: str) -> None:
+    def __init__(
+        self, store: CredentialStore, issuer: str, on_event: SecurityEvent | None = None
+    ) -> None:
         super().__init__(
             base_url=issuer,
             issuer_url=issuer,
@@ -65,7 +93,8 @@ class VaultOAuthProvider(OAuthProvider):
         )
         self.issuer = issuer.rstrip("/")
         self.store = store
-        self.grants = OAuthStore(store)
+        self.grants = OAuthStore(store, on_event)
+        self.on_event: SecurityEvent = self.grants.on_event
 
     # -- clients ------------------------------------------------------------------------------
 
@@ -98,9 +127,18 @@ class VaultOAuthProvider(OAuthProvider):
         self, client: OAuthClientInformationFull, params: AuthorizationParams
     ) -> str:
         assert client.client_id is not None  # noqa: S101 - registered clients always have one
+        if len(params.code_challenge) != 43:  # S256 of a verifier: always 43 base64url characters
+            raise AuthorizeError("invalid_request", "code_challenge must be an S256 challenge")
+        if len(params.state or "") > MAX_STATE or len(params.resource or "") > MAX_RESOURCE:
+            raise AuthorizeError("invalid_request", "state or resource is too long")
         req = await asyncio.to_thread(
             self.grants.create_request, client.client_id, params.model_dump(mode="json")
         )
+        if req is None:
+            raise AuthorizeError(
+                "temporarily_unavailable",
+                "too many sign-ins are in progress; try again in a few minutes",
+            )
         return f"{self.issuer}/oauth/login?req={req}"
 
     # -- codes and tokens ---------------------------------------------------------------------
@@ -196,8 +234,12 @@ class VaultOAuthProvider(OAuthProvider):
     # -- routes ---------------------------------------------------------------------------------
 
     def get_routes(self, mcp_path: str | None = None) -> list[Route]:
-        """Advertise `none` (public PKCE clients such as Claude.ai) alongside the secret-based
-        token endpoint auth methods; the SDK's registration handler already accepts it."""
+        """Three changes to the SDK routes:
+        - metadata advertises `none` (public PKCE clients such as Claude.ai);
+        - `/authorize` only ever redirects to the kit's sign-in page: the SDK would send the
+          browser straight to a self-registered client's URI on errors (an open redirect on
+          the vault's hostname), so those become an error page;
+        - `/revoke` accepts public clients without `client_secret` (the SDK requires the field)."""
         metadata = build_metadata(
             self.issuer_url,  # type: ignore[arg-type]
             None,
@@ -209,10 +251,67 @@ class VaultOAuthProvider(OAuthProvider):
             "client_secret_post",
             "client_secret_basic",
         ]
-        handler = cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"])
+        replaced = {
+            "/.well-known/oauth-authorization-server": Route(
+                "/.well-known/oauth-authorization-server",
+                endpoint=cors_middleware(MetadataHandler(metadata).handle, ["GET", "OPTIONS"]),
+                methods=["GET", "OPTIONS"],
+            ),
+            "/authorize": Route(
+                "/authorize", endpoint=_body_limited(request_response(self._authorize_guarded)), methods=["GET", "POST"]
+            ),
+            "/revoke": Route(
+                "/revoke", endpoint=_cors(_body_limited(request_response(self._revoke)), ["POST", "OPTIONS"]),
+                methods=["POST", "OPTIONS"],
+            ),
+        }  # fmt: skip
         return [
-            Route(route.path, endpoint=handler, methods=["GET", "OPTIONS"])
-            if isinstance(route, Route) and route.path == "/.well-known/oauth-authorization-server"
-            else route
+            replaced.get(route.path, route) if isinstance(route, Route) else route
             for route in super().get_routes(mcp_path)
         ]
+
+    async def _authorize_guarded(self, request: Request) -> Response:
+        response = await AuthorizationHandler(self).handle(request)
+        location = response.headers.get("location", "")
+        if 300 <= response.status_code < 400 and not location.startswith(
+            f"{self.issuer}/oauth/login?req="
+        ):
+            query = parse_qs(urlparse(location).query)
+            reason = (
+                query.get("error_description")
+                or query.get("error")
+                or ["the request was not valid"]
+            )[0]
+            return HTMLResponse(
+                "<!doctype html><meta charset=utf-8><title>Can't continue</title>"
+                f"<h1>Can't continue</h1><p>The app's sign-in request was refused: {html.escape(reason)}</p>",
+                status_code=400, headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY"},
+            )  # fmt: skip
+        return response
+
+    async def _revoke(self, request: Request) -> Response:
+        """RFC 7009. Public clients send only client_id; confidential ones must authenticate.
+        Unknown tokens, and tokens of other clients, are ignored (always 200, per the RFC)."""
+        form = await request.form()
+        token, client_id = str(form.get("token") or ""), str(form.get("client_id") or "")
+        secret = str(form.get("client_secret") or "")
+        auth = request.headers.get("authorization", "")
+        if auth.lower().startswith("basic "):
+            try:
+                client_id, _, secret = base64.b64decode(auth[6:]).decode().partition(":")
+            except ValueError:
+                return JSONResponse({"error": "invalid_client"}, status_code=401)
+        client = await self.get_client(client_id) if client_id else None
+        if client is None:
+            return JSONResponse({"error": "invalid_client"}, status_code=401)
+        public = client.token_endpoint_auth_method == "none"  # noqa: S105 - an auth method name
+        if not public and not (
+            client.client_secret and secrets.compare_digest(client.client_secret, secret)
+        ):
+            return JSONResponse({"error": "invalid_client"}, status_code=401)
+        if token:
+            owner = await asyncio.to_thread(self.grants.grant_client, token)
+            if owner is not None and owner[1] == client_id:
+                await asyncio.to_thread(self.grants.revoke_grant, owner[0])
+                self.on_event("oauth_revoke", {"credential_id": owner[0], "client_id": client_id})
+        return Response(status_code=200, headers={"Cache-Control": "no-store"})

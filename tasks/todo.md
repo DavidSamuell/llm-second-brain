@@ -241,7 +241,7 @@ Commands used in verification:
 
 ### Checkpoint D — after T24–T25
 - [ ] §16.6 manual: the Claude.ai connector completes both modes, scopes are enforced, and revocation works
-- [ ] Security review of the OAuth code (`security-auditor`) before continuing
+- [x] Security review of the OAuth code (`security-auditor`) before continuing — report in `docs/reviews/2026-11-10-oauth-security-review.md` (0 critical, 0 high, 6 medium, 6 low). Fixed: M1 (parameter lengths and pending-request caps), M2 (`/authorize` errors show a page instead of redirecting), M3 (`user@host` redirect URIs refused; consent shows the hostname only and marks the name unverified), M4 (Google requires `hd`; Entra by tenant domain now works), M5 (no server-wide lockout, an alert instead), M6 (unused clients pruned after 1 h and evicted at the cap), L1 (own `/revoke` for public clients), L2 (a concurrent refresh replay revokes), L3 (security events audited; refresh reuse alerts), L5 (OS protocol-handler schemes refused), L6 (owner email normalised and validated). Documented, not changed: L4 (approval codes are sha256 of 50 bits) and the M4 remainders (Entra guest accounts, GitHub verified emails that outlive the mailbox) go into SECURITY.md (T41). 13 regression tests.
 
 ## Phase 5 — Template, skills, Ignis hardening, setup
 

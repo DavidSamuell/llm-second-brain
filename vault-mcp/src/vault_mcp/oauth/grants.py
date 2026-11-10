@@ -13,21 +13,23 @@ import hashlib
 import json
 import re
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
 from vault_core.audit import new_id
-from vault_mcp.store import LAST_USED_RESOLUTION, Credential, CredentialStore, Scope
+from vault_mcp.store import LAST_USED_RESOLUTION, OWNER_RE, Credential, CredentialStore, Scope
 
 ACCESS_TTL = timedelta(hours=1)
 REFRESH_TTL = timedelta(days=30)
 REQUEST_TTL = timedelta(minutes=15)
 CODE_TTL = timedelta(minutes=5)
 MAX_LOGIN_ATTEMPTS = 5  # wrong approval codes per authorization request
-GLOBAL_FAILURES, GLOBAL_WINDOW = 30, timedelta(minutes=10)
+GLOBAL_FAILURES, GLOBAL_WINDOW = 30, timedelta(minutes=10)  # alert threshold, not a lockout
 MAX_CLIENTS = 1000
-STALE_CLIENT = timedelta(days=7)
+UNUSED_CLIENT = timedelta(hours=1)  # registered but never granted: pruned after this
+MAX_PENDING, MAX_PENDING_PER_CLIENT = 1000, 20  # live authorization requests
 
 ACCESS_PREFIX, REFRESH_PREFIX, CODE_PREFIX = "vmcpa_", "vmcpr_", "vmcpc_"
 _OPAQUE_RE = re.compile(r"^vmcp[arc]_[A-Za-z0-9_-]{43}$")
@@ -86,9 +88,13 @@ class GrantError(Exception):
     """A token-endpoint failure (`invalid_grant`); the message is safe to return."""
 
 
+SecurityEvent = Callable[[str, dict[str, Any]], None]
+
+
 class OAuthStore:
-    def __init__(self, store: CredentialStore) -> None:
+    def __init__(self, store: CredentialStore, on_event: SecurityEvent | None = None) -> None:
         self.store = store
+        self.on_event: SecurityEvent = on_event or (lambda event, details: None)
 
     # -- clients ----------------------------------------------------------------------------
 
@@ -100,19 +106,26 @@ class OAuthStore:
         return json.loads(row["info"]) if row else None
 
     def add_client(self, client_id: str, info: dict[str, Any]) -> bool:
-        """Register a client; prunes stale unused ones first. False when the cap is reached."""
+        """Register a client. Clients that never got a grant are pruned after an hour, and at
+        the cap the oldest unused one is evicted, so registration floods can't lock out real
+        apps. False only when every registered client holds a grant."""
         now = self.store.now()
+        unused = (
+            "client_id NOT IN (SELECT client_id FROM token_hashes WHERE client_id IS NOT NULL)"
+            " AND client_id NOT IN (SELECT client_id FROM auth_codes)"
+        )
         with self.store.db() as conn:
             conn.execute("BEGIN IMMEDIATE")
             conn.execute(
-                "DELETE FROM oauth_clients WHERE created_at < ? AND client_id NOT IN"
-                " (SELECT client_id FROM token_hashes WHERE client_id IS NOT NULL)"
-                " AND client_id NOT IN (SELECT client_id FROM auth_codes)"
-                " AND client_id NOT IN (SELECT client_id FROM auth_requests)",
-                (_iso(now - STALE_CLIENT),),
+                f"DELETE FROM oauth_clients WHERE created_at < ? AND {unused}",  # noqa: S608 - constant SQL
+                (_iso(now - UNUSED_CLIENT),),
             )
-            count = conn.execute("SELECT COUNT(*) FROM oauth_clients").fetchone()[0]
-            if count >= MAX_CLIENTS:
+            if conn.execute("SELECT COUNT(*) FROM oauth_clients").fetchone()[0] >= MAX_CLIENTS:
+                conn.execute(
+                    f"DELETE FROM oauth_clients WHERE client_id = (SELECT client_id FROM oauth_clients WHERE {unused}"  # noqa: S608
+                    " ORDER BY created_at LIMIT 1)"
+                )
+            if conn.execute("SELECT COUNT(*) FROM oauth_clients").fetchone()[0] >= MAX_CLIENTS:
                 conn.execute("ROLLBACK")
                 return False
             conn.execute(
@@ -124,11 +137,18 @@ class OAuthStore:
 
     # -- authorization requests (between /authorize and the consent page) --------------------
 
-    def create_request(self, client_id: str, params: dict[str, Any]) -> str:
+    def create_request(self, client_id: str, params: dict[str, Any]) -> str | None:
+        """None when too many sign-ins are pending (server-wide or for this client)."""
         req = secrets.token_urlsafe(32)
         now = self.store.now()
         with self.store.db() as conn:
             conn.execute("DELETE FROM auth_requests WHERE expires_at < ?", (_iso(now),))
+            total = conn.execute("SELECT COUNT(*) FROM auth_requests").fetchone()[0]
+            mine = conn.execute(
+                "SELECT COUNT(*) FROM auth_requests WHERE client_id = ?", (client_id,)
+            ).fetchone()[0]
+            if total >= MAX_PENDING or mine >= MAX_PENDING_PER_CLIENT:
+                return None
             conn.execute(
                 "INSERT INTO auth_requests (hash, client_id, params, expires_at) VALUES (?, ?, ?, ?)",
                 (_hash(req), client_id, json.dumps(params), _iso(now + REQUEST_TTL)),
@@ -176,6 +196,9 @@ class OAuthStore:
 
     def identify(self, req: str, owner: str, max_scope: Scope) -> None:
         """Signed in upstream: record who, and forget the one-time upstream values."""
+        owner = owner.strip().lower()
+        if not OWNER_RE.match(owner):
+            raise ValueError("not an email address")
         with self.store.db() as conn:
             conn.execute(
                 "UPDATE auth_requests SET owner = ?, max_scope = ?, upstream_verifier = NULL, upstream_nonce = NULL"
@@ -219,20 +242,23 @@ class OAuthStore:
             )
         return f"{raw[:5]}-{raw[5:]}"
 
+    def recent_failures(self) -> int:
+        """Wrong approval codes server-wide in the last 10 minutes (alert at 30)."""
+        with self.store.db() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM login_failures WHERE ts > ?",
+                (_iso(self.store.now() - GLOBAL_WINDOW),),
+            ).fetchone()
+        return int(row[0])
+
     def login_with_approval_code(self, req: str, code: str) -> str | None:
         """Consume a code for this request. Returns None on success, else a user-facing reason.
-        Wrong codes count against the request (5 tries) and globally (30 per 10 minutes)."""
+        Wrong codes count against the request (5 tries, then it is dropped). Server-wide failures
+        only raise an alert: a lockout would let anyone block every sign-in, and with 2^50 codes
+        and 5 tries per request, guessing is not practical."""
         now = self.store.now()
         with self.store.db() as conn:
             conn.execute("BEGIN IMMEDIATE")
-            failures = conn.execute(
-                "SELECT COUNT(*) FROM login_failures WHERE ts > ?", (_iso(now - GLOBAL_WINDOW),)
-            ).fetchone()[0]
-            if failures >= GLOBAL_FAILURES:
-                conn.execute("ROLLBACK")
-                return (
-                    "Too many failed sign-in attempts on this server. Try again in a few minutes."
-                )
             row = conn.execute(
                 "SELECT owner, scope FROM approval_codes WHERE hash = ? AND used_at IS NULL AND expires_at > ?",
                 (_hash(normalize_approval_code(code)), _iso(now)),
@@ -381,6 +407,10 @@ class OAuthStore:
             return None
         if row["used_at"] is not None:
             self.revoke_grant(row["credential_id"])
+            self.on_event(
+                "oauth_refresh_reuse",
+                {"credential_id": row["credential_id"], "client_id": client_id},
+            )
             return None
         cred = self.store.get(row["credential_id"])
         if (
@@ -401,6 +431,21 @@ class OAuthStore:
                 (_iso(now), _hash(token), client_id, _iso(now)),
             ).fetchone()
             if row is None:
+                used = conn.execute(
+                    "SELECT credential_id FROM token_hashes WHERE hash = ? AND type = 'refresh' AND used_at IS NOT NULL",
+                    (_hash(token),),
+                ).fetchone()
+                if used is not None:  # lost a race with another use of the same token: reuse
+                    conn.execute(
+                        "UPDATE credentials SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL",
+                        (_iso(now), used["credential_id"]),
+                    )
+                    conn.execute("COMMIT")
+                    self.on_event(
+                        "oauth_refresh_reuse",
+                        {"credential_id": used["credential_id"], "client_id": client_id},
+                    )
+                    raise GrantError("refresh token was already used; the grant is revoked")
                 conn.execute("ROLLBACK")
                 raise GrantError("refresh token is invalid, expired, or already used")
             cred_id = row["credential_id"]
@@ -425,6 +470,15 @@ class OAuthStore:
                 "UPDATE credentials SET revoked_at = ? WHERE id = ? AND kind = 'oauth' AND revoked_at IS NULL",
                 (_iso(self.store.now()), cred_id),
             )
+
+    def grant_client(self, token: str) -> tuple[str, str] | None:
+        """(grant id, client id) for an access or refresh token."""
+        with self.store.db() as conn:
+            row = conn.execute(
+                "SELECT credential_id, client_id FROM token_hashes WHERE hash = ? AND type IN ('access', 'refresh')",
+                (_hash(token),),
+            ).fetchone()
+        return (row["credential_id"], row["client_id"]) if row else None
 
     def grant_of(self, token: str) -> str | None:
         with self.store.db() as conn:
