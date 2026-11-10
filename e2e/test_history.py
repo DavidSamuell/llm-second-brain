@@ -15,10 +15,11 @@ def _pointers(stack: Stack, rel: str) -> list[dict[str, object]]:
 
 def test_existing_files_get_a_baseline_and_a_shell_edit_a_new_version(stack: Stack) -> None:
     page: Path = stack.root / "vault" / "wiki" / "index.md"
-    assert _pointers(stack, "wiki/index.md"), "startup scan recorded no baseline"
+    before = len(_pointers(stack, "wiki/index.md"))
+    assert before, "startup scan recorded no baseline"
     page.write_text(page.read_text() + "\nedited from the host\n")
     deadline = time.monotonic() + 20  # 5 s debounce + margin
-    while len(_pointers(stack, "wiki/index.md")) < 2:
+    while len(_pointers(stack, "wiki/index.md")) < before + 1:
         assert time.monotonic() < deadline, "edit was not recorded"
         time.sleep(0.2)
     assert _pointers(stack, "wiki/index.md")[-1]["source"] == "web"
