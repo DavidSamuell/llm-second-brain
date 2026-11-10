@@ -133,5 +133,45 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Optional (COMPOSE_PROFILES=agent; plan D30): scheduled ingest and lint through vault-mcp.
+  agent-runner:
+    <<: *run-as
+    profiles: [agent]
+    image: ${AGENT_RUNNER_IMAGE:-docs-vault-kit/agent-runner:local}
+    build:
+      context: .
+      dockerfile: agent-runner/Dockerfile
+    environment:
+      VAULT_MCP_URL: http://vault-mcp:8082/mcp
+      VAULT_MCP_TOKEN: ${AGENT_RUNNER_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AGENT_MODEL: ${AGENT_MODEL:-}
+      AGENT_MONTHLY_BUDGET: ${AGENT_MONTHLY_BUDGET:-}
+      AGENT_COMMAND: ${AGENT_COMMAND:-}
+      INGEST_CRON: ${INGEST_CRON:-0 * * * *}
+      LINT_CRON: ${LINT_CRON:-0 2 * * *}
+      GIT_REMOTE: ${GIT_REMOTE:-}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+    volumes:
+      # Only its own state and the git-sync request folder; no vault write access (D30).
+      - ${DATA_PATH:?set DATA_PATH in .env}/agent-runner:/data/agent-runner
+      - ${DATA_PATH:?set DATA_PATH in .env}/git-sync/requests:/data/git-sync/requests
+      - type: bind
+        source: ${VAULT_PATH:?set VAULT_PATH in .env}/skills
+        target: /vault-skills
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      vault-mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "find /data/agent-runner/heartbeat -mmin -3 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
 volumes:
   obsidian-app:

@@ -106,6 +106,8 @@ def start(profile: str) -> Stack:
         (vault / rel).write_text(text)
     data.mkdir()
     (data / "ignis-plugins").mkdir()  # bind-mount source; scripts/setup creates it too (D28)
+    (data / "agent-runner").mkdir()
+    (data / "git-sync" / "requests").mkdir(parents=True)
     releases = root / "plugin-releases"
     for name, body in PLUGIN_FILES.items():
         path = releases / "acme" / "good-plugin" / "releases" / "download" / "1.0.0" / name

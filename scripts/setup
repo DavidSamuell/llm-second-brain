@@ -198,7 +198,7 @@ say "wrote $ENV_FILE"
 
 VAULT_PATH=$(get VAULT_PATH)
 DATA_PATH=$(get DATA_PATH)
-mkdir -p "$VAULT_PATH" "$DATA_PATH/ignis-plugins" "$DATA_PATH/ignis"
+mkdir -p "$VAULT_PATH" "$DATA_PATH/ignis-plugins" "$DATA_PATH/ignis" "$DATA_PATH/agent-runner" "$DATA_PATH/git-sync/requests"
 for dir in "$VAULT_PATH" "$DATA_PATH" "$DATA_PATH/ignis-plugins" "$DATA_PATH/ignis"; do
   [ -w "$dir" ] || die "$dir is not writable by $(id -un); fix its owner (it must match PUID/PGID)"
 done
