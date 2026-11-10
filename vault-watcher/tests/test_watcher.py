@@ -287,7 +287,7 @@ def test_symlinks_out_of_the_vault_are_never_copied_into_history(
     make_watcher: Callable[..., Watcher], dirs: tuple[Path, Path], tmp_path: Path
 ) -> None:
     outside = tmp_path / "outside-secret.md"
-    outside.write_text("db_password=not-for-history")
+    outside.write_text("outside-the-vault marker: must never reach history")
     (dirs[0] / "wiki" / "at-start.md").symlink_to(outside)
     (dirs[0] / "wiki" / "real.md").write_text("real")
     make_watcher()
@@ -300,7 +300,7 @@ def test_symlinks_out_of_the_vault_are_never_copied_into_history(
     blobs = [p.read_bytes() for p in (dirs[1] / "history" / ".objects").rglob("*") if p.is_file()]
     import gzip
 
-    assert all(b"not-for-history" not in gzip.decompress(b) for b in blobs)
+    assert all(b"outside-the-vault marker" not in gzip.decompress(b) for b in blobs)
 
 
 def test_edits_and_mcp_writes_are_searchable_and_deletes_drop_out(

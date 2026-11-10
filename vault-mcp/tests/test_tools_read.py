@@ -152,14 +152,14 @@ def test_get_schema_refuses_an_agents_md_symlink_out_of_the_vault(
     tmp_path: Path, vault: Path, policy: Policy, store: CredentialStore
 ) -> None:
     outside = tmp_path / "outside-secret.txt"
-    outside.write_text("db_password=hunter2hunter2")
+    outside.write_text("outside-the-vault marker: must never be served")
     (vault / "AGENTS.md").unlink()
     (vault / "AGENTS.md").symlink_to(outside)
     t, cred = tools(vault, policy, store)
     with pytest.raises(ToolError) as exc:
         t.get_schema(cred)
     assert error_of(exc)["code"] == "forbidden"
-    assert "hunter2" not in str(exc.value)
+    assert "outside-the-vault marker" not in str(exc.value)
 
 
 def test_list_skips_symlinks_that_escape_the_vault(
