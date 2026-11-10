@@ -216,6 +216,8 @@ async def test_no_acknowledgement_reports_applied_history_pending(
 async def test_browser_save_right_after_an_mcp_write_keeps_both_versions(
     vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
 ) -> None:
+    if not getattr(watcher, "_observing", True):  # browser saves need inotify to be seen in time
+        pytest.skip("this host has no inotify watches left (fs.inotify.max_user_watches)")
     await writer(vault, data, policy).write(
         cred(store), "wiki/both.md", "agent\n", base_version=None
     )

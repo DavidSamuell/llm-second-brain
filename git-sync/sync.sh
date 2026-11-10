@@ -151,9 +151,11 @@ while true; do
   waited=0
   while [ "$waited" -lt "$INTERVAL" ]; do
     chunk=$(( INTERVAL - waited < 30 ? INTERVAL - waited : 30 ))
-    if inotifywait -qq -t "$chunk" -e close_write -e moved_to "$REQUESTS" 2>/dev/null; then
-      break
-    fi
+    status=0
+    inotifywait -qq -t "$chunk" -e close_write -e moved_to "$REQUESTS" 2>/dev/null || status=$?
+    [ "$status" = 0 ] && break
+    # 2 = timed out; anything else (e.g. no inotify watches left on the host): wait anyway.
+    [ "$status" = 2 ] || sleep "$chunk"
     waited=$((waited + chunk))
     touch "$STATE/heartbeat"
   done

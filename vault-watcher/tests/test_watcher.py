@@ -66,6 +66,8 @@ def make_watcher(dirs: tuple[Path, Path]) -> Iterator[Callable[..., Watcher]]:
         w = Watcher(cfg, alerts=RecordingAlerts())
         w.start()
         started.append(w)
+        if not w._observing:  # these tests exercise inotify-driven behaviour
+            pytest.skip("this host has no inotify watches left (fs.inotify.max_user_watches)")
         return w
 
     yield make

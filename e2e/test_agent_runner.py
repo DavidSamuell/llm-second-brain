@@ -72,6 +72,8 @@ def test_16_19_and_16_20_agent_runner(stack: Stack) -> None:
     assert json.loads((data / "agent-runner" / "spend.json").read_text())[month] == 0.5
     requests = list((data / "git-sync" / "requests").glob("*-ingest.json"))
     assert [json.loads(r.read_text())["summary"] for r in requests] == [f"ingested {name}"]
+    for r in requests:  # the stack is shared: don't leave a request for the git-sync test
+        r.unlink()
 
     # §16.20: the month's spend (0.5) reaches a 0.4 budget: the next job is skipped and alerted.
     asyncio.run(submit())
