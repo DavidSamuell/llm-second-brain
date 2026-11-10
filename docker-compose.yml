@@ -107,5 +107,31 @@ services:
       start_period: 30s
     restart: unless-stopped
 
+  # Optional (COMPOSE_PROFILES=git; plan D32): back the vault up to GIT_REMOTE.
+  git-sync:
+    <<: *run-as
+    profiles: [git]
+    image: ${GIT_SYNC_IMAGE:-docs-vault-kit/git-sync:local}
+    build:
+      context: .
+      dockerfile: git-sync/Dockerfile
+    environment:
+      GIT_REMOTE: ${GIT_REMOTE:-}
+      GIT_BRANCH: ${GIT_BRANCH:-main}
+      GIT_LFS: ${GIT_LFS:-false}
+      GIT_ADOPT_REMOTE: ${GIT_ADOPT_REMOTE:-false}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-120}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "find /data/git-sync/heartbeat -mmin -3 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
 volumes:
   obsidian-app:

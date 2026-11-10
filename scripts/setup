@@ -244,6 +244,22 @@ if [[ $(get COMPOSE_PROFILES) == *agent* ]] && [ -z "$(get AGENT_RUNNER_TOKEN)" 
   write_env
 fi
 
+# -- git-sync deploy key (ssh remotes; plan D32) ---------------------------------------------------------
+
+remote=$(get GIT_REMOTE)
+if [[ $remote == git@* || $remote == ssh://* ]] && [ ! -f "$DATA_PATH/git-sync/ssh/id_ed25519" ]; then
+  say "creating an SSH deploy key for git-sync"
+  mkdir -p "$DATA_PATH/git-sync/ssh"
+  "${COMPOSE[@]}" --profile git run --rm --no-deps -T --entrypoint ssh-keygen git-sync \
+    -q -t ed25519 -N "" -C "docs-vault git-sync" -f /data/git-sync/ssh/id_ed25519 >/dev/null
+  git_host=${remote#ssh://}; git_host=${git_host#*@}; git_host=${git_host%%[:/]*}
+  "${COMPOSE[@]}" --profile git run --rm --no-deps -T --entrypoint ssh-keyscan git-sync -t ed25519,rsa "$git_host" \
+    > "$DATA_PATH/git-sync/ssh/known_hosts" 2>/dev/null || warn "could not fetch $git_host's host key; add it to $DATA_PATH/git-sync/ssh/known_hosts"
+  say "add this public key to the repository as a deploy key WITH write access:"
+  cat "$DATA_PATH/git-sync/ssh/id_ed25519.pub"
+  if [ "$INTERACTIVE" = 1 ]; then read -r -p "Press Enter once the deploy key is added... " _; fi
+fi
+
 [ "$START" = 1 ] || { say "configured (not started: --no-start)"; exit 0; }
 
 # -- start ------------------------------------------------------------------------------------------------

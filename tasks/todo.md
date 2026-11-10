@@ -296,11 +296,12 @@ Commands used in verification:
   - **Status:** `ingress/caddy/compose.yml` (pinned Caddy 2.10.2 and oauth2-proxy v7.12.0 with healthchecks; only Caddy publishes 80/443), `Caddyfile` (`forward_auth` to oauth2-proxy with a redirect to sign-in on the editor host; WebSockets pass through; the MCP host passes through whole, with streaming flushed) and `docs/ingress/caddy.md`. Checked with `caddy validate` and `docker compose config`.
   - [ ] **External check (listed for the user):** a deploy on a public VM: §16.1 caddy and §16.3, WebSockets through forward_auth, and `/mcp` plus `/oauth/*` reachable without a browser login.
 
-- [ ] **T32 — `scripts/check-exposure`** · Decisions: D35 · **watch**
+- [x] **T32 — `scripts/check-exposure`** · Decisions: D35 · **watch**
   - All §5.4 checks; PASS/FAIL/SKIP output; wired into setup.
   - Acceptance: §16.4 (passes for each profile; fails clearly against a stub proxy without auth, a fixture in e2e).
   - Verify: `uv run pytest e2e -k check_exposure`.
   - Deps: T29 · Files: `scripts/check-exposure`, `e2e/` · Scope: S
+  - **Status:** `scripts/check-exposure` (bash, curl and openssl only, shellcheck-clean) runs the §5.4 checks: https for both hosts; ignis-login (the T1 Ignis markers); mcp-auth (a 401 carrying `resource_metadata`); mcp-token (from `CHECK_TOKEN`, never an argument); the oauth-metadata endpoints; and raw ports on public addresses. Each prints PASS/FAIL/SKIP and the exit code is the number of FAILs. `CHECK_SKIP` handles tailnet-only editors; `CHECK_CA_FILE` and `CHECK_PUBLIC_IPS` exist for private CAs and tests. Setup calls it with a temporary token. e2e §16.4 in both profiles: all 7 checks pass behind a TLS stand-in proxy (login wall on the editor, pass-through on the MCP host, real vault-mcp with OAuth on), and it fails with clear messages against the bare editor over plain HTTP with the raw port reachable. The e2e stack now runs with `MCP_OAUTH_ISSUER` set.
 
 - [x] **T33 — Ingress recipe docs** · Decisions: none · **delegate**
   - `docs/ingress/{pangolin,nginx,traefik,tailscale,headscale,local}.md`, each meeting the §5.1 contract and pointing at `127.0.0.1:IGNIS_PORT` / `MCP_PORT`; note the Tailscale free plan is non-commercial.
@@ -315,11 +316,12 @@ Commands used in verification:
 
 ## Phase 7 — Optional services and lifecycle
 
-- [ ] **T34 — git-sync** · Decisions: D6, D25, D31, D32 · **watch**
+- [x] **T34 — git-sync** · Decisions: D6, D25, D31, D32 · **watch**
   - Bash loop service (profile); lock/commit/rebase/push; conflict recovery; LFS; request-file commits; heartbeat; alerts.
   - Acceptance: §16.21 (edit reaches the remote within `SYNC_INTERVAL` + 1 min; an induced conflict → `.conflict-<ts>.md` + alert; `/data` never in the repo).
   - Verify: `uv run pytest e2e -k git_sync` with a bare local remote.
   - Deps: T23, T29 · Files: `git-sync/{Dockerfile,sync.sh}`, `scripts/lib/alert.sh`, `docker-compose.yml` · Scope: M
+  - **Status:** `git-sync` (Alpine + util-linux flock, compose profile `git`, heartbeat healthcheck) runs `sync.sh`. Each cycle: lock → add → commit (named by agent-runner's request file, or `docs(auto)`) → fetch → rebase → unlock → push. On a conflict the local copy is kept as `<file>.conflict-<ts>.md`, the remote version wins the conflicting hunks, and an alert goes out; unresolvable cases pause pushing behind a `blocked` flag. Other features: LFS patterns, adopting an existing remote only with `GIT_ADOPT_REMOTE=true`, and setup generating an SSH deploy key plus `known_hosts` for ssh remotes. `scripts/lib/alert.sh` sends the same payloads as vault_core.alerts with hourly dedupe. e2e §16.21 in both profiles against a bare local remote: the edit is pushed; the request names the commit with an `Agent: agent-runner` trailer; an induced conflict gives a `.conflict` file with the local text, the remote text in place, an alert, and the copy pushed; `/data` never appears in the repo. CI shellcheck now runs with `-x`.
 
 - [ ] **T35 — agent-runner** · Decisions: D16, D30, D31 · **watch**
   - Image, supercronic schedules, the `.mcp.json` generator, job lock, budget ledger, `AGENT_COMMAND` contract, commit request files.

@@ -76,6 +76,8 @@ Full rationale for each is in `tasks/plan.md` under the D-number. This list is o
   - Refresh-token reuse is audited and sends a high alert.
   - Google accounts must carry `hd`, so only Workspace accounts get in. Entra accepts a tenant given by domain: its discovered GUID issuer is accepted.
   - Known remainders for SECURITY.md: Entra guest accounts inside the tenant (restrict with "assignment required" on the app); GitHub verified emails outlive the mailbox (prefer approval codes or an org IdP); approval codes are 50-bit sha256 hashes (a leaked tokens.db could crack a live code). Reversible: yes.
+- [T32] check-exposure reports SKIP rather than FAIL where a check can't apply: no `CHECK_TOKEN`, OAuth disabled, no public address on the host, or `CHECK_SKIP=ignis-login` (an editor reachable only inside a tailnet the checking host belongs to). For `INGRESS=local` setup doesn't run it (there are no URLs); local.md documents a manual port probe instead. Reversible: yes.
+- [T34] git-sync uses util-linux `flock` (Alpine's BusyBox `flock` has no `-w`). Commit requests are consumed once the commit lands; several requests in one cycle produce one commit named after the oldest. Pushing is paused (a `blocked` file, plus an alert) only when a rebase can't be resolved automatically. Reversible: yes.
 
 ## Deviations (conservative option taken; needs human review)
 At this stage the location is the plan line where the deviation is decided. Code locations get added as tasks land.
