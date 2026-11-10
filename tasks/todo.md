@@ -375,11 +375,13 @@ Commands used in verification:
   - Verify: manual dry run by someone other than the author.
   - Deps: T29–T32 · Files: `docs/SETUP.md`, `docs/UPGRADING.md` · Scope: S
 
-- [ ] **T40 — USER-GUIDE.md, CONNECT-AGENTS.md, IMPORTING.md** · Decisions: D14, D15, D16, D17 · **watch**
+- [x] **T40 — USER-GUIDE.md, CONNECT-AGENTS.md, IMPORTING.md** · Decisions: D14, D15, D16, D17 · **watch**
   - The non-technical editing and review-queue guide; per-client agent setup (Claude Code, Cursor, Codex, Claude.ai, ChatGPT); the importing flow, where agents fetch content themselves (D14).
   - Acceptance: each client snippet is tested against the local stack.
   - Verify: manual connection per client.
   - Deps: T24, T27 · Files: `docs/{USER-GUIDE,CONNECT-AGENTS,IMPORTING}.md` · Scope: M
+  - **Status:** written by a delegated agent from the code: the user guide (editing, maintainer, review queue, sources, history, secrets, limits), connecting agents (tokens; Claude Code, Cursor, Codex, Claude.ai and ChatGPT; skills; all 14 tools; error codes) and importing (submit_source, URL stubs, adoption, bulk ingest, prompt injection). Gaps it found were fixed in code: `scripts/oauth`, `WebFetch` for agent-runner, ingest caps in compose, and the review-item text. Still open: Claude.ai's "published identity" option isn't supported, so use dynamic registration.
+  - [ ] **External check (listed for the user):** connect each client by hand. Every client section is labelled "not yet tested against a live client".
 
 - [ ] **T41 — SECURITY.md + LIMITATIONS.md (final)** · Decisions: D6, D16, D17, D20, D24, D28 · **watch**
   - Threat model, Ignis having no auth, plugin allowlist, token/OAuth lifecycle, secrets, offboarding checklist; LIMITATIONS covering T1 results, the Ignis/MCP write race, web attribution, Ignis legal basis, Obsidian terms.
