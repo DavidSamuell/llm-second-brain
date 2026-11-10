@@ -13,6 +13,7 @@ from vault_core.fsio import is_temp_name, version_of
 from vault_core.history import HistoryStore, Outcome, Source, Spool, SpoolEntry, classify
 from vault_core.paths import through_symlink
 from vault_core.search_index import SearchIndex
+from vault_watcher.secret_scan import SecretScanner
 
 log = logging.getLogger(__name__)
 
@@ -54,10 +55,14 @@ class Recorder:
     history: HistoryStore = field(init=False)
     spool: Spool = field(init=False)
     _scan_cache: dict[str, tuple[int, int]] = field(default_factory=dict, init=False)
+    scanner: SecretScanner = field(init=False)
 
     def __post_init__(self) -> None:
         self.history = HistoryStore(self.data_dir)
         self.spool = Spool(self.data_dir)
+        self.scanner = SecretScanner(
+            self.vault_dir, self.data_dir / "index.db", self.audit, self.alerts
+        )
 
     # -- spool -----------------------------------------------------------------------------
 
@@ -75,6 +80,8 @@ class Recorder:
                 outcome: Outcome = "applied"
             else:
                 outcome = self._recover(entry)
+            if outcome != "aborted":  # D15: MCP writes are scanned too (reject_on_write may be off)
+                self._secret_scan(entry.new_path or entry.path, entry.post_bytes())
             if entry.group_id:
                 groups.setdefault(entry.group_id, set()).add(outcome)
             self._reindex(entry.new_path or entry.path)
@@ -193,9 +200,8 @@ class Recorder:
             return False
         path = self.vault_dir / rel
         if path.exists() and through_symlink(self.vault_dir, rel):
-            return (
-                False  # symlinks are never followed: no outside files, no policy-bypassing aliases
-            )
+            # Symlinks are never followed: no outside files, no policy-bypassing aliases.
+            return False
         head = self.history.head(rel)
         if not path.is_file():
             if head is not None and head.sha256 is not None:
@@ -217,7 +223,12 @@ class Recorder:
             self.index.update(rel, data)
         stat = path.stat()
         self._scan_cache[rel] = (stat.st_mtime_ns, stat.st_size)
+        self._secret_scan(rel, data)
         return True
+
+    def _secret_scan(self, rel: str, data: bytes | None) -> None:
+        if data is not None:
+            self.scanner.check(rel, data, lambda queue: self.snapshot(queue, "system"))
 
     def scan(self) -> int:
         """Full scan (startup and periodic, D22): anything that changed without an event —

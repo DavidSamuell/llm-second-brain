@@ -200,11 +200,12 @@ Commands used in verification:
   - Deps: T10, T8 · Files: `vault-mcp/src/vault_mcp/ratelimit.py`, tests · Scope: S
   - **Status:** 7 unit tests (requests/minute per credential, writes count toward both limits, writes/day with `retry_after_s` from the oldest counted write, refused calls not counted, alert after 5 refusals in 10 minutes at most hourly, refusals spread over more than 10 minutes don't alert) plus an in-process MCP test (`rate_limited` error + audit line). e2e §16.8 in both profiles: 130 rapid calls get `rate_limited`, and exactly one `rate_limit_repeated` alert reaches a test webhook stub (`e2e/compose.e2e.yml`). Mutation checks on counting refusals, the daily limit and alert throttling.
 
-- [ ] **T22 — Watcher secret scan** · Decisions: D15, D20, D24, D25 · **watch**
+- [x] **T22 — Watcher secret scan** · Decisions: D15, D20, D24, D25 · **watch**
   - Scan changed files from any writer; dedupe findings; masked `#review/high` item; audit line; alert.
   - Acceptance: the Ignis half of §16.13 (a fake key written via the filesystem triggers one alert + one review item, and the secret is not repeated anywhere); the review-queue write does not re-trigger the scan; human content is never edited.
   - Verify: `uv run pytest vault-watcher -k secrets` + e2e §16.13.
   - Deps: T13, T18 · Files: `vault-watcher/src/vault_watcher/secret_scan.py`, tests · Scope: S
+  - **Status:** 5 watcher tests (a browser save gives one high alert, one masked `#review/high` item and one audit line, the key appears in no output, and the page is untouched; no repeat for an unchanged finding; the queue write is recorded in history as `system` and doesn't re-trigger the scan; a new path is a new finding; dedupe survives a restart; clean pages and binaries stay quiet). e2e §16.13 filesystem half in both profiles, through the webhook stub. MCP writes are scanned by the watcher too (after commit/recovery), which matters when `reject_on_write` is off.
 
 - [ ] **T23 — Ops monitor + healthchecks** · Decisions: D25, D26 · **watch**
   - Compose healthchecks for all services; a watcher monitor loop (peer `/health`, heartbeat age, disk > 80 %).

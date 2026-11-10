@@ -22,7 +22,9 @@ from typing import Any, Literal
 from vault_core.fsio import fsync_dir, version_of
 
 Event = Literal["create", "modify", "rename", "delete"]
-Source = Literal["mcp", "web", "git", "unknown"]
+Source = Literal[
+    "mcp", "web", "git", "system", "unknown"
+]  # system: vault-watcher's own review items
 Outcome = Literal["applied", "aborted", "unconfirmed"]
 _TS_FORMAT = "%Y%m%dT%H%M%S.%fZ"
 

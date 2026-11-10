@@ -116,3 +116,36 @@ async def test_16_10_review_queue_add_works(stack: Stack) -> None:
     queue = (stack.root / "vault" / "_system" / "review-queue.md").read_text()
     assert f"^{out['item_id']}" in queue
     assert "[[projects/alpha]] — Outdated — Mention v2" in queue
+
+
+async def test_16_13_secret_saved_outside_mcp_alerts_once_masked(stack: Stack) -> None:
+    import asyncio
+    import time
+
+    fake = "AKIA" + "Q3RTZ7XK2P4LMNBV"
+    page = stack.root / "vault" / "wiki" / "leaked.md"
+    page.write_text(f"# Leaked\n\nkey: {fake}\n")  # a browser save lands on disk the same way
+    alerts_file = stack.root / "alerts" / "alerts.jsonl"
+    deadline = time.monotonic() + 20
+    while not (alerts_file.exists() and "secret_detected" in alerts_file.read_text()):
+        assert time.monotonic() < deadline, "no secret_detected alert"
+        await asyncio.sleep(0.2)
+    page.write_text(f"# Leaked\n\nkey: {fake}\nedited\n")
+    await asyncio.sleep(3)
+    alerts = [json.loads(x) for x in alerts_file.read_text().splitlines()]
+    assert len([a for a in alerts if a.get("event") == "secret_detected"]) == 1
+    queue = (stack.root / "vault" / "_system" / "review-queue.md").read_text()
+    assert (
+        len(
+            [
+                line
+                for line in queue.splitlines()
+                if "#review/high" in line and "[[wiki/leaked]]" in line
+            ]
+        )
+        == 1
+    )
+    audit = (stack.root / "data" / "audit.log").read_text()
+    for text in (alerts_file.read_text(), queue, audit):
+        assert fake not in text
+    assert page.read_text().endswith("edited\n")
