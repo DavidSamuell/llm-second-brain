@@ -58,4 +58,4 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-packages
       - name: End-to-end tests (INGRESS=local and none)
-        run: uv run pytest e2e -m "profile_local or profile_none" -rs
+        run: uv run pytest e2e -m "(profile_local or profile_none) and not nightly" -rs

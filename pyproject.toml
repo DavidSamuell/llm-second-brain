@@ -13,6 +13,9 @@ dev = [
     "ruff>=0.8",
     "types-pyyaml>=6",
 ]
+nightly = [
+    "playwright>=1.48,<2",
+]
 
 [tool.uv]
 package = false
@@ -52,4 +55,5 @@ asyncio_default_fixture_loop_scope = "function"
 markers = [
     "profile_local: end-to-end tests against the INGRESS=local stack",
     "profile_none: end-to-end tests against the INGRESS=none stack",
+    "nightly: browser tests against the pinned Ignis (uv sync --group nightly; playwright install chromium)",
 ]

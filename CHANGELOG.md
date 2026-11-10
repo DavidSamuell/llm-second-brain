@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `scripts/upgrade-vault`: shows and applies kit template updates (AGENTS.md, templates, skills, Obsidian settings), keeping `<!-- custom -->` blocks and anything in `.vault-overrides`.
 - `agent-runner` service (`ANTHROPIC_API_KEY` or `AGENT_COMMAND`): scheduled ingest and lint with Claude Code through vault-mcp only, a monthly budget (skip + alert), spend tracking, and git commit requests.
 - `scripts/backup` (hot, SQLite-safe, checksummed, optional config) and `scripts/restore` (verified, into stopped and empty folders, then reindex).
+- CI: nightly end-to-end run with Playwright browser checks against the pinned Ignis; release workflow publishing multi-arch images to GHCR on version tags; Dependabot.
 
 ### Security
 

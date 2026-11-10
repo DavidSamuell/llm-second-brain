@@ -356,11 +356,18 @@ Commands used in verification:
 
 ## Phase 8 — Release and docs
 
-- [ ] **T38 — Nightly Ignis e2e, release pipeline, Dependabot** · Decisions: D38 · **watch**
+- [x] **T38 — Nightly Ignis e2e, release pipeline, Dependabot** · Decisions: D38 · **watch**
   - Playwright nightly for §16.12, 17, 18; `release.yml` (tag → multi-arch GHCR images); `dependabot.yml`; `SECURITY.md` disclosure contact.
   - Acceptance: the nightly runs green against pinned Ignis; a test tag publishes amd64 and arm64 images.
   - Verify: workflow runs on a fork.
   - Deps: T28, T37 · Files: `.github/workflows/{nightly,release}.yml`, `.github/dependabot.yml`, `e2e/ignis/` · Scope: M
+  - **Status:**
+    - `nightly.yml` (daily and on demand): the full e2e suite plus Playwright browser tests, with the `nightly` dependency group and Chromium.
+    - `e2e/test_ignis_browser.py` (§16.12, marker `nightly`; regular CI excludes it): opens a note in the pinned Ignis, checks an agent's MCP append appears in the open editor, then the person's typing autosaves after it with nothing overwritten. It passes locally in both profiles. §16.17 and §16.18 already run in every e2e run.
+    - `release.yml` (v* tags): QEMU + buildx builds of vault-mcp, vault-watcher, git-sync and agent-runner for amd64/arm64, pushed to `ghcr.io/<owner>/docs-vault-kit-<service>` with provenance and SBOM.
+    - `dependabot.yml`: weekly updates for actions, uv, Dockerfiles and compose files; the Ignis image is excluded because it is pinned with `OBSIDIAN_VERSION`.
+    - actionlint is clean. The disclosure contact is in SECURITY.md (T41).
+  - [ ] **External check (listed for the user):** a nightly run on GitHub, and a test tag publishing amd64 + arm64 images (needs `packages: write` on the repository; `gh auth refresh -s write:packages` for local pushes).
 
 - [ ] **T39 — SETUP.md + UPGRADING.md** · Decisions: D5, D29, D34 · **watch**
   - Server requirements (CPU/RAM/disk, amd64/arm64), setup walkthrough per profile, upgrade procedure with the Ignis/Obsidian pin pair and a smoke test.
