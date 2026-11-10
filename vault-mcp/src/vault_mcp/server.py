@@ -14,10 +14,12 @@ from fastmcp.server.dependencies import get_access_token
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from vault_core.alerts import AlertSender
 from vault_core.audit import AuditLog
 from vault_core.config import Settings
 from vault_core.policy import load_policy
 from vault_mcp.errors import VaultToolError
+from vault_mcp.ratelimit import RateLimiter
 from vault_mcp.sources import SourceTools
 from vault_mcp.store import Credential, CredentialStore
 from vault_mcp.tools_read import ReadTools
@@ -61,6 +63,9 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     )
 
     sources = SourceTools(writer)
+    limiter = RateLimiter(
+        policy.rate_limits, alerts=AlertSender(settings.alert_webhook, service="vault-mcp")
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
@@ -99,6 +104,7 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
             "path": path,
         }
         try:
+            limiter.check(cred.id, write=False)
             result = call(cred)
         except VaultToolError as exc:
             audit.append(service="vault-mcp", tool=tool, result=exc.code, **fields)
@@ -121,6 +127,7 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
             "path": path,
         }
         try:
+            limiter.check(cred.id, write=True)
             return await call(cred)
         except VaultToolError as exc:
             audit.append(service="vault-mcp", tool=tool, result=exc.code, **fields)

@@ -82,12 +82,17 @@ def start(profile: str) -> Stack:
         (vault / rel).parent.mkdir(parents=True, exist_ok=True)
         (vault / rel).write_text(text)
     data.mkdir()
+    (root / "alerts").mkdir()
     policy = root / "vault-mcp.yaml"
     shutil.copy(REPO / "vault-mcp.example.yaml", policy)
     env = {
         **os.environ,
         "INGRESS": profile,
-        "COMPOSE_FILE": "docker-compose.yml",  # local and none add no ingress override (D5)
+        # local and none add no ingress override (D5); the e2e file adds a webhook stub.
+        "COMPOSE_FILE": "docker-compose.yml:e2e/compose.e2e.yml",
+        "COMPOSE_PATH_SEPARATOR": ":",
+        "ALERT_WEBHOOK": "http://webhook-stub:8099/hook",
+        "E2E_ALERTS_DIR": str(root / "alerts"),
         "VAULT_PATH": str(vault),
         "DATA_PATH": str(data),
         "MCP_POLICY_FILE": str(policy),

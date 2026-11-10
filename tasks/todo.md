@@ -193,11 +193,12 @@ Commands used in verification:
   - Deps: T16 · Files: `vault-mcp/src/vault_mcp/{sources,leases}.py`, tests · Scope: M
   - **Status:** 17 source tests (dated slug names and collision suffixes, YAML-safe provenance frontmatter, URL stubs with no network access, URL scheme checks, concurrent claims with exactly one winner, holder-only complete and release, `summary_page` must exist and be readable, only files directly in `raw/`, expiry sweep, sweep of leaseless orphans in `_processing`). e2e §16.11 in both profiles: one of two concurrent claims wins; a 1-minute lease is returned to `raw/` by the running sweeper.
 
-- [ ] **T21 — Rate limiting + repeated-hit alert** · Decisions: D19, D25 · **watch**
+- [x] **T21 — Rate limiting + repeated-hit alert** · Decisions: D19, D25 · **watch**
   - Sliding-window middleware for rpm, writes/min, writes/day; `rate_limited` with `retry_after_s`; alert threshold.
   - Acceptance: §16.8 (limit exceeded → error; ≥ 5 hits in 10 min → exactly one webhook call within the hour).
   - Verify: `uv run pytest vault-mcp -k ratelimit` + e2e §16.8 with a webhook stub container.
   - Deps: T10, T8 · Files: `vault-mcp/src/vault_mcp/ratelimit.py`, tests · Scope: S
+  - **Status:** 7 unit tests (requests/minute per credential, writes count toward both limits, writes/day with `retry_after_s` from the oldest counted write, refused calls not counted, alert after 5 refusals in 10 minutes at most hourly, refusals spread over more than 10 minutes don't alert) plus an in-process MCP test (`rate_limited` error + audit line). e2e §16.8 in both profiles: 130 rapid calls get `rate_limited`, and exactly one `rate_limit_repeated` alert reaches a test webhook stub (`e2e/compose.e2e.yml`). Mutation checks on counting refusals, the daily limit and alert throttling.
 
 - [ ] **T22 — Watcher secret scan** · Decisions: D15, D20, D24, D25 · **watch**
   - Scan changed files from any writer; dedupe findings; masked `#review/high` item; audit line; alert.

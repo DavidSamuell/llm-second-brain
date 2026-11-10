@@ -27,7 +27,6 @@ HEALTH_PORT = 8083
 class WatcherSettings(Settings):
     history_retention_days: int = 90
     history_min_versions: int = 10
-    alert_webhook: str | None = None
 
 
 class CliError(Exception):
