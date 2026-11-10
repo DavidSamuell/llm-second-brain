@@ -245,11 +245,12 @@ Commands used in verification:
 
 ## Phase 5 — Template, skills, Ignis hardening, setup
 
-- [ ] **T26 — vault-template content** · Decisions: D9, D14, D15, D36 · **watch**
+- [x] **T26 — vault-template content** · Decisions: D9, D14, D15, D36 · **watch**
   - `AGENTS.md` (integer `schema_version`, maintainer rules, ingest/query/lint procedures, prompt-injection defence), `CLAUDE.md`, `Home.md`, folder tree, 12 page templates, `.obsidian/app.json`, `.gitignore`, `_system/*`, `.kit-manifest.json`.
   - Acceptance: every §9 bullet is present; procedures use the exact D10/D14/D15 tool contracts; the manifest hashes match the files.
   - Verify: a manifest check script in unit tests; manual read of AGENTS.md.
   - Deps: T20 · Files: `vault-template/**` · Scope: L (content only)
+  - **Status:** `vault-template/` has AGENTS.md (schema_version 1: safety rules incl. prompt-injection defence and no secrets, layout, maintainer rules, editing via vault-mcp with the D10 error codes, page conventions, citations, conflicts, review queue in D15 format, ingest via `claim_source` → `complete_source` / `release_source`, query, and lint, which archives ticked review items), CLAUDE.md, Home.md, the §9 folder tree, `_system/{index,log,review-queue,lint-report}.md`, 12 page templates, `.obsidian/{app,templates}.json`, `.gitignore`, and `.kit-manifest.json`. `vault_core.template` computes the manifest. Tests check that the manifest matches the managed files, its version equals AGENTS.md `schema_version`, every page's frontmatter parses with a `maintainer`, and the Obsidian JSON is valid.
 
 - [ ] **T27 — Kit skills (`docs-ingest`, `docs-query`, `docs-lint`)** · Decisions: D10, D11, D14, D15 · **watch**
   - Agent Skills format; MCP-tool mode, plus filesystem mode for agents that read the vault directly.
