@@ -129,3 +129,11 @@ def test_any_text_file_is_scanned_whatever_its_extension(
     (vault / "wiki" / name).write_text(f"KEY={FAKE_KEY}\n")
     rec.snapshot(f"wiki/{name}", "web")
     assert [a[0] for a in alerts.sent] == ["secret_detected"]
+
+
+def test_large_text_files_are_scanned_too(setup: tuple[Recorder, Alerts, Path, Path]) -> None:
+    rec, alerts, vault, _ = setup
+    filler = ("lorem ipsum dolor sit amet " * 3 + "\n") * 80_000  # ~6.5 MB of text
+    (vault / "wiki" / "big.md").write_text(filler + f"key: {FAKE_KEY}\n")
+    rec.snapshot("wiki/big.md", "web")
+    assert [a[0] for a in alerts.sent] == ["secret_detected"]

@@ -19,8 +19,6 @@ from vault_core.audit import AuditLog, new_id
 from vault_core.fsio import replace_from_temp, write_temp_sibling
 from vault_core.secrets import scan_text
 
-MAX_SCAN_BYTES = 5 * 1024 * 1024
-
 
 def _as_text(data: bytes) -> str | None:
     """Any changed file that is text, whatever its name (`.env`, `.toml`, scripts, no
@@ -84,7 +82,7 @@ class SecretScanner:
     def check(self, rel: str, data: bytes, record_queue: Callable[[str], object]) -> int:
         """Report new findings in `rel`. `record_queue` records the review queue's new version
         in history. Returns the number of new findings."""
-        if rel == review_queue.QUEUE_PATH or len(data) > MAX_SCAN_BYTES:
+        if rel == review_queue.QUEUE_PATH:
             return 0
         text = _as_text(data)
         if text is None:
