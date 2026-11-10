@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Restore a backup made by scripts/backup (SPEC §12, §16.16, plan D37).
+#
+#   scripts/restore <archive.tar.gz> [--force]
+#
+# The stack must be stopped (docker compose down). VAULT_PATH and DATA_PATH must be empty;
+# --force replaces their contents. Every file is checked against the archive's manifest before
+# anything is written; the search index is rebuilt afterwards. If the archive holds .env or
+# vault-mcp.yaml, they are put in ./restored-config/ for you to review, never over your files.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+[ $# -ge 1 ] || { sed -n '2,10p' "$0"; exit 2; }
+ARCHIVE=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
+[ -f "$ARCHIVE" ] || { echo "error: no such file: $1" >&2; exit 1; }
+shift
+args=()
+[ "${1:-}" = --force ] && args+=(--force)
+
+if [ -n "$(docker compose ps --status running --quiet 2>/dev/null)" ]; then
+  echo "error: the stack is running; stop it first: docker compose down" >&2
+  exit 1
+fi
+mkdir -p restored-config
+docker compose run --rm --no-deps -T \
+  -v "$ARCHIVE:/restore/archive.tar.gz:ro" -v "$PWD/restored-config:/restore-config" \
+  vault-watcher restore /restore/archive.tar.gz --config-out /restore-config "${args[@]}"
+rmdir restored-config 2>/dev/null || echo "restored .env / vault-mcp.yaml are in ./restored-config (review before use)"
+echo "done: start the stack with docker compose up -d"

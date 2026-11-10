@@ -222,3 +222,5 @@ vault-mcp.yaml
 compose.plugins.yml
 # Python packaging ignores lib/; the kit keeps shell helpers there.
 !scripts/lib/
+backups/
+restored-config/

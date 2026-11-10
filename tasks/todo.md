@@ -344,11 +344,12 @@ Commands used in verification:
 
     Changes are applied atomically under the vault lock as `upgrade-vault`. Manifest hashes now exclude custom-block contents (`kit_hash`). There is a `vault-watcher upgrade-vault [--apply]` CLI and a `scripts/upgrade-vault [--yes] [--template DIR]` wrapper. 13 unit tests with mutation checks; e2e §16.22: a newer template is applied, the custom block is kept, and the watcher records history.
 
-- [ ] **T37 — `scripts/backup` + `scripts/restore`** · Decisions: D4, D6, D37 · **watch**
+- [x] **T37 — `scripts/backup` + `scripts/restore`** · Decisions: D4, D6, D37 · **watch**
   - Hot backup with SQLite online backup and a manifest; `--include-config`; restore with a stopped stack, followed by reindex.
   - Acceptance: §16.16 (backup → wipe → restore reproduces vault, history, tokens, Ignis state).
   - Verify: `uv run pytest e2e -k backup_restore`.
   - Deps: T13, T28 · Files: `scripts/backup`, `scripts/restore` · Scope: S
+  - **Status:** `vault_watcher.backup` (CLI `vault-watcher backup|restore`) with host wrappers `scripts/backup [--include-config] [--out DIR]` and `scripts/restore <archive> [--force]`. Backup holds the vault lock, takes SQLite online-backup snapshots of every database, tars `vault/` + `data/` (no lock files, no WAL/SHM), optionally adds `config/`, writes `MANIFEST.json` with a sha256 per file, and leaves the archive at mode 600. Restore refuses while the stack is running, requires empty targets (or `--force`), checks every hash before writing, extracts with tarfile's `data` filter, puts config files in `./restored-config/` instead of over yours, then rebuilds the search index. 3 unit tests (a WAL-only commit survives, which the mutation check confirms; tampered archive; force) and e2e §16.16 in both profiles: backup → stop → wipe → restore → up gives back the page, the history, the old token and the Ignis state.
 
 ### Checkpoint G — after T34–T37
 - [ ] §16.16, 19, 20, 21, 22 green

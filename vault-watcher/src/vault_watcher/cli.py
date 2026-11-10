@@ -250,6 +250,41 @@ def _cmd_upgrade_vault(settings: WatcherSettings, args: argparse.Namespace) -> i
     return 0
 
 
+def _cmd_backup(settings: WatcherSettings, args: argparse.Namespace) -> int:
+    from vault_watcher import backup
+
+    config = [p for p in Path("/config-in").glob("*") if p.is_file()] if args.include_config else []
+    manifest = backup.create_backup(
+        settings.vault_dir, settings.data_dir, Path(args.archive), config
+    )
+    print(
+        f"wrote {args.archive}: {len(manifest['files'])} files{' (with config)' if config else ''}"
+    )
+    return 0
+
+
+def _cmd_restore_backup(settings: WatcherSettings, args: argparse.Namespace) -> int:
+    from vault_watcher import backup
+
+    try:
+        manifest = backup.restore(
+            Path(args.archive),
+            settings.vault_dir,
+            settings.data_dir,
+            Path(args.config_out),
+            force=args.force,
+        )
+    except backup.BackupError as exc:
+        raise CliError(str(exc)) from None
+    count = SearchIndex(settings.data_dir / "index.db", load_policy(settings.policy_file)).rebuild(
+        settings.vault_dir
+    )
+    print(
+        f"restored {len(manifest['files'])} files from {manifest['created_at']}; search index rebuilt ({count} documents)"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vault-watcher", description="Docs Vault Kit watcher")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -275,6 +310,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     reindex = commands.add_parser("reindex", help="rebuild the search index from the vault")
     reindex.set_defaults(handler=_cmd_reindex)
+
+    backup = commands.add_parser("backup", help="hot backup of the vault and /data (SQLite-safe)")
+    backup.add_argument("archive", help="path of the .tar.gz to write")
+    backup.add_argument(
+        "--include-config", action="store_true", help="also add files mounted at /config-in"
+    )
+    backup.set_defaults(handler=_cmd_backup)
+    restore = commands.add_parser(
+        "restore", help="restore a backup into empty vault and data folders"
+    )
+    restore.add_argument("archive")
+    restore.add_argument(
+        "--config-out", default="/restore-config", help="where restored .env/vault-mcp.yaml go"
+    )
+    restore.add_argument(
+        "--force", action="store_true", help="replace non-empty vault and data folders"
+    )
+    restore.set_defaults(handler=_cmd_restore_backup)
 
     upgrade = commands.add_parser("upgrade-vault", help="show (or --apply) kit template updates")
     upgrade.add_argument("--apply", action="store_true", help="write the changes shown")
