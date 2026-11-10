@@ -55,14 +55,14 @@ def http_probe(url: str, timeout_s: float = 5.0) -> str | None:
 
 
 def heartbeat_probe(path: Path, max_age_s: float) -> str | None:
-    """A service that is enabled (its state directory exists) must have touched its heartbeat
-    file within `max_age_s`."""
-    if not path.parent.is_dir():
-        return None
+    """A service that has run (its heartbeat file exists) must keep touching it within
+    `max_age_s`. Setup creates the state folders of optional services whether or not they are
+    on, so only the file says a service is in use; one that never starts is caught by compose's
+    own healthcheck."""
     try:
         age = time.time() - path.stat().st_mtime
     except FileNotFoundError:
-        return "no heartbeat yet"
+        return None
     return None if age <= max_age_s else f"heartbeat {int(age)} s old"
 
 

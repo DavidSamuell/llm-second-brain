@@ -385,5 +385,11 @@ def test_inotify_limits_fall_back_to_the_periodic_scan_with_a_hint(
     try:
         assert "fs.inotify.max_user_watches" in caplog.text
         assert HistoryStore(data).head("wiki/a.md") is not None  # the startup scan still ran
+        # MCP writes still get acknowledged quickly (writers wait for it, D21).
+        started = time.monotonic()
+        mcp_write((vault, data), "wiki/b.md", b"# B\n")
+        wait_for(lambda: not any(Spool(data).inbox.iterdir()))
+        assert time.monotonic() - started < 2
+        assert HistoryStore(data).head("wiki/b.md") is not None
     finally:
         w.stop()

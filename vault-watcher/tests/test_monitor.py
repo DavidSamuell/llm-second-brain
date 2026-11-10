@@ -88,7 +88,7 @@ def test_heartbeat_probe(tmp_path: Path) -> None:
     beat = tmp_path / "git-sync" / "heartbeat"
     assert heartbeat_probe(beat, max_age_s=60) is None  # service not enabled: no directory
     beat.parent.mkdir()
-    assert heartbeat_probe(beat, max_age_s=60) is not None  # enabled but never beat
+    assert heartbeat_probe(beat, max_age_s=60) is None  # folder made by setup, service off
     beat.touch()
     assert heartbeat_probe(beat, max_age_s=60) is None
     old = time.time() - 120

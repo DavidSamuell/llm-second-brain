@@ -28,6 +28,7 @@ from vault_core.search_index import SearchIndex
 from vault_watcher.recorder import AlertSink, Recorder, is_tracked
 
 log = logging.getLogger(__name__)
+POLL_SCAN_S = 30.0  # vault scan interval when inotify is unavailable
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,12 @@ class Watcher:
                 exc.strerror, int(self.config.scan_interval_s),
             )  # fmt: skip
             self._observing = False
+            self.alerts.send(
+                "watcher_inotify_limit", "warning",
+                "vault-watcher hit the host's inotify limit and fell back to polling; raise "
+                "fs.inotify.max_user_watches / max_user_instances on the Docker host.",
+                {"error": exc.strerror}, subject="inotify",
+            )  # fmt: skip
         with vault_lock(self.config.data_dir, "vault-watcher"):
             drained = self.recorder.drain()
             changed = self.recorder.scan()
@@ -175,8 +182,18 @@ class Watcher:
         next_beat = next_scan = time.monotonic()
         next_scan += cfg.scan_interval_s
         next_gc = time.monotonic() + cfg.gc_interval_s
+        next_poll = 0.0
+        inbox = self.recorder.spool.inbox
         while not self._stop.is_set():
             now = time.monotonic()
+            if not self._observing:
+                # Polling fallback (no inotify): pick up MCP commits quickly, since writers wait
+                # for the acknowledgement (D21), and scan the vault every 30 s instead of 10 min.
+                if now >= next_poll:
+                    if any(inbox.iterdir()):
+                        self._wake.set()
+                    next_poll = now + 0.2
+                next_scan = min(next_scan, now + POLL_SCAN_S)
             if now >= next_beat:
                 self.heartbeat.touch()
                 next_beat = now + cfg.heartbeat_interval_s
