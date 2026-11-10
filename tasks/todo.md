@@ -280,17 +280,21 @@ Commands used in verification:
 
 ## Phase 6 — Ingress
 
-- [ ] **T30 — `cloudflare` profile + guide** · Decisions: D5, D39 · **watch**
+- [x] **T30 — `cloudflare` profile + guide** · Decisions: D5, D39 · **watch**
   - `ingress/cloudflare/compose.yml` override (cloudflared) selected through `COMPOSE_FILE`, and `docs/ingress/cloudflare.md` (tunnel, Access app, MCP Bypass app, 50-user / 100 MB limits).
   - Acceptance: §16.1 and §16.3 for cloudflare on a real domain.
   - Verify: manual deploy; check-exposure once T32 lands.
   - Deps: T29 · Files: `ingress/cloudflare/compose.yml`, `docs/ingress/cloudflare.md` · Scope: S
+  - **Status:** `ingress/cloudflare/compose.yml` (pinned `cloudflared`, a token-based remote-managed tunnel, readiness healthcheck; merges with the base file) and `docs/ingress/cloudflare.md` (tunnel public hostnames to `ignis:8080` and `vault-mcp:8082`; an Access app on the editor; an Access Bypass app plus WAF skip on the MCP host; the 50-user and 100 MB limits; §5.1 checklist; verify with check-exposure). Validated with `docker compose config` only.
+  - [ ] **External check (listed for the user):** a real deploy on a Cloudflare domain: §16.1 cloudflare (< 30 min) and §16.3 (allowed user edits, disallowed user denied).
 
-- [ ] **T31 — `caddy` profile + guide** · Decisions: D5, D39 · **watch**
+- [x] **T31 — `caddy` profile + guide** · Decisions: D5, D39 · **watch**
   - `ingress/caddy/compose.yml` override (caddy + oauth2-proxy) selected through `COMPOSE_FILE`, plus `ingress/caddy/Caddyfile` and `docs/ingress/caddy.md`.
   - Acceptance: §16.1 and §16.3 for caddy; WebSockets work through forward_auth; `/mcp` and `/oauth/*` reachable without a browser login.
   - Verify: manual deploy on a public VM.
   - Deps: T29 · Files: `ingress/caddy/{compose.yml,Caddyfile}`, `docs/ingress/caddy.md` · Scope: M
+  - **Status:** `ingress/caddy/compose.yml` (pinned Caddy 2.10.2 and oauth2-proxy v7.12.0 with healthchecks; only Caddy publishes 80/443), `Caddyfile` (`forward_auth` to oauth2-proxy with a redirect to sign-in on the editor host; WebSockets pass through; the MCP host passes through whole, with streaming flushed) and `docs/ingress/caddy.md`. Checked with `caddy validate` and `docker compose config`.
+  - [ ] **External check (listed for the user):** a deploy on a public VM: §16.1 caddy and §16.3, WebSockets through forward_auth, and `/mcp` plus `/oauth/*` reachable without a browser login.
 
 - [ ] **T32 — `scripts/check-exposure`** · Decisions: D35 · **watch**
   - All §5.4 checks; PASS/FAIL/SKIP output; wired into setup.

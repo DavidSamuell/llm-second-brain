@@ -1,0 +1,20 @@
+# INGRESS=cloudflare (SPEC §5.2, plan D5/D39): a Cloudflare Tunnel, no inbound ports.
+# The tunnel's public hostnames are configured in the Cloudflare dashboard (docs/ingress/cloudflare.md):
+#   IGNIS_HOST -> http://ignis:8080       (behind a Cloudflare Access application)
+#   MCP_HOST   -> http://vault-mcp:8082   (Access "Bypass": vault-mcp authenticates every request)
+services:
+  cloudflared:
+    image: cloudflare/cloudflared@sha256:1b1d34d0a9c0bfca9de72db8460d328db3f19edd2b96169114e3e893a97bbe53  # 2026.10.5
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:?set CF_TUNNEL_TOKEN in .env}
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "--metrics", "127.0.0.1:2000", "ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      vault-mcp:
+        condition: service_healthy
+    restart: unless-stopped

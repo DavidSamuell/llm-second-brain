@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Kit skills `docs-ingest`, `docs-query`, `docs-lint` (Agent Skills format) in `vault-template/skills/`, for vault-mcp tools or a local git clone.
 - `ignis-init` one-shot service: Obsidian community plugins limited to the checksum-pinned allowlist in `ignis/ignis-plugins.yaml` (empty by default) and mounted read-only into Ignis; kit-managed `.obsidian` settings reset at each start. New settings: `IGNIS_PLUGINS_FILE`, `IGNIS_PLUGIN_BASE_URL`.
 - `scripts/setup` (interactive or `--non-interactive`): writes `.env` and `vault-mcp.yaml`, creates folders, copies or adopts the vault template, creates the agent-runner token, starts the stack and checks exposure. `.env.example` lists every setting.
+- Ingress profiles: `cloudflare` (Cloudflare Tunnel; Access in front of the editor, Bypass for the MCP host) and `caddy` (Let's Encrypt HTTPS with an oauth2-proxy login in front of the editor), each with a guide in `docs/ingress/`.
 
 ### Security
 
