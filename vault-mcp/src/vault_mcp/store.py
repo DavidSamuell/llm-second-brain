@@ -32,11 +32,11 @@ LAST_USED_RESOLUTION = timedelta(minutes=1)
 
 _TOKEN_RE = re.compile(r"^vmcp_[A-Za-z0-9_-]{43}$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:@-]{0,63}$")
-_OWNER_RE = re.compile(r"^[^@\s]+@[^@\s]+$")
+OWNER_RE = re.compile(r"^[^@\s]+@[^@\s]+$")
 _EXPIRY_RE = re.compile(r"^([1-9][0-9]*)([dhm])$")
 _UNITS = {"d": "days", "h": "hours", "m": "minutes"}
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _SCHEMA = """
 CREATE TABLE credentials (
     id TEXT PRIMARY KEY,
@@ -58,6 +58,45 @@ CREATE TABLE token_hashes (
     type TEXT NOT NULL CHECK (type IN ('bearer', 'access', 'refresh')),
     expires_at TEXT
 );
+"""
+# v2 (T24): OAuth 2.1 grants share the credentials/token_hashes tables (D16/D17).
+_MIGRATE_V2 = """
+ALTER TABLE token_hashes ADD COLUMN client_id TEXT;
+ALTER TABLE token_hashes ADD COLUMN used_at TEXT;
+CREATE INDEX token_hashes_credential ON token_hashes(credential_id);
+CREATE TABLE oauth_clients (
+    client_id TEXT PRIMARY KEY,
+    info TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE auth_requests (
+    hash TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    params TEXT NOT NULL,
+    browser_hash TEXT,
+    csrf_hash TEXT,
+    owner TEXT,
+    max_scope TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE auth_codes (
+    hash TEXT PRIMARY KEY,
+    client_id TEXT NOT NULL,
+    params TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE approval_codes (
+    hash TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    scope TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+);
+CREATE TABLE login_failures (ts TEXT NOT NULL);
 """
 
 
@@ -137,7 +176,7 @@ class CredentialStore:
         self._ensure_schema()
 
     @contextmanager
-    def _db(self) -> Iterator[sqlite3.Connection]:
+    def db(self) -> Iterator[sqlite3.Connection]:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             fd = os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600)
@@ -154,12 +193,14 @@ class CredentialStore:
     def _ensure_schema(self) -> None:
         old_umask = os.umask(0o077)  # WAL/SHM side files are created private too
         try:
-            with self._db() as conn:
+            with self.db() as conn:
                 version = conn.execute("PRAGMA user_version").fetchone()[0]
                 if version == 0:
                     conn.executescript(
-                        f"BEGIN; {_SCHEMA} PRAGMA user_version={SCHEMA_VERSION}; COMMIT;"
+                        f"BEGIN; {_SCHEMA} {_MIGRATE_V2} PRAGMA user_version=2; COMMIT;"
                     )
+                elif version == 1:
+                    conn.executescript(f"BEGIN; {_MIGRATE_V2} PRAGMA user_version=2; COMMIT;")
                 elif version > SCHEMA_VERSION:
                     raise CredentialError(
                         f"{self.path}: schema v{version} is newer than this vault-mcp"
@@ -178,7 +219,7 @@ class CredentialStore:
     ) -> tuple[str, Credential]:
         if not _NAME_RE.match(name):
             raise CredentialError(f"invalid name {name!r}: letters, digits, . _ : @ - (max 64)")
-        if not _OWNER_RE.match(owner):
+        if not OWNER_RE.match(owner):
             raise CredentialError(f"invalid owner {owner!r}: expected an email address")
         if scope not in ("read", "write"):
             raise CredentialError(f"invalid scope {scope!r}: expected read or write")
@@ -193,7 +234,7 @@ class CredentialStore:
             TOKEN_PREFIX + base64.urlsafe_b64encode(secrets.token_bytes(32)).rstrip(b"=").decode()
         )
         cred_id = new_id()
-        with self._db() as conn:
+        with self.db() as conn:
             try:
                 conn.execute("BEGIN IMMEDIATE")
                 conn.execute(
@@ -223,7 +264,7 @@ class CredentialStore:
         return token, self._require(cred_id)
 
     def get(self, cred_id: str) -> Credential | None:
-        with self._db() as conn:
+        with self.db() as conn:
             row = conn.execute("SELECT * FROM credentials WHERE id = ?", (cred_id,)).fetchone()
         return Credential._from_row(row) if row else None
 
@@ -238,7 +279,7 @@ class CredentialStore:
         if not _TOKEN_RE.match(token):
             return None
         now = self.now()
-        with self._db() as conn:
+        with self.db() as conn:
             row = conn.execute(
                 "SELECT c.*, t.expires_at AS token_expires_at FROM token_hashes t"
                 " JOIN credentials c ON c.id = t.credential_id"
@@ -259,7 +300,7 @@ class CredentialStore:
 
     def revoke(self, name_or_id: str) -> Credential:
         now = self.now()
-        with self._db() as conn:
+        with self.db() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT * FROM credentials WHERE revoked_at IS NULL AND (id = ? OR name = ?)",
@@ -275,6 +316,6 @@ class CredentialStore:
         return self._require(row["id"])
 
     def list_credentials(self) -> list[Credential]:
-        with self._db() as conn:
+        with self.db() as conn:
             rows = conn.execute("SELECT * FROM credentials ORDER BY created_at, id").fetchall()
         return [Credential._from_row(r) for r in rows]

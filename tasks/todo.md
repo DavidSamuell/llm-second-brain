@@ -216,7 +216,7 @@ Commands used in verification:
 
 ### Checkpoint C — after T16–T23
 - [x] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e — PR #1, run 42746635890: 50 passed, 0 skipped (the two firewall-skipped LAN tests run on GitHub's runners)
-- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **not run (it spends the user's Claude usage).** Steps:
+- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **attempted 2026-11-10 with `/tmp/cli-check.py`: blocked by the account's weekly limit (resets Nov 14), cost $0; the user will run it later.** Steps:
   1. `docker compose up -d`, then `scripts/token create --name claude-cli --owner you@example.com --scope write`
   2. `claude mcp add --transport http vault http://127.0.0.1:8082/mcp --header "Authorization: Bearer <token>"`
   3. In `claude`: "Call get_schema, read wiki/index.md, append a line to a wiki/ page, submit_source a short note, then claim_source it."
@@ -224,11 +224,12 @@ Commands used in verification:
 
 ## Phase 4 — OAuth
 
-- [ ] **T24 — OAuth authorization server + approval codes** · Decisions: D16, D17 · **watch**
+- [x] **T24 — OAuth authorization server + approval codes** · Decisions: D16, D17 · **watch**
   - `OAuthProvider` subclass on `tokens.db`; DCR, authorize, token, refresh rotation with reuse detection, revoke; metadata; consent page; `vault-mcp oauth approve-code`; grants listed and revoked through `token list|revoke`; `MCP_OAUTH_ENABLED=false` disables every OAuth route.
   - Acceptance: a protocol test drives the full flow with PKCE (S256 only); a revoked grant's access and refresh tokens are rejected right away; an approval code works once.
   - Verify: `uv run pytest vault-mcp -k oauth`.
   - Deps: T2, T9, T10 · Files: `vault-mcp/src/vault_mcp/oauth/{provider,pages,codes}.py`, tests · Scope: L (split pages from provider if needed)
+  - **Status:** 26 tests against a real uvicorn server. Covered: metadata advertises S256, `none` auth and root endpoints, and a 401 carries `resource_metadata`; unsafe redirect URIs are refused at registration; the full flow (DCR → authorize → approval code → consent → code + PKCE → token → tool call, with the grant in `token list` and the audit log); consent can narrow to read, and a read approval code caps the grant; deny returns `access_denied`; a wrong PKCE verifier fails; auth codes and approval codes are single use; 5 wrong codes kill the request and 30 failures lock sign-in for 10 minutes; another browser can't complete someone else's request; pages can't be framed; refresh rotates, and reusing an old refresh token revokes the whole grant; `token revoke` and RFC 7009 `/revoke` cut access immediately; bearer tokens keep working; the MCP SDK `OAuthClientProvider` completes the flow headlessly; `MCP_OAUTH_ENABLED=false` removes every OAuth route; a v1 `tokens.db` migrates; `oauth approve-code` CLI; OAuth use updates `last_used`. Mutation checks on reuse revocation, browser binding, approval-code reuse, scope cap, redirect rules, code reuse and the attempt cap. The `codes.py` split wasn't needed: approval codes live in `oauth/grants.py`.
 
 - [ ] **T25 — Upstream OIDC login** · Decisions: D18 · **watch**
   - authlib flows for google, microsoft, generic oidc, and github (verified-email API); email domain restriction; upstream tokens discarded.

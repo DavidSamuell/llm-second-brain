@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Per-credential rate limits from `vault-mcp.yaml` (`rate_limited` error with `retry_after_s`); `rate_limit_repeated` alert.
 - `vault-watcher` secret scan of every changed text file: high alert, masked `#review/high` review-queue item, audit entry; the secret is never repeated.
 - `vault-watcher` ops monitor: alerts when vault-mcp or Ignis is unhealthy, a heartbeat is stale, or `/vault` or `/data` is over 80 % full. New settings: `MONITOR_INTERVAL_S`, `MONITOR_PEERS`, `MONITOR_HEARTBEATS`. `ALERT_WEBHOOK` now also reaches vault-mcp.
+- `vault-mcp` OAuth 2.1 authorization server for hosted MCP clients (Claude.ai, ChatGPT): metadata, dynamic client registration, authorization code + PKCE (S256), rotating refresh tokens with reuse detection, revocation, sign-in with one-time approval codes (`vault-mcp oauth approve-code`), and a consent page. Grants appear in `token list` and end with `token revoke`. New settings: `MCP_OAUTH_ENABLED`, `MCP_OAUTH_ISSUER`.
 
 ### Security
 

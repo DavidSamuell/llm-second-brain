@@ -1,4 +1,4 @@
-"""`vault-mcp` command line (SPEC §6.3): `token create|list|revoke`."""
+"""`vault-mcp` command line (SPEC §6.3): `token create|list|revoke`, `oauth approve-code`, `serve`."""
 
 from __future__ import annotations
 
@@ -7,12 +7,19 @@ import json
 import os
 import sys
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from vault_core.config import Settings, bind_addr_warning
 from vault_core.policy import PolicyError
-from vault_mcp.store import DEFAULT_EXPIRY, Credential, CredentialError, CredentialStore
+from vault_mcp.store import (
+    DEFAULT_EXPIRY,
+    OWNER_RE,
+    Credential,
+    CredentialError,
+    CredentialStore,
+    parse_expiry,
+)
 
 
 def _fmt(dt: datetime | None) -> str:
@@ -103,6 +110,12 @@ def _cmd_serve(store: CredentialStore, args: argparse.Namespace) -> int:
     settings = Settings() if args.data_dir is None else Settings(data_dir=args.data_dir)
     if warning := bind_addr_warning(settings.bind_addr):
         print(f"WARNING: {warning}", file=sys.stderr)
+    if settings.mcp_oauth_enabled and not settings.mcp_oauth_issuer and not args.stdio:
+        print(
+            "WARNING: MCP_OAUTH_ENABLED is true but MCP_OAUTH_ISSUER is empty: OAuth is off, bearer tokens only. "
+            "Set MCP_OAUTH_ISSUER to the public https URL of the MCP host to let Claude.ai and ChatGPT connect.",
+            file=sys.stderr,
+        )
     if args.stdio:
         token = os.environ.get("VAULT_MCP_TOKEN", "")
         if store.verify(token) is None:
@@ -114,6 +127,25 @@ def _cmd_serve(store: CredentialStore, args: argparse.Namespace) -> int:
     else:
         server = build_server(settings)
         server.run(transport="http", host=args.host, port=args.port, path="/mcp", show_banner=False)
+    return 0
+
+
+def _cmd_approve_code(store: CredentialStore, args: argparse.Namespace) -> int:
+    from vault_mcp.oauth.grants import OAuthStore
+
+    if not OWNER_RE.match(args.owner):
+        raise CredentialError(f"invalid owner {args.owner!r}: expected an email address")
+    now = store.now()
+    expires = parse_expiry(args.ttl, now) if args.ttl != "never" else None
+    if expires is None or expires - now > timedelta(days=7):
+        raise CredentialError("--ttl must be between 1 minute and 7 days")
+    code = OAuthStore(store).create_approval_code(args.owner, args.scope, expires - now)
+    print(code)
+    print(
+        f"one-time code for {args.owner} ({args.scope}), valid until {_fmt(expires)}; "
+        "they enter it on the sign-in page when connecting an app",
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -149,6 +181,24 @@ def build_parser() -> argparse.ArgumentParser:
     revoke = token_cmds.add_parser("revoke", help="revoke a credential by name or id")
     revoke.add_argument("credential")
     revoke.set_defaults(handler=_cmd_revoke)
+
+    oauth = commands.add_parser("oauth", help="OAuth sign-in for hosted MCP clients")
+    oauth_cmds = oauth.add_subparsers(dest="oauth_command", required=True)
+    approve = oauth_cmds.add_parser(
+        "approve-code",
+        help="one-time code a person enters to connect an app (no identity provider)",
+    )
+    approve.add_argument("--owner", required=True, help="email of the person who will sign in")
+    approve.add_argument(
+        "--scope",
+        choices=["read", "write"],
+        default="read",
+        help="most the person may grant (default read)",
+    )
+    approve.add_argument(
+        "--ttl", default="1h", help="<n>m|<n>h|<n>d until the code expires (default 1h)"
+    )
+    approve.set_defaults(handler=_cmd_approve_code)
 
     serve = commands.add_parser("serve", help="run the MCP server")
     serve.add_argument(

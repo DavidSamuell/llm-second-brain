@@ -19,6 +19,8 @@ from vault_core.audit import AuditLog
 from vault_core.config import Settings
 from vault_core.policy import load_policy
 from vault_mcp.errors import VaultToolError
+from vault_mcp.oauth.pages import OAuthPages
+from vault_mcp.oauth.provider import VaultOAuthProvider
 from vault_mcp.ratelimit import RateLimiter
 from vault_mcp.sources import SourceTools
 from vault_mcp.store import Credential, CredentialStore
@@ -75,12 +77,19 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         finally:
             sweeper.cancel()
 
+    oauth = (
+        VaultOAuthProvider(store, settings.mcp_oauth_issuer)
+        if stdio_token is None and settings.mcp_oauth_enabled and settings.mcp_oauth_issuer
+        else None
+    )
     mcp = FastMCP(
         "vault-mcp",
         lifespan=lifespan,
         instructions="Shared documentation vault. Call get_schema first: AGENTS.md holds the rules.",
-        auth=None if stdio_token is not None else BearerVerifier(store),
+        auth=None if stdio_token is not None else (oauth or BearerVerifier(store)),
     )
+    if oauth is not None:
+        OAuthPages(oauth, audit).register(mcp)
 
     def current() -> Credential:
         if stdio_token is not None:

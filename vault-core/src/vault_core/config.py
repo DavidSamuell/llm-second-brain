@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     bind_addr: str = "127.0.0.1"
     history_ack_timeout: float = 5.0  # D21: how long a write waits for vault-watcher
     alert_webhook: str | None = None  # SPEC §12 ALERT_WEBHOOK
+    mcp_oauth_enabled: bool = True  # SPEC §13; OAuth also needs MCP_OAUTH_ISSUER
+    mcp_oauth_issuer: str | None = None  # public https URL of the MCP host
 
 
 def bind_addr_warning(bind_addr: str) -> str | None:
