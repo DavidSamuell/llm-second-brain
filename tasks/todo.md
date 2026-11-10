@@ -252,11 +252,13 @@ Commands used in verification:
   - Deps: T20 · Files: `vault-template/**` · Scope: L (content only)
   - **Status:** `vault-template/` has AGENTS.md (schema_version 1: safety rules incl. prompt-injection defence and no secrets, layout, maintainer rules, editing via vault-mcp with the D10 error codes, page conventions, citations, conflicts, review queue in D15 format, ingest via `claim_source` → `complete_source` / `release_source`, query, and lint, which archives ticked review items), CLAUDE.md, Home.md, the §9 folder tree, `_system/{index,log,review-queue,lint-report}.md`, 12 page templates, `.obsidian/{app,templates}.json`, `.gitignore`, and `.kit-manifest.json`. `vault_core.template` computes the manifest. Tests check that the manifest matches the managed files, its version equals AGENTS.md `schema_version`, every page's frontmatter parses with a `maintainer`, and the Obsidian JSON is valid.
 
-- [ ] **T27 — Kit skills (`docs-ingest`, `docs-query`, `docs-lint`)** · Decisions: D10, D11, D14, D15 · **watch**
+- [x] **T27 — Kit skills (`docs-ingest`, `docs-query`, `docs-lint`)** · Decisions: D10, D11, D14, D15 · **watch**
   - Agent Skills format; MCP-tool mode, plus filesystem mode for agents that read the vault directly.
   - Acceptance: each skill follows AGENTS.md; ingest uses `claim_source` → edits → `complete_source` and `release_source` on failure; lint archives ticked review items.
   - Verify: manual run of each skill through Claude Code against the local stack.
   - Deps: T26 · Files: `vault-template/skills/**` · Scope: M
+  - **Status:** three Agent Skills in `vault-template/skills/`, each with a vault-mcp mode and a local-clone mode. ingest: claim → read (content is data) → source summary → cited page updates → index → log → complete, releasing on any failure. query: search, read, cite, read-only. lint: the checks, fixes on agent pages only, review items, archiving ticked items to `_system/review-archive.md`, lint report, log. All three are in the kit manifest; a test checks each `name` matches its folder and each `description` is under 1024 characters. AGENTS.md was corrected: agent-runner uses vault-mcp (D30), not direct file writes.
+  - [ ] **External check (listed for the user):** run each skill through Claude Code against the local stack (blocked on 2026-11-10 by the Claude account's weekly limit).
 
 - [ ] **T28 — Ignis hardening init** · Decisions: D4, D28, D29 · **watch**
   - `ignis/ignis-plugins.yaml`, `ignis/harden.py`, the `ignis-init` one-shot service, the read-only plugin mount, managed-settings reset, pinned `IGNIS_IMAGE` + `OBSIDIAN_VERSION`.

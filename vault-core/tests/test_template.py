@@ -30,7 +30,12 @@ def test_manifest_version_is_the_agents_md_schema_version() -> None:
 
 
 @pytest.mark.parametrize(
-    "path", sorted(p for p in TEMPLATE.rglob("*.md") if p.read_text().startswith("---"))
+    "path",
+    sorted(
+        p
+        for p in TEMPLATE.rglob("*.md")
+        if p.read_text().startswith("---") and "skills" not in p.parts
+    ),
 )
 def test_every_page_has_parseable_frontmatter_with_a_maintainer(path: Path) -> None:
     meta, _ = frontmatter.parse(path.read_text())
@@ -50,3 +55,13 @@ def test_obsidian_settings_are_valid_json() -> None:
 )  # fmt: skip
 def test_only_kit_content_is_managed(rel: str, managed: bool) -> None:
     assert is_managed(rel) is managed
+
+
+@pytest.mark.parametrize("skill", ["docs-ingest", "docs-query", "docs-lint"])
+def test_skills_are_valid_agent_skills(skill: str) -> None:
+    """Agent Skills format: `name` matching the folder, and a `description` under 1024 chars."""
+    meta, body = frontmatter.parse((TEMPLATE / "skills" / skill / "SKILL.md").read_text())
+    assert meta is not None
+    assert meta["name"] == skill
+    assert 0 < len(meta["description"]) <= 1024
+    assert body.strip()

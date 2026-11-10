@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `vault-mcp` OAuth 2.1 authorization server for hosted MCP clients (Claude.ai, ChatGPT): metadata, dynamic client registration, authorization code + PKCE (S256), rotating refresh tokens with reuse detection, revocation, sign-in with one-time approval codes (`vault-mcp oauth approve-code`), and a consent page. Grants appear in `token list` and end with `token revoke`. New settings: `MCP_OAUTH_ENABLED`, `MCP_OAUTH_ISSUER`.
 - OAuth sign-in through Google, Microsoft Entra (single tenant), GitHub (primary verified email) or any OIDC provider, limited to `OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS`; upstream tokens are discarded. New settings: `OAUTH_UPSTREAM_PROVIDER`, `OAUTH_UPSTREAM_CLIENT_ID`, `OAUTH_UPSTREAM_CLIENT_SECRET`, `OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS`, `OAUTH_UPSTREAM_ISSUER`, `OAUTH_UPSTREAM_TENANT`.
 - `vault-template/`: AGENTS.md (schema_version 1) with safety rules and the ingest/query/lint procedures, CLAUDE.md, Home.md, folder tree, 12 page templates, Obsidian settings, `.gitignore`, and `.kit-manifest.json` (managed-file hashes for upgrades).
+- Kit skills `docs-ingest`, `docs-query`, `docs-lint` (Agent Skills format) in `vault-template/skills/`, for vault-mcp tools or a local git clone.
 
 ### Security
 

@@ -5,7 +5,7 @@
       ".gitignore": "d25188db96f1d8612ac49ab65b03cba2635e7dba713724c3f162c39e88d1fcf4",
       ".obsidian/app.json": "b94e3dd4d37a8b1893bdbea0a546ddce598b030a46605dafd15f3c8989773916",
       ".obsidian/templates.json": "b43ca442635fe99e907be81f12704f6ed0b4f9530140db96bbd4918c86685d59",
-      "AGENTS.md": "bcb02fbf2cf0eba0bb59860ef0b3ee7ab465ec6511614e110c74eac718dbaae9",
+      "AGENTS.md": "112cda908d7af6c4a62e27a4fa21f2e145e4299c0c2ee7d51541903790bf89e1",
       "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
       "_system/templates/adr.md": "f1a27827b5418ba66bd899e6eb0849547aab554f2c45e683834a182460758741",
       "_system/templates/architecture.md": "81fbe402aa4223d19278ec8e56f0e98e523654086debce57b71a174c6f445c21",
@@ -18,7 +18,10 @@
       "_system/templates/source-summary.md": "bf5c156994870ca328004f254cc772f78bd31a1bc681045e5a9fa7b2bfe22e54",
       "_system/templates/wiki-component.md": "d101fc8758996b25fe3baa575512e40a92bba3cb7a79d914a527735f904de5ef",
       "_system/templates/wiki-concept.md": "4875096e4b33febb37b21378ab785f865cd3474d34e28c04da287ec7d08e103b",
-      "_system/templates/wiki-team.md": "971d7923e36c8ccd16a52e5a12c8c17368389f95e3b07ced622ae89982821dd5"
+      "_system/templates/wiki-team.md": "971d7923e36c8ccd16a52e5a12c8c17368389f95e3b07ced622ae89982821dd5",
+      "skills/docs-ingest/SKILL.md": "4e6979a01003de4d77868d7ddf71695efdffcd82cd17acb5c251b6a8e53c9f85",
+      "skills/docs-lint/SKILL.md": "847f20c0e90e2f0aa467ce148fbec1a786b5944460da00b48107bcce7a10b61d",
+      "skills/docs-query/SKILL.md": "f7d9ba9a874940079b7d74a38ab403d7640a2b6c811125606b19a2fcd3978b40"
     }
   }
 }

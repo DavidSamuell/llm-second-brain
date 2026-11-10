@@ -76,8 +76,9 @@ Never change a page's `maintainer` value.
   `not_found`, `invalid`, `too_large`, `secret_detected`, `rate_limited` (wait
   `details.retry_after_s`), `already_claimed`, `not_claimed`, `ambiguous_heading` (use the full
   heading line, e.g. `## Usage`), `history_pending` (check `details.applied` before retrying).
-- Agents running on the server (`agent-runner`) edit files on disk directly; the same rules
-  apply. Keep frontmatter valid YAML.
+- Server agents (`agent-runner`) use the same tools. Agents working in a local git clone of the
+  vault (no vault-mcp) follow the same rules on the files and push through git; see the
+  `docs-*` skills for that mode. Keep frontmatter valid YAML.
 
 ## 5. Page conventions
 
