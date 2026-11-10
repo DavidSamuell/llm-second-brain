@@ -66,7 +66,7 @@ Commands used in verification:
   - Verify: `uv run ruff check . && uv run mypy && uv run pytest`.
   - Deps: none · Files: `pyproject.toml`, `uv.lock`, `*/pyproject.toml`, `.github/workflows/ci.yml` · Scope: M
   - **Status:** local acceptance met under the user's "build and test locally, list external checks" allowance (set at the /build auto checkpoint). `uv sync --locked --all-packages` works from a fresh clone; ruff, ruff format, mypy and pytest (3 smoke tests) pass; actionlint finds no problems in `ci.yml`. The lint job also runs shellcheck on `scripts/**` + `*.sh` and hadolint on Dockerfiles (D38); both skip cleanly while no such files exist, and both steps were tested locally against a sample script and Dockerfile.
-  - [ ] **External check (listed for the user):** CI green on a PR. Needs a push to GitHub, which isn't authorised in this run.
+  - [x] **External check:** CI green on a PR: [PR #1](https://github.com/DavidSamuell/llm-second-brain/pull/1), run 42746635890.
 
 - [x] **T6 — vault-core: paths, policy, config** · Decisions: D8, D9, D27 · **watch**
   - Path normalisation and escape rejection; `vault-mcp.yaml` pydantic model; scope intersection; the maintainer write rule as pure functions.
@@ -106,7 +106,7 @@ Commands used in verification:
   - Verify: `uv run pytest e2e -m "profile_local or profile_none"`.
   - Deps: T10 · Files: `e2e/`, `.github/workflows/ci.yml` · Scope: M
   - **Status:** local acceptance met under the user's "build and test locally, list external checks" allowance. `uv run pytest e2e -m "profile_local or profile_none"`: 16 passed, 2 skipped. The skips are the other-network container probe: this host's firewall blocks container-to-host traffic, so its control listener is unreachable. §16.2 is still covered by the LAN-address probe, which was shown to fail when the stack is published on `0.0.0.0`. `ci.yml` has the `e2e` job (actionlint clean).
-  - [ ] **External check (listed for the user):** the CI `e2e` job green on a PR (needs a push), including the other-network probe running unskipped on the GitHub runner.
+  - [x] **External check:** the CI `e2e` job green on PR #1 (run 42746635890): 50 passed, 0 skipped, so the other-network probe ran on the GitHub runner.
 
 ### Checkpoint A — after T4–T11
 - [ ] lint, unit, and e2e green in CI (locally: ruff, mypy, shellcheck, hadolint, 198 unit tests and the e2e suite pass; CI needs a push)
@@ -215,7 +215,7 @@ Commands used in verification:
   - **Status:** 6 monitor tests (alert on the 3rd consecutive failure, once per outage, a recovery notice, a distinct subject per outage so the sender's hourly dedupe can't hide a second outage, one success resets the count, a crashing probe counts as a failure, disk 80 % ok / 81 % alert, heartbeat checked only for enabled services, HTTP probe). e2e in both profiles: stopping vault-mcp gives a `service_unhealthy` alert, restarting it gives `service_recovered`; the resolved compose config and every ingress override contain no `docker.sock`. Compose healthchecks already exist for ignis, vault-mcp and vault-watcher; git-sync and agent-runner get theirs in Phase 4 (the monitor already checks their heartbeats once their state directories exist).
 
 ### Checkpoint C — after T16–T23
-- [ ] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e — **local run green (48 passed, 2 expected firewall skips, both profiles); CI run needs a push, which is not authorised**
+- [x] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e — PR #1, run 42746635890: 50 passed, 0 skipped (the two firewall-skipped LAN tests run on GitHub's runners)
 - [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **not run (it spends the user's Claude usage).** Steps:
   1. `docker compose up -d`, then `scripts/token create --name claude-cli --owner you@example.com --scope write`
   2. `claude mcp add --transport http vault http://127.0.0.1:8082/mcp --header "Authorization: Bearer <token>"`
