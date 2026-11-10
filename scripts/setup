@@ -1,0 +1,276 @@
+#!/usr/bin/env bash
+# Set up or reconfigure the Docs Vault Kit on this server (SPEC §1, plan D34).
+#
+#   scripts/setup                    ask for settings (current values are the defaults), then start
+#   scripts/setup --reconfigure      same; use after changing INGRESS
+#   scripts/setup --non-interactive  use .env as it is (CI, automation); never prompts
+#
+# Options: --env-file PATH (default .env), --no-start (configure only), --adopt (copy missing
+# template files into a non-empty vault without asking; never overwrites).
+#
+# Safe to rerun: existing settings, vault content and tokens are kept.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+REPO=$(pwd)
+
+ENV_FILE=.env
+INTERACTIVE=1
+START=1
+ADOPT=ask
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --non-interactive) INTERACTIVE=0 ;;
+    --reconfigure) INTERACTIVE=1 ;;
+    --no-start) START=0 ;;
+    --adopt) ADOPT=yes ;;
+    --env-file) ENV_FILE=$2; shift ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+say() { printf '==> %s\n' "$*"; }
+warn() { printf 'WARNING: %s\n' "$*" >&2; }
+die() { printf 'error: %s\n' "$*" >&2; exit 1; }
+
+command -v docker >/dev/null || die "docker is not installed"
+docker compose version >/dev/null 2>&1 || die "the docker compose plugin is not installed"
+
+# -- settings -----------------------------------------------------------------------------------
+
+declare -A VAL=()
+ORDER=()
+
+strip_value() {
+  # KEY=value parsing as compose does: quotes are removed; unquoted ` #` starts a comment.
+  local v=$1
+  if [[ $v == \'*\' && ${#v} -ge 2 ]]; then v=${v:1:${#v}-2}
+  elif [[ $v == \"*\" && ${#v} -ge 2 ]]; then v=${v:1:${#v}-2}
+  else v=${v%%[[:space:]]#*}; v=${v%"${v##*[![:space:]]}"}
+  fi
+  printf '%s' "$v"
+}
+
+load() {
+  local file=$1 line key
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ $line =~ ^[[:space:]]*([A-Z][A-Z0-9_]*)=(.*)$ ]] || continue
+    key=${BASH_REMATCH[1]}
+    [[ -v "VAL[$key]" ]] || ORDER+=("$key")
+    VAL[$key]=$(strip_value "${BASH_REMATCH[2]}")
+  done < "$file"
+}
+
+get() { printf '%s' "${VAL[$1]:-}"; }
+set_val() { [[ -v "VAL[$1]" ]] || ORDER+=("$1"); VAL[$1]=$2; }
+
+ask() {  # ask KEY "question" [secret]
+  local key=$1 question=$2 secret=${3:-} current answer
+  current=$(get "$key")
+  [ "$INTERACTIVE" = 1 ] || return 0
+  if [ -n "$secret" ]; then
+    read -r -s -p "$question [${current:+keep current}]: " answer; echo
+  else
+    read -r -p "$question [$current]: " answer
+  fi
+  [ -z "$answer" ] || set_val "$key" "$answer"
+}
+
+load "$REPO/.env.example"
+load "$ENV_FILE"
+
+if [ "$INTERACTIVE" = 1 ]; then
+  say "Settings (Enter keeps the value in brackets)"
+  ask VAULT_PATH "Vault folder on this server"
+  ask DATA_PATH "Data folder (history, tokens, search index)"
+  ask INGRESS "How people reach it: cloudflare | caddy | local | none"
+  case "$(get INGRESS)" in
+    cloudflare|caddy|none)
+      ask DOMAIN "Your domain"
+      ask IGNIS_HOST "Editor hostname (people)"
+      ask MCP_HOST "MCP hostname (agents)" ;;
+  esac
+  case "$(get INGRESS)" in
+    cloudflare) ask CF_TUNNEL_TOKEN "Cloudflare tunnel token" secret ;;
+    caddy)
+      ask ACME_EMAIL "Email for Let's Encrypt"
+      ask OAUTH_PROVIDER "Login provider for the editor (google, github, azure, oidc)"
+      ask OAUTH_CLIENT_ID "Editor login: OAuth client id"
+      ask OAUTH_CLIENT_SECRET "Editor login: OAuth client secret" secret
+      ask OAUTH_ALLOWED_EMAIL_DOMAINS "Editor login: allowed email domains" ;;
+  esac
+  if [ "$(get INGRESS)" != local ]; then
+    ask OAUTH_UPSTREAM_PROVIDER "Agent connector sign-in: google | microsoft | github | oidc | none"
+    if [ "$(get OAUTH_UPSTREAM_PROVIDER)" != none ]; then
+      ask OAUTH_UPSTREAM_CLIENT_ID "Connector sign-in: OAuth client id"
+      ask OAUTH_UPSTREAM_CLIENT_SECRET "Connector sign-in: OAuth client secret" secret
+      ask OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS "Connector sign-in: allowed email domains"
+    fi
+  fi
+  ask GIT_REMOTE "Git remote for backups (empty = off)"
+  ask ANTHROPIC_API_KEY "Anthropic API key for the server-side agent (empty = off)" secret
+  ask ALERT_WEBHOOK "Alert webhook URL (Slack/Discord/JSON, empty = off)"
+fi
+
+# -- validate and derive --------------------------------------------------------------------------
+
+INGRESS=$(get INGRESS)
+case "$INGRESS" in cloudflare|caddy|local|none) ;; *) die "INGRESS must be cloudflare, caddy, local or none, not '$INGRESS'" ;; esac
+for key in VAULT_PATH DATA_PATH; do
+  [[ $(get "$key") == /* ]] || die "$key must be an absolute path"
+done
+if [ "$INGRESS" != local ]; then
+  for key in IGNIS_HOST MCP_HOST; do
+    host=$(get "$key")
+    [[ $host =~ ^[A-Za-z0-9.-]+(:[0-9]+)?$ ]] && [[ $host != *example.com* ]] || die "set $key to your real hostname"
+  done
+fi
+[ "$INGRESS" != cloudflare ] || [ -n "$(get CF_TUNNEL_TOKEN)" ] || die "INGRESS=cloudflare needs CF_TUNNEL_TOKEN"
+if [ "$INGRESS" = caddy ]; then
+  for key in ACME_EMAIL OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET OAUTH_ALLOWED_EMAIL_DOMAINS; do
+    [ -n "$(get "$key")" ] || die "INGRESS=caddy needs $key"
+  done
+  [ -n "$(get OAUTH_COOKIE_SECRET)" ] || set_val OAUTH_COOKIE_SECRET "$(head -c 32 /dev/urandom | base64 | tr -d '\n=' | tr '+/' '-_' | head -c 32)"
+fi
+
+set_val PUID "$(id -u)"
+set_val PGID "$(id -g)"
+if [ "$INGRESS" = local ]; then
+  [ -n "$(get MCP_OAUTH_ISSUER)" ] || true  # no public MCP host: OAuth stays off (bearer tokens only)
+elif [ -z "$(get MCP_OAUTH_ISSUER)" ] && [ "$(get MCP_OAUTH_ENABLED)" = true ]; then
+  set_val MCP_OAUTH_ISSUER "https://$(get MCP_HOST)"
+fi
+
+compose_files=docker-compose.yml
+case "$INGRESS" in cloudflare|caddy) compose_files+=":ingress/$INGRESS/compose.yml" ;; esac
+[ ! -f compose.plugins.yml ] || compose_files+=":compose.plugins.yml"
+set_val COMPOSE_PATH_SEPARATOR ":"
+set_val COMPOSE_FILE "$compose_files"
+profiles=()
+[ -z "$(get GIT_REMOTE)" ] || profiles+=(git)
+[ -z "$(get ANTHROPIC_API_KEY)$(get AGENT_COMMAND)" ] || profiles+=(agent)
+set_val COMPOSE_PROFILES "$(IFS=,; echo "${profiles[*]}")"
+
+# -- write .env -------------------------------------------------------------------------------------
+
+quote() {
+  local v=$1
+  if [[ $v =~ [[:space:]\#\'\"\$] ]]; then
+    v=${v//\'/\'\\\'\'}
+    printf "'%s'" "$v"
+  else
+    printf '%s' "$v"
+  fi
+}
+
+write_env() {
+  local tmp line key written=" "
+  tmp=$(mktemp "${ENV_FILE}.XXXXXX")
+  chmod 600 "$tmp"
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ $line =~ ^([A-Z][A-Z0-9_]*)=([^#]*)(#.*)?$ ]]; then
+      key=${BASH_REMATCH[1]}
+      local comment=${BASH_REMATCH[3]:-}
+      if [ -n "$comment" ]; then
+        printf '%s=%-*s%s\n' "$key" 22 "$(quote "$(get "$key")")" "  $comment"
+      else
+        printf '%s=%s\n' "$key" "$(quote "$(get "$key")")"
+      fi
+      written+="$key "
+    else
+      printf '%s\n' "$line"
+    fi
+  done < "$REPO/.env.example" > "$tmp"
+  for key in "${ORDER[@]}"; do
+    [[ $written == *" $key "* ]] || printf '%s=%s\n' "$key" "$(quote "$(get "$key")")" >> "$tmp"
+  done
+  mv "$tmp" "$ENV_FILE"
+}
+write_env
+say "wrote $ENV_FILE"
+
+[ -f vault-mcp.yaml ] || { cp vault-mcp.example.yaml vault-mcp.yaml; say "wrote vault-mcp.yaml (agent policy; edit to taste)"; }
+
+# -- folders and vault --------------------------------------------------------------------------------
+
+VAULT_PATH=$(get VAULT_PATH)
+DATA_PATH=$(get DATA_PATH)
+mkdir -p "$VAULT_PATH" "$DATA_PATH/ignis-plugins" "$DATA_PATH/ignis"
+for dir in "$VAULT_PATH" "$DATA_PATH" "$DATA_PATH/ignis-plugins" "$DATA_PATH/ignis"; do
+  [ -w "$dir" ] || die "$dir is not writable by $(id -un); fix its owner (it must match PUID/PGID)"
+done
+
+copy_template() {  # copy_template no-clobber|fresh
+  local flag=()
+  [ "$1" = no-clobber ] && flag=(-n)
+  (cd vault-template && find . -type d -print0 | (cd "$VAULT_PATH" && xargs -0 mkdir -p))
+  (cd vault-template && find . -type f ! -name .kit-manifest.json -print0 |
+    while IFS= read -r -d '' f; do cp "${flag[@]}" -p "$f" "$VAULT_PATH/$f"; done)
+}
+
+if [ -z "$(ls -A "$VAULT_PATH")" ]; then
+  copy_template fresh
+  say "new vault: copied vault-template/ into $VAULT_PATH"
+elif [ -f "$VAULT_PATH/AGENTS.md" ]; then
+  say "vault already set up ($VAULT_PATH/AGENTS.md exists); left as is (use scripts/upgrade-vault for kit updates)"
+else
+  if [ "$ADOPT" = ask ] && [ "$INTERACTIVE" = 1 ]; then
+    read -r -p "$VAULT_PATH has content but no AGENTS.md. Add the kit's files that don't exist yet (nothing is overwritten)? [y/N] " answer
+    [[ $answer == [yY]* ]] && ADOPT=yes || ADOPT=no
+  fi
+  if [ "$ADOPT" = yes ]; then
+    copy_template no-clobber
+    say "adopted existing vault: added missing template files; existing files untouched"
+  else
+    warn "existing vault left unchanged and without AGENTS.md; agents will lack the rules. Rerun with --adopt to add the kit's files."
+  fi
+fi
+
+COMPOSE=(docker compose --env-file "$ENV_FILE")
+
+# -- agent-runner token ---------------------------------------------------------------------------------
+
+if [[ $(get COMPOSE_PROFILES) == *agent* ]] && [ -z "$(get AGENT_RUNNER_TOKEN)" ]; then
+  say "creating the agent-runner token"
+  out=$("${COMPOSE[@]}" run --rm --no-deps -T vault-mcp vault-mcp token create \
+    --name agent-runner --owner "agent-runner@$(get DOMAIN)" --scope write --expires never 2>&1) ||
+    die "could not create the agent-runner token: $out"
+  token=$(grep -oE 'vmcp_[A-Za-z0-9_-]{43}' <<<"$out" | head -n1)
+  [ -n "$token" ] || die "no token in: $out"
+  set_val AGENT_RUNNER_TOKEN "$token"
+  write_env
+fi
+
+[ "$START" = 1 ] || { say "configured (not started: --no-start)"; exit 0; }
+
+# -- start ------------------------------------------------------------------------------------------------
+
+say "starting (the first start downloads Obsidian and can take a few minutes)"
+"${COMPOSE[@]}" up -d --build --wait --wait-timeout 900 || {
+  "${COMPOSE[@]}" ps
+  die "some services did not become healthy; see: docker compose logs"
+}
+say "running"
+
+# -- exposure check (§5.4) ----------------------------------------------------------------------------------
+
+if [ "$INGRESS" = local ]; then
+  say "INGRESS=local: nothing is published; reach the editor with: ssh -L $(get IGNIS_PORT):127.0.0.1:$(get IGNIS_PORT) <server>"
+elif [ ! -x scripts/check-exposure ]; then
+  warn "scripts/check-exposure not found; exposure checks skipped"
+else
+  say "checking exposure"
+  out=$("${COMPOSE[@]}" exec -T vault-mcp vault-mcp token create --name "setup-check-$(date +%s)" \
+    --owner "setup@$(get DOMAIN)" --scope read --expires 1h 2>&1)
+  check_token=$(grep -oE 'vmcp_[A-Za-z0-9_-]{43}' <<<"$out" | head -n1)
+  status=0
+  CHECK_TOKEN=$check_token ENV_FILE=$ENV_FILE scripts/check-exposure "https://$(get IGNIS_HOST)" "https://$(get MCP_HOST)" || status=$?
+  "${COMPOSE[@]}" exec -T vault-mcp vault-mcp token revoke "$(grep -oE 'setup-check-[0-9]+' <<<"$out" | head -n1)" >/dev/null 2>&1 || true
+  [ "$status" = 0 ] || die "exposure check failed: fix the ingress before sharing the URLs"
+fi
+
+say "done. Editor: $([ "$INGRESS" = local ] && echo "http://127.0.0.1:$(get IGNIS_PORT) (via SSH tunnel)" || echo "https://$(get IGNIS_HOST)")"
+say "next: create agent tokens with scripts/token create --name <who-device> --owner <email> --scope write"

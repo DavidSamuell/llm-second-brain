@@ -267,11 +267,13 @@ Commands used in verification:
   - Deps: T1, T10 · Files: `ignis/**`, `docker-compose.yml` · Scope: M
   - **Status:** `ignis-init` (the vault-watcher image, `vault-watcher harden-ignis`) runs before Ignis (`service_completed_successfully`). It enforces `ignis/ignis-plugins.yaml` (empty by default) in `${DATA_PATH}/ignis-plugins`, which Ignis mounts read-only over `.obsidian/plugins`; resets `app.json`/`templates.json` from the template; writes `community-plugins.json`; creates the mount points; and checks the `compose.plugins.yml` data mounts for `writable_data` plugins. 13 unit tests, plus e2e in both profiles: §16.17 (a rogue plugin dropped in is gone after restart, the allowlisted plugin remains, UI installs fail on the read-only mount), a checksum mismatch makes ignis-init exit non-zero, and §16.18 (the Ignis log's Obsidian version equals `OBSIDIAN_VERSION`). Fake releases come from a test-only `plugin-stub`.
 
-- [ ] **T29 — `scripts/setup` + config examples** · Decisions: D4, D5, D16, D27, D34 · **watch**
+- [x] **T29 — `scripts/setup` + config examples** · Decisions: D4, D5, D16, D27, D34 · **watch**
   - `.env.example` (§13 + new vars), `vault-mcp.example.yaml`; interactive and `--non-interactive` setup; vault init/adopt; `COMPOSE_FILE` from `INGRESS` and `COMPOSE_PROFILES` for optional services; runner token; check-exposure hook (skipped until T32 exists).
   - Acceptance: a fresh `INGRESS=local` deploy on a clean VM finishes in < 30 min (§16.1 local); rerunning setup is idempotent.
   - Verify: CI runs `scripts/setup --non-interactive` in the e2e job; manual timed run on a clean VM.
   - Deps: T26, T28 · Files: `scripts/setup`, `.env.example`, `vault-mcp.example.yaml` · Scope: M
+  - **Status:** `scripts/setup` (bash, shellcheck-clean): interactive prompts (current values as defaults) or `--non-interactive`; `--env-file`, `--no-start`, `--adopt`. It validates settings, derives `COMPOSE_FILE`/`COMPOSE_PROFILES`/`PUID`/`PGID`/`MCP_OAUTH_ISSUER`/`OAUTH_COOKIE_SECRET`, writes `.env` (mode 600) from `.env.example`, copies `vault-mcp.yaml`, creates the folders, copies the template into an empty vault (or adopts without overwriting), creates the agent-runner token when that profile is on, starts and waits for health, then runs check-exposure with a temporary read token. 8 e2e tests: configure, idempotent rerun, adoption, bad settings refused, ingress override and profile selection, and a full `INGRESS=local` deploy that comes up healthy.
+  - [ ] **External check (listed for the user):** a timed fresh deploy on a clean VM (§16.1 local, < 30 min).
 
 ### Checkpoint E — after T26–T29
 - [ ] §16.1 (local), 12, 17, 18 pass; nightly-style Ignis checks run manually

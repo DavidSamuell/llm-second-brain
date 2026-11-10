@@ -219,3 +219,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 vault-mcp.yaml
+compose.plugins.yml
+# Python packaging ignores lib/; the kit keeps shell helpers there.
+!scripts/lib/
