@@ -4,8 +4,10 @@ and Ignis state."""
 import asyncio
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
+import httpx
 import pytest
 from fastmcp import Client
 from harness import REPO, Stack
@@ -45,8 +47,19 @@ def test_16_16_backup_wipe_restore(stack: Stack, tmp_path: Path) -> None:
             )
 
     asyncio.run(edit())
-    ignis_state = tree(data / "ignis")  # what this Ignis actually wrote (plan D4); nothing faked
-    assert ignis_state, "Ignis wrote nothing to DATA_PATH/ignis"
+    # Real Ignis state: change a server setting the way the editor's settings screen does, so
+    # Ignis itself writes DATA_PATH/ignis/server-settings.json.
+    settings = httpx.get(f"{stack.ignis_url}/api/settings", timeout=10).json()
+    settings["directFetchHosts"] = ["docs.backup-check.test"]
+    assert (
+        httpx.post(f"{stack.ignis_url}/api/settings", json=settings, timeout=10).status_code < 300
+    )
+    written = data / "ignis" / "server-settings.json"
+    deadline = time.monotonic() + 10
+    while not (written.exists() and "docs.backup-check.test" in written.read_text()):
+        assert time.monotonic() < deadline, "Ignis did not write server-settings.json"
+        time.sleep(0.2)
+    ignis_state = tree(data / "ignis")
     history_before = stack.compose(
         "exec", "-T", "vault-watcher", "vault-watcher", "history", "list", "wiki/index.md"
     ).stdout
@@ -68,6 +81,9 @@ def test_16_16_backup_wipe_restore(stack: Stack, tmp_path: Path) -> None:
     assert "added before the backup" in (vault / "wiki" / "index.md").read_text()
     restored_ignis = tree(data / "ignis")
     assert ignis_state.items() <= restored_ignis.items()  # Ignis may add more after restarting
+    assert restored_ignis["server-settings.json"] == ignis_state["server-settings.json"]
+    live = httpx.get(f"{stack.ignis_url}/api/settings", timeout=10).json()
+    assert live["directFetchHosts"] == ["docs.backup-check.test"]  # the restarted Ignis uses it
     history_after = stack.compose(
         "exec", "-T", "vault-watcher", "vault-watcher", "history", "list", "wiki/index.md"
     ).stdout
