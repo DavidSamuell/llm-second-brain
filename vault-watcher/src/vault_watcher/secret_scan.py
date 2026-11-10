@@ -19,8 +19,18 @@ from vault_core.audit import AuditLog, new_id
 from vault_core.fsio import replace_from_temp, write_temp_sibling
 from vault_core.secrets import scan_text
 
-TEXT_SUFFIXES = frozenset({".md", ".txt", ".canvas", ".json", ".yaml", ".yml", ".csv", ".base"})
 MAX_SCAN_BYTES = 5 * 1024 * 1024
+
+
+def _as_text(data: bytes) -> str | None:
+    """Any changed file that is text, whatever its name (`.env`, `.toml`, scripts, no
+    extension). Binary: a NUL byte in the first 8 KiB, or not valid UTF-8."""
+    if b"\x00" in data[:8192]:
+        return None
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 class AlertSink(Protocol):
@@ -74,17 +84,12 @@ class SecretScanner:
     def check(self, rel: str, data: bytes, record_queue: Callable[[str], object]) -> int:
         """Report new findings in `rel`. `record_queue` records the review queue's new version
         in history. Returns the number of new findings."""
-        if (
-            rel == review_queue.QUEUE_PATH
-            or Path(rel).suffix.lower() not in TEXT_SUFFIXES
-            or len(data) > MAX_SCAN_BYTES
-        ):
+        if rel == review_queue.QUEUE_PATH or len(data) > MAX_SCAN_BYTES:
             return 0
-        new = [
-            f
-            for f in scan_text(data.decode("utf-8", "replace"))
-            if not self._known(rel, f.rule, f.fingerprint)
-        ]
+        text = _as_text(data)
+        if text is None:
+            return 0
+        new = [f for f in scan_text(text) if not self._known(rel, f.rule, f.fingerprint)]
         for finding in new:
             # At least once: alert, queue item, audit, then remember. A crash part-way repeats.
             self.alerts.send(

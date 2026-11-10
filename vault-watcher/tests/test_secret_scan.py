@@ -119,3 +119,13 @@ def test_clean_files_and_binary_attachments_do_not_alert(
     rec.snapshot("wiki/clean.md", "web")
     rec.snapshot("wiki/image.png", "web")
     assert alerts.sent == []
+
+
+@pytest.mark.parametrize("name", ["config.toml", "deploy.sh", "Makefile", "creds.env"])
+def test_any_text_file_is_scanned_whatever_its_extension(
+    setup: tuple[Recorder, Alerts, Path, Path], name: str
+) -> None:
+    rec, alerts, vault, _ = setup
+    (vault / "wiki" / name).write_text(f"KEY={FAKE_KEY}\n")
+    rec.snapshot(f"wiki/{name}", "web")
+    assert [a[0] for a in alerts.sent] == ["secret_detected"]
