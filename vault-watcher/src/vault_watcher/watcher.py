@@ -128,10 +128,10 @@ class Watcher:
             if exc.errno not in (errno.ENOSPC, errno.EMFILE):
                 raise
             log.warning(
-                "inotify limit reached (%s): changes are recorded only by the periodic scan every %ss. "
+                "inotify limit reached (%s): polling instead (MCP writes every 0.2 s, vault scan every %ss). "
                 "On the Docker host, raise the limits: sysctl -w fs.inotify.max_user_watches=524288 "
                 "fs.inotify.max_user_instances=512 (persist them in /etc/sysctl.d/)",
-                exc.strerror, int(self.config.scan_interval_s),
+                exc.strerror, int(min(self.config.scan_interval_s, POLL_SCAN_S)),
             )  # fmt: skip
             self._observing = False
             self.alerts.send(

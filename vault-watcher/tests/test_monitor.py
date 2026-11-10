@@ -86,9 +86,8 @@ def test_disk_probe_fails_above_80_percent(tmp_path: Path) -> None:
 
 def test_heartbeat_probe(tmp_path: Path) -> None:
     beat = tmp_path / "git-sync" / "heartbeat"
-    assert heartbeat_probe(beat, max_age_s=60) is None  # service not enabled: no directory
     beat.parent.mkdir()
-    assert heartbeat_probe(beat, max_age_s=60) is None  # folder made by setup, service off
+    assert heartbeat_probe(beat, max_age_s=60) is not None  # enabled but never beat
     beat.touch()
     assert heartbeat_probe(beat, max_age_s=60) is None
     old = time.time() - 120
@@ -119,3 +118,12 @@ def test_http_probe(server: Any) -> None:
     server.shutdown()
     server.server_close()
     assert http_probe(f"http://127.0.0.1:{port}/health", timeout_s=1) is not None
+
+
+def test_only_services_the_stack_runs_are_checked() -> None:
+    from vault_watcher.monitor import enabled_heartbeats
+
+    configured = {"git-sync": "git-sync/heartbeat", "agent-runner": "agent-runner/heartbeat"}
+    assert enabled_heartbeats(configured, "") == {}
+    assert enabled_heartbeats(configured, "git") == {"git-sync": "git-sync/heartbeat"}
+    assert enabled_heartbeats(configured, "agent, git") == configured

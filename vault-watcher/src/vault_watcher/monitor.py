@@ -55,15 +55,23 @@ def http_probe(url: str, timeout_s: float = 5.0) -> str | None:
 
 
 def heartbeat_probe(path: Path, max_age_s: float) -> str | None:
-    """A service that has run (its heartbeat file exists) must keep touching it within
-    `max_age_s`. Setup creates the state folders of optional services whether or not they are
-    on, so only the file says a service is in use; one that never starts is caught by compose's
-    own healthcheck."""
+    """An enabled service must have touched its heartbeat file within `max_age_s`. Only
+    services the stack runs are checked (see enabled_heartbeats)."""
     try:
         age = time.time() - path.stat().st_mtime
     except FileNotFoundError:
-        return None
+        return "no heartbeat yet"
     return None if age <= max_age_s else f"heartbeat {int(age)} s old"
+
+
+def enabled_heartbeats(configured: dict[str, str], profiles: str) -> dict[str, str]:
+    """Heartbeats of the optional services this stack runs, from COMPOSE_PROFILES (setup turns
+    on `git` with GIT_REMOTE and `agent` with an agent credential or AGENT_COMMAND)."""
+    on = {p.strip() for p in profiles.split(",") if p.strip()}
+    service_profile = {"git-sync": "git", "agent-runner": "agent"}
+    return {
+        name: path for name, path in configured.items() if service_profile.get(name, name) in on
+    }
 
 
 def disk_probe(path: Path, usage: Callable[[Path], Any] = shutil.disk_usage) -> str | None:

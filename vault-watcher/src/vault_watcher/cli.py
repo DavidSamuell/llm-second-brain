@@ -20,7 +20,12 @@ from vault_core.lock import vault_lock
 from vault_core.paths import PathError, normalize
 from vault_core.policy import Policy, PolicyError, load_policy
 from vault_core.search_index import SearchIndex
-from vault_watcher.monitor import Monitor, default_checks, ignis_server_plugin_check
+from vault_watcher.monitor import (
+    Monitor,
+    default_checks,
+    enabled_heartbeats,
+    ignis_server_plugin_check,
+)
 from vault_watcher.watcher import Watcher, WatcherConfig
 
 HEALTH_PORT = 8083
@@ -39,6 +44,7 @@ class WatcherSettings(Settings):
     # name=url pairs on the compose network; heartbeats are checked only for enabled services.
     monitor_peers: str = "vault-mcp=http://vault-mcp:8082/health,ignis=http://ignis:8080/"
     monitor_heartbeats: str = "git-sync=git-sync/heartbeat,agent-runner=agent-runner/heartbeat"
+    compose_profiles: str = ""  # which optional services run (from .env COMPOSE_PROFILES)
 
 
 def _pairs(raw: str) -> dict[str, str]:
@@ -79,7 +85,10 @@ def _cmd_run(settings: WatcherSettings, _: argparse.Namespace) -> int:
             *default_checks(
                 peers=_pairs(settings.monitor_peers),
                 heartbeats={
-                    k: settings.data_dir / v for k, v in _pairs(settings.monitor_heartbeats).items()
+                    k: settings.data_dir / v
+                    for k, v in enabled_heartbeats(
+                        _pairs(settings.monitor_heartbeats), settings.compose_profiles
+                    ).items()
                 },
                 disks=[settings.vault_dir, settings.data_dir],
                 heartbeat_max_age_s=3 * settings.monitor_interval_s,
