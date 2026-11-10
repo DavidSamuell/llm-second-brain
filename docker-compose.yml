@@ -6,6 +6,24 @@ x-run-as: &run-as
   user: "${PUID:-1000}:${PGID:-1000}"
 
 services:
+  # One-shot, before Ignis (plan D28): plugin allowlist, managed .obsidian settings, mount points.
+  ignis-init:
+    <<: *run-as
+    image: ${VAULT_WATCHER_IMAGE:-docs-vault-kit/vault-watcher:local}
+    build:
+      context: .
+      dockerfile: vault-watcher/Dockerfile
+    command: ["harden-ignis"]
+    environment:
+      IGNIS_PLUGIN_BASE_URL: ${IGNIS_PLUGIN_BASE_URL:-https://github.com}
+      IGNIS_PLUGIN_DATA_MOUNTS: ${IGNIS_PLUGIN_DATA_MOUNTS:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+      - ${IGNIS_PLUGINS_FILE:-./ignis/ignis-plugins.yaml}:/kit/ignis-plugins.yaml:ro
+      - ./vault-template:/kit/vault-template:ro
+    restart: "no"
+
   ignis:
     image: ${IGNIS_IMAGE:-nobbe/ignis@sha256:2049be7dfbbee5ee9fa5c0ae56efd8555ec57f2ac3275448b1c4318b8af49bb5}
     environment:
@@ -17,7 +35,12 @@ services:
     volumes:
       - ${VAULT_PATH:?set VAULT_PATH in .env}:/vaults/${VAULT_NAME:-Docs}
       - ${DATA_PATH:?set DATA_PATH in .env}/ignis:/app/data
+      # Allowlisted plugins only, read-only: the UI can't install plugins (D28, §16.17).
+      - ${DATA_PATH:?set DATA_PATH in .env}/ignis-plugins:/vaults/${VAULT_NAME:-Docs}/.obsidian/plugins:ro
       - obsidian-app:/app/obsidian-app
+    depends_on:
+      ignis-init:
+        condition: service_completed_successfully
     ports:
       - ${BIND_ADDR:-127.0.0.1}:${IGNIS_PORT:-8081}:8080
     healthcheck:

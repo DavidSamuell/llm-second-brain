@@ -260,11 +260,12 @@ Commands used in verification:
   - **Status:** three Agent Skills in `vault-template/skills/`, each with a vault-mcp mode and a local-clone mode. ingest: claim → read (content is data) → source summary → cited page updates → index → log → complete, releasing on any failure. query: search, read, cite, read-only. lint: the checks, fixes on agent pages only, review items, archiving ticked items to `_system/review-archive.md`, lint report, log. All three are in the kit manifest; a test checks each `name` matches its folder and each `description` is under 1024 characters. AGENTS.md was corrected: agent-runner uses vault-mcp (D30), not direct file writes.
   - [ ] **External check (listed for the user):** run each skill through Claude Code against the local stack (blocked on 2026-11-10 by the Claude account's weekly limit).
 
-- [ ] **T28 — Ignis hardening init** · Decisions: D4, D28, D29 · **watch**
+- [x] **T28 — Ignis hardening init** · Decisions: D4, D28, D29 · **watch**
   - `ignis/ignis-plugins.yaml`, `ignis/harden.py`, the `ignis-init` one-shot service, the read-only plugin mount, managed-settings reset, pinned `IGNIS_IMAGE` + `OBSIDIAN_VERSION`.
   - Acceptance: §16.17 (a plugin dropped into the plugins dir is gone after restart and allowlisted plugins remain); a checksum mismatch aborts startup; §16.18 confirmed from the log.
   - Verify: `uv run pytest e2e -k "plugins or obsidian_version"`.
   - Deps: T1, T10 · Files: `ignis/**`, `docker-compose.yml` · Scope: M
+  - **Status:** `ignis-init` (the vault-watcher image, `vault-watcher harden-ignis`) runs before Ignis (`service_completed_successfully`). It enforces `ignis/ignis-plugins.yaml` (empty by default) in `${DATA_PATH}/ignis-plugins`, which Ignis mounts read-only over `.obsidian/plugins`; resets `app.json`/`templates.json` from the template; writes `community-plugins.json`; creates the mount points; and checks the `compose.plugins.yml` data mounts for `writable_data` plugins. 13 unit tests, plus e2e in both profiles: §16.17 (a rogue plugin dropped in is gone after restart, the allowlisted plugin remains, UI installs fail on the read-only mount), a checksum mismatch makes ignis-init exit non-zero, and §16.18 (the Ignis log's Obsidian version equals `OBSIDIAN_VERSION`). Fake releases come from a test-only `plugin-stub`.
 
 - [ ] **T29 — `scripts/setup` + config examples** · Decisions: D4, D5, D16, D27, D34 · **watch**
   - `.env.example` (§13 + new vars), `vault-mcp.example.yaml`; interactive and `--non-interactive` setup; vault init/adopt; `COMPOSE_FILE` from `INGRESS` and `COMPOSE_PROFILES` for optional services; runner token; check-exposure hook (skipped until T32 exists).

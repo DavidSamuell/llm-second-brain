@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - OAuth sign-in through Google, Microsoft Entra (single tenant), GitHub (primary verified email) or any OIDC provider, limited to `OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS`; upstream tokens are discarded. New settings: `OAUTH_UPSTREAM_PROVIDER`, `OAUTH_UPSTREAM_CLIENT_ID`, `OAUTH_UPSTREAM_CLIENT_SECRET`, `OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS`, `OAUTH_UPSTREAM_ISSUER`, `OAUTH_UPSTREAM_TENANT`.
 - `vault-template/`: AGENTS.md (schema_version 1) with safety rules and the ingest/query/lint procedures, CLAUDE.md, Home.md, folder tree, 12 page templates, Obsidian settings, `.gitignore`, and `.kit-manifest.json` (managed-file hashes for upgrades).
 - Kit skills `docs-ingest`, `docs-query`, `docs-lint` (Agent Skills format) in `vault-template/skills/`, for vault-mcp tools or a local git clone.
+- `ignis-init` one-shot service: Obsidian community plugins limited to the checksum-pinned allowlist in `ignis/ignis-plugins.yaml` (empty by default) and mounted read-only into Ignis; kit-managed `.obsidian` settings reset at each start. New settings: `IGNIS_PLUGINS_FILE`, `IGNIS_PLUGIN_BASE_URL`.
 
 ### Security
 

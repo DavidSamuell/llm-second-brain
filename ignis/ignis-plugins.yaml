@@ -1,0 +1,24 @@
+# Obsidian community plugins allowed in Ignis (SPEC §8, plan D28).
+#
+# ignis-init downloads each plugin's release files from GitHub, checks every sha256, removes
+# anything not listed here, and Ignis sees the plugins folder read-only, so plugins can't be
+# installed from the UI. Users must still switch community plugins on in their own browser
+# (Obsidian keeps "restricted mode" per browser).
+#
+# The kit ships with no plugins. To add one, pin a release and its file hashes:
+#
+#   plugins:
+#     - id: obsidian-example            # the plugin's manifest.json "id"
+#       repo: owner/obsidian-example    # GitHub repository
+#       version: 1.2.3                  # release tag
+#       sha256:                         # sha256sum of each downloaded release file
+#         main.js: "3f1c…"           # quote hashes: YAML may read some as numbers
+#         manifest.json: "9ab0…"
+#         styles.css: "77de…"        # only if the release has one
+#       writable_data: false            # true if the plugin saves settings (data.json)
+#
+# After adding a plugin with writable_data: true, regenerate the compose override:
+#   docker compose run --rm ignis-init harden-ignis --compose > compose.plugins.yml
+# and make sure COMPOSE_FILE includes compose.plugins.yml (scripts/setup does this).
+
+plugins: []

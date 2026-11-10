@@ -75,6 +75,29 @@ class Stack:
         return self.compose("exec", "-T", "vault-mcp", "vault-mcp", "token", *args)
 
 
+PLUGIN_FILES = {
+    "main.js": b"module.exports = class GoodPlugin extends require('obsidian').Plugin {};\n",
+    "manifest.json": b'{"id": "good-plugin", "name": "Good plugin", "version": "1.0.0", "minAppVersion": "1.0.0"}\n',
+}
+
+
+def plugin_allowlist(main_sha: str | None = None) -> str:
+    import hashlib
+
+    sums = {name: hashlib.sha256(body).hexdigest() for name, body in PLUGIN_FILES.items()}
+    if main_sha:
+        sums["main.js"] = main_sha
+    lines = [
+        "plugins:",
+        "  - id: good-plugin",
+        "    repo: acme/good-plugin",
+        "    version: 1.0.0",
+        "    sha256:",
+    ]
+    lines += [f'      {name}: "{digest}"' for name, digest in sums.items()]
+    return "\n".join(lines) + "\n"
+
+
 def start(profile: str) -> Stack:
     root = Path(tempfile.mkdtemp(prefix=f"vault-e2e-{profile}-"))
     vault, data = root / "vault", root / "data"
@@ -82,6 +105,14 @@ def start(profile: str) -> Stack:
         (vault / rel).parent.mkdir(parents=True, exist_ok=True)
         (vault / rel).write_text(text)
     data.mkdir()
+    (data / "ignis-plugins").mkdir()  # bind-mount source; scripts/setup creates it too (D28)
+    releases = root / "plugin-releases"
+    for name, body in PLUGIN_FILES.items():
+        path = releases / "acme" / "good-plugin" / "releases" / "download" / "1.0.0" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(body)
+    allowlist = root / "ignis-plugins.yaml"
+    allowlist.write_text(plugin_allowlist())
     (root / "alerts").mkdir()
     policy = root / "vault-mcp.yaml"
     shutil.copy(REPO / "vault-mcp.example.yaml", policy)
@@ -94,6 +125,9 @@ def start(profile: str) -> Stack:
         "ALERT_WEBHOOK": "http://webhook-stub:8099/hook",
         "MONITOR_INTERVAL_S": "2",
         "E2E_ALERTS_DIR": str(root / "alerts"),
+        "E2E_PLUGIN_RELEASES": str(releases),
+        "IGNIS_PLUGINS_FILE": str(allowlist),
+        "IGNIS_PLUGIN_BASE_URL": "http://plugin-stub:8000",
         "VAULT_PATH": str(vault),
         "DATA_PATH": str(data),
         "MCP_POLICY_FILE": str(policy),

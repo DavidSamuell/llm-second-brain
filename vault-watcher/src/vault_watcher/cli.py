@@ -9,6 +9,7 @@ import signal
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from pathlib import Path
 from types import FrameType
 
 from vault_core.alerts import AlertSender
@@ -29,6 +30,11 @@ class WatcherSettings(Settings):
     history_retention_days: int = 90
     history_min_versions: int = 10
     monitor_interval_s: float = 60.0  # D26
+    # ignis-init (D28); paths are inside the ignis-init container.
+    ignis_plugins_file: Path = Path("/kit/ignis-plugins.yaml")
+    ignis_template_dir: Path = Path("/kit/vault-template")
+    ignis_plugin_base_url: str = "https://github.com"
+    ignis_plugin_data_mounts: str = ""
     # name=url pairs on the compose network; heartbeats are checked only for enabled services.
     monitor_peers: str = "vault-mcp=http://vault-mcp:8082/health,ignis=http://ignis:8080/"
     monitor_heartbeats: str = "git-sync=git-sync/heartbeat,agent-runner=agent-runner/heartbeat"
@@ -203,6 +209,33 @@ def _cmd_reindex(settings: WatcherSettings, _: argparse.Namespace) -> int:
 # -- entry point ------------------------------------------------------------------------------
 
 
+def _cmd_harden_ignis(settings: WatcherSettings, args: argparse.Namespace) -> int:
+    from vault_watcher import ignis_harden
+
+    try:
+        if args.compose:
+            print(
+                ignis_harden.compose_override(
+                    ignis_harden.load_allowlist(settings.ignis_plugins_file)
+                ),
+                end="",
+            )
+            return 0
+        removed = ignis_harden.harden(
+            allowlist=settings.ignis_plugins_file, vault_dir=settings.vault_dir, data_dir=settings.data_dir,
+            template_dir=settings.ignis_template_dir, base_url=settings.ignis_plugin_base_url,
+            mounted=settings.ignis_plugin_data_mounts,
+        )  # fmt: skip
+    except ignis_harden.HardenError as exc:
+        print(f"ignis-init: {exc}", file=sys.stderr)
+        return 1
+    plugins = [p.id for p in ignis_harden.load_allowlist(settings.ignis_plugins_file)]
+    print(
+        f"ignis-init: allowlisted plugins: {', '.join(plugins) or 'none'}; removed: {', '.join(removed) or 'nothing'}"
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vault-watcher", description="Docs Vault Kit watcher")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -228,6 +261,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     reindex = commands.add_parser("reindex", help="rebuild the search index from the vault")
     reindex.set_defaults(handler=_cmd_reindex)
+
+    harden = commands.add_parser(
+        "harden-ignis",
+        help="ignis-init: enforce the plugin allowlist and managed Obsidian settings",
+    )
+    harden.add_argument("--compose", action="store_true", help="print compose.plugins.yml instead")
+    harden.set_defaults(handler=_cmd_harden_ignis)
     return parser
 
 
