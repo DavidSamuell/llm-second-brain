@@ -504,6 +504,112 @@ class VaultWriter:
         committed = [(self.spool.commit(txn), result) for txn, result in results]
         return committed, version_of(plan[-1][3]), sorted(linkers)
 
+    # -- rename (source lifecycle, D14) --------------------------------------------------------
+
+    async def rename(
+        self,
+        actor: Credential,
+        tool: str,
+        path: str,
+        new_path: str,
+        *,
+        precheck: Callable[[], None] | None = None,
+        on_applied: Callable[[str], None] | None = None,
+        detail: str | None = None,
+        check_policy: bool = True,
+    ) -> WriteResult:
+        """Move one file without rewriting links (raw/ sources). `precheck` runs under the vault
+        lock before anything changes; `on_applied` runs under the lock right after the rename,
+        with the final path (a numeric suffix is added if `new_path` is taken)."""
+        if not actor.allows("write"):
+            raise VaultToolError("forbidden", "this credential is read-only", path=path)
+        rel, _ = self._target(path)
+        self._target(new_path)
+        if not self._heartbeat_fresh():
+            raise VaultToolError(
+                "history_pending", "vault-watcher is not running, so the change would have no history; nothing was changed",
+                path=rel, applied=False,
+            )  # fmt: skip
+        async with self.lock.hold():
+            committed, result = await _finish_even_if_cancelled(
+                asyncio.to_thread(
+                    self._attempt_rename,
+                    actor,
+                    tool,
+                    rel,
+                    new_path,
+                    precheck,
+                    on_applied,
+                    detail,
+                    check_policy,
+                )
+            )
+        await self._await_ack(committed, result)
+        return result
+
+    def _free_name(self, rel: str) -> str:
+        stem, dot, ext = rel.rpartition(".")
+        if not dot or "/" in ext:
+            stem, ext = rel, ""
+        candidate, n = rel, 1
+        while os.path.lexists(self.vault_dir / candidate):
+            n += 1
+            candidate = f"{stem}-{n}.{ext}" if ext else f"{stem}-{n}"
+        return candidate
+
+    def _attempt_rename(
+        self,
+        actor: Credential,
+        tool: str,
+        rel: str,
+        new_path: str,
+        precheck: Callable[[], None] | None,
+        on_applied: Callable[[str], None] | None,
+        detail: str | None,
+        check_policy: bool,
+    ) -> tuple[Path, WriteResult]:
+        if precheck is not None:
+            precheck()
+        source = self.vault_dir / rel
+        if not source.is_file():
+            raise VaultToolError("not_found", "no such file", path=rel)
+        new_rel = self._free_name(normalize(new_path))
+        _, dest = self._target(new_rel)
+        current = source.read_bytes()
+        if check_policy:
+            self._check_writable(actor, rel, current)
+            self._check_writable(actor, new_rel, None)
+        audit_id = new_id()
+        txn = self.spool.prepare(
+            audit_id, rel, current, tool=tool, credential_id=actor.id, new_path=new_rel
+        )
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = write_temp_sibling(dest, current, tag=secrets.token_hex(4))
+        try:
+            head = self.history.head(rel)
+            self.spool.write_pre(
+                txn, current, record_pre=head is None or head.sha256 != version_of(current)
+            )
+            if source.read_bytes() != current or os.path.lexists(dest):
+                raise VaultToolError(
+                    "conflict", "the file changed while moving it; nothing was changed", path=rel
+                )
+            replace_from_temp(tmp, dest)
+        except BaseException:
+            self._discard(txn, tmp)
+            raise
+        source.unlink()
+        fsync_dir(source.parent)
+        if on_applied is not None:
+            on_applied(new_rel)
+        version = version_of(current)
+        self.audit.append(
+            id=audit_id, durable=True, service="vault-mcp", tool=tool, result="ok",
+            credential_id=actor.id, credential_name=actor.name, owner=actor.owner,
+            path=rel, new_path=new_rel, old_version=version, new_version=version, detail=detail,
+        )  # fmt: skip
+        return self.spool.commit(txn), WriteResult(new_rel, version, audit_id)
+
     def _discard_group(self, staged: list[_Staged]) -> None:
         for s in staged:
             self.spool.drop(s.txn)

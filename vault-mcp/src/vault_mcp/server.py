@@ -4,7 +4,8 @@ authenticated by `VAULT_MCP_TOKEN`, and an unauthenticated `/health`."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from typing import Any, TypeVar
 
 from fastmcp import FastMCP
@@ -17,6 +18,7 @@ from vault_core.audit import AuditLog
 from vault_core.config import Settings
 from vault_core.policy import load_policy
 from vault_mcp.errors import VaultToolError
+from vault_mcp.sources import SourceTools
 from vault_mcp.store import Credential, CredentialStore
 from vault_mcp.tools_read import ReadTools
 from vault_mcp.tools_search import SearchTools
@@ -58,8 +60,19 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         settings.vault_dir, settings.data_dir, policy, ack_timeout_s=settings.history_ack_timeout
     )
 
+    sources = SourceTools(writer)
+
+    @asynccontextmanager
+    async def lifespan(_: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
+        sweeper = asyncio.create_task(sources.run_sweeper())  # D14: expired leases go back to raw/
+        try:
+            yield {}
+        finally:
+            sweeper.cancel()
+
     mcp = FastMCP(
         "vault-mcp",
+        lifespan=lifespan,
         instructions="Shared documentation vault. Call get_schema first: AGENTS.md holds the rules.",
         auth=None if stdio_token is not None else BearerVerifier(store),
     )
@@ -187,6 +200,42 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         links to it, nothing is changed: propose the move with review_queue_add instead."""
         return await audited_write(
             "move", path, lambda cred: writer.move(cred, path, new_path, base_version)
+        )
+
+    @mcp.tool(name="submit_source")
+    async def submit_source(
+        title: str, origin: str, content: str | None = None, url: str | None = None
+    ) -> dict[str, Any]:
+        """Drop a source into raw/ for ingest. Pass the content you fetched; a url alone is
+        recorded for the ingest agent to fetch (the server never fetches it)."""
+        return await audited_write(
+            "submit_source",
+            "raw/",
+            lambda cred: sources.submit_source(
+                cred, title, origin=origin, content=content, url=url
+            ),
+        )
+
+    @mcp.tool(name="claim_source")
+    async def claim_source(path: str, ttl_minutes: int | None = None) -> dict[str, Any]:
+        """Claim a raw/ source before ingesting it (moves it to raw/_processing/ with a lease,
+        default 30 min). Fails with already_claimed if another agent has it."""
+        return await audited_write(
+            "claim_source", path, lambda cred: sources.claim_source(cred, path, ttl_minutes)
+        )
+
+    @mcp.tool(name="complete_source")
+    async def complete_source(path: str, summary_page: str) -> dict[str, Any]:
+        """Finish ingesting a claimed source: moves it to raw/_processed/ and releases the lease."""
+        return await audited_write(
+            "complete_source", path, lambda cred: sources.complete_source(cred, path, summary_page)
+        )
+
+    @mcp.tool(name="release_source")
+    async def release_source(path: str) -> dict[str, Any]:
+        """Give a claimed source back (e.g. after a failed ingest): returns it to raw/."""
+        return await audited_write(
+            "release_source", path, lambda cred: sources.release_source(cred, path)
         )
 
     @mcp.custom_route("/health", methods=["GET"])

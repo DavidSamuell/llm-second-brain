@@ -186,11 +186,12 @@ Commands used in verification:
   - Deps: T16 · Files: `vault-mcp/src/vault_mcp/{links,tools_move}.py`, tests · Scope: M
   - **Status:** 14 link tests (resolution by path suffix, ties to the linking folder, aliases, headings, embeds, relative Markdown links, code ignored, ambiguous new names fall back to full paths, relative links inside the moved page rebased) and 14 move tests: every link style updated; one history version and audit line per touched file with a shared `group_id`; human-page, read-denied, out-of-scope and hidden-page linkers each block the whole move (hidden ones as a count only); trash ignored; refusals change nothing; vault-mcp killed mid-group → `move_partial` alert; a browser save between two group replacements isn't overwritten. Mutation checks on blockers, the hidden-page scan, the per-file re-check and old-path removal.
 
-- [ ] **T20 — Source lifecycle tools + lease sweeper** · Decisions: D10, D14, D21 · **watch**
+- [x] **T20 — Source lifecycle tools + lease sweeper** · Decisions: D10, D14, D21 · **watch**
   - `submit_source`, `claim_source`, `complete_source`, `release_source`; `/data/state.db` leases; 60 s sweeper.
   - Acceptance: §16.11 (two concurrent claims → exactly one wins; an expired lease returns the file to `raw/`); a URL-only submit creates a stub with no network call; only the lease holder can complete or release.
   - Verify: `uv run pytest vault-mcp -k sources` + e2e §16.11 (lease TTL set to seconds).
   - Deps: T16 · Files: `vault-mcp/src/vault_mcp/{sources,leases}.py`, tests · Scope: M
+  - **Status:** 17 source tests (dated slug names and collision suffixes, YAML-safe provenance frontmatter, URL stubs with no network access, URL scheme checks, concurrent claims with exactly one winner, holder-only complete and release, `summary_page` must exist and be readable, only files directly in `raw/`, expiry sweep, sweep of leaseless orphans in `_processing`). e2e §16.11 in both profiles: one of two concurrent claims wins; a 1-minute lease is returned to `raw/` by the running sweeper.
 
 - [ ] **T21 — Rate limiting + repeated-hit alert** · Decisions: D19, D25 · **watch**
   - Sliding-window middleware for rpm, writes/min, writes/day; `rate_limited` with `retry_after_s`; alert threshold.
