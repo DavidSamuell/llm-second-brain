@@ -18,9 +18,12 @@ RUN apt-get update \
  && chmod +x /usr/local/bin/supercronic \
  && npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" \
  && npm cache clean --force \
+ && find / -xdev -perm /6000 -type f -exec chmod a-s {} + \
  && chmod 666 /etc/passwd
 COPY scripts/lib/alert.sh /usr/local/lib/kit/alert.sh
-# PUID may not be 1000 (the image's node user): ensure-user adds a passwd entry at start.
+# PUID may not be 1000 (the image's node user): ensure-user adds a passwd entry at start, since
+# Node's os.userInfo() fails without one. /etc/passwd is writable for that, so every setuid/setgid
+# bit is stripped above (no su/passwd/mount escalation from a forged entry).
 COPY git-sync/ensure-user.sh /usr/local/bin/ensure-user
 COPY agent-runner/entrypoint.sh /usr/local/bin/agent-runner
 COPY agent-runner/run-job.sh /usr/local/bin/run-job
