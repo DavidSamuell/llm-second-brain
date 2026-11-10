@@ -136,6 +136,10 @@ def start(profile: str) -> Stack:
         "BIND_ADDR": "127.0.0.1",
         "IGNIS_PORT": str(free_port()),
         "MCP_PORT": str(free_port()),
+        # OAuth on, as in a public deployment; the issuer is a TLS stand-in proxy that
+        # test_check_exposure starts on this port (nothing else needs it to be up).
+        "E2E_MCP_PROXY_PORT": (proxy_port := str(free_port())),
+        "MCP_OAUTH_ISSUER": f"https://127.0.0.1:{proxy_port}",
     }
     stack = Stack(profile=profile, project=f"vault-e2e-{profile}-{os.getpid()}", root=root, env=env)
     result = stack.compose("up", "-d", "--wait", "--wait-timeout", "300", check=False)
