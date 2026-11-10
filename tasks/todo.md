@@ -312,7 +312,7 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** a manual review of each recipe against §5.1, and a run of at least one recipe on a real host.
 
 ### Checkpoint F — after T30–T33
-- [ ] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts
+- [ ] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts — **external (listed for the user):** needs a Cloudflare domain and a public VM. Done locally: §16.4 e2e (pass and fail cases) and config validation of both profiles.
 
 ## Phase 7 — Optional services and lifecycle
 
