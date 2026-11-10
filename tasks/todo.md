@@ -296,11 +296,13 @@ Commands used in verification:
   - Verify: `uv run pytest e2e -k check_exposure`.
   - Deps: T29 · Files: `scripts/check-exposure`, `e2e/` · Scope: S
 
-- [ ] **T33 — Ingress recipe docs** · Decisions: none · **delegate**
+- [x] **T33 — Ingress recipe docs** · Decisions: none · **delegate**
   - `docs/ingress/{pangolin,nginx,traefik,tailscale,headscale,local}.md`, each meeting the §5.1 contract and pointing at `127.0.0.1:IGNIS_PORT` / `MCP_PORT`; note the Tailscale free plan is non-commercial.
   - Acceptance: every recipe covers all five §5.1 requirements explicitly.
   - Verify: manual review against §5.1.
   - Deps: none · Files: `docs/ingress/*.md` · Scope: M
+  - **Status:** written by a delegated agent and spot-checked: six recipes (pangolin, nginx, traefik, tailscale, headscale, local). Each has a "Requirements checklist (§5.1)" table; the editor sits behind the proxy's login with WebSockets on; the whole MCP host passes without browser login. Proxy recipes use `INGRESS=none` (SPEC §5.2), `local.md` uses `local`. Open points passed to T32: check-exposure from inside a tailnet, the `local` profile, and `host:port` in `IGNIS_HOST`. Proxy configs not run against live proxies.
+  - [ ] **External check (listed for the user):** a manual review of each recipe against §5.1, and a run of at least one recipe on a real host.
 
 ### Checkpoint F — after T30–T33
 - [ ] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts
