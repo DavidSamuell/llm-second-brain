@@ -14,12 +14,13 @@ There are two ways to connect:
 
 ## Test status
 
-No client below has been run by hand against the kit yet. What has been tested is the server
-side: the automated tests drive bearer-token calls and the full OAuth flow (registration,
-sign-in with an approval code, consent, token, refresh, revoke) with the MCP SDK's own client.
-A manual Claude Code check and a real Claude.ai connector run are still open. Each section says
-**Not yet tested against a live client**; the snippets follow each client's documentation as of
-2026-11-10. If one doesn't work for you, tell your admin so the guide can be fixed.
+Tested by hand against a local stack on 2026-11-10: **Claude Code** (CLI 2.1.285) and **Codex
+CLI** (0.167.0), each with a bearer token: `get_schema`, `read`, `append`, `submit_source` and
+`claim_source` all succeeded and were audited. The server side of OAuth is covered by automated
+tests (registration, sign-in with an approval code, consent, token, refresh, revoke, with the MCP
+SDK's own client). Cursor, Claude.ai and ChatGPT are **not yet tested against a live client**;
+their snippets follow each client's documentation as of 2026-11-10. If one doesn't work for you,
+tell your admin so the guide can be fixed.
 
 ## The server address
 
@@ -62,8 +63,8 @@ export VAULT_MCP_TOKEN=vmcp_...   # e.g. in ~/.bashrc or ~/.zshrc
 
 ## Claude Code
 
-**Not yet tested against a live client.** (The manual check in `tasks/todo.md` Checkpoint C uses
-exactly this command and is still pending.)
+**Tested** with Claude Code 2.1.285 (2026-11-10), using the same server definition (HTTP
+transport, `Authorization: Bearer` header) passed as an MCP config file.
 
 ```bash
 claude mcp add --transport http --scope user vault https://docs-mcp.example.com/mcp \
@@ -103,7 +104,9 @@ project `.cursor/mcp.json` with a literal token in it.
 
 ## Codex CLI
 
-**Not yet tested against a live client.**
+**Tested** with Codex CLI 0.167.0 (2026-11-10). Older builds can fail before reaching the vault:
+the Ubuntu snap 0.114 couldn't read the current model list. Update Codex if `codex exec` reports
+`failed to refresh available models` or `model ... is not supported`.
 
 Either run:
 
@@ -118,6 +121,10 @@ or add this to `~/.codex/config.toml`:
 url = "https://docs-mcp.example.com/mcp"
 bearer_token_env_var = "VAULT_MCP_TOKEN"
 ```
+
+Codex asks before each MCP tool call. To let it use the vault's tools without asking every time,
+add `default_tools_approval_mode = "approve"` under `[mcp_servers.vault]`; the vault itself still
+enforces your token's scope, folders and the page rules.
 
 Codex reads the token from `VAULT_MCP_TOKEN` each time it starts; the token itself isn't written
 to the config. Check with `codex mcp list`, or `/mcp` inside `codex`. The same config is used by
