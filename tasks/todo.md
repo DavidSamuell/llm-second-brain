@@ -216,7 +216,7 @@ Commands used in verification:
 
 ### Checkpoint C — after T16–T23
 - [x] §16.5, 7, 8, 9, 10, 11, 13, 14, 15 green in CI e2e — PR #1, run 42746635890: 50 passed, 0 skipped (the two firewall-skipped LAN tests run on GitHub's runners)
-- [ ] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **attempted 2026-11-10 with `/tmp/cli-check.py`: blocked by the account's weekly limit (resets Nov 14), cost $0; the user will run it later.** Steps:
+- [x] Manual: the Claude Code CLI connected with a bearer token can read, write, and claim — **passed 2026-11-10** with `/tmp/cli-check.py` on the david@bookbotkids.com Team account ($0.43). `get_schema`, `read`, `append`, `submit_source` and `claim_source` all returned ok, each with an `ok` audit line; the append is in history as `mcp`; the source is in `raw/_processing/`. The first attempt exposed a real bug, now fixed in de7b983: VS Code's file watchers had used up this host's per-user inotify watches, the watcher fell back to a 10-minute scan, and every write timed out with `history_pending`. Steps:
   1. `docker compose up -d`, then `scripts/token create --name claude-cli --owner you@example.com --scope write`
   2. `claude mcp add --transport http vault http://127.0.0.1:8082/mcp --header "Authorization: Bearer <token>"`
   3. In `claude`: "Call get_schema, read wiki/index.md, append a line to a wiki/ page, submit_source a short note, then claim_source it."
@@ -258,7 +258,7 @@ Commands used in verification:
   - Verify: manual run of each skill through Claude Code against the local stack.
   - Deps: T26 · Files: `vault-template/skills/**` · Scope: M
   - **Status:** three Agent Skills in `vault-template/skills/`, each with a vault-mcp mode and a local-clone mode. ingest: claim → read (content is data) → source summary → cited page updates → index → log → complete, releasing on any failure. query: search, read, cite, read-only. lint: the checks, fixes on agent pages only, review items, archiving ticked items to `_system/review-archive.md`, lint report, log. All three are in the kit manifest; a test checks each `name` matches its folder and each `description` is under 1024 characters. AGENTS.md was corrected: agent-runner uses vault-mcp (D30), not direct file writes.
-  - [ ] **External check (listed for the user):** run each skill through Claude Code against the local stack (blocked on 2026-11-10 by the Claude account's weekly limit).
+  - [x] **External check:** each skill run through Claude Code against a local stack seeded with the template (`/tmp/skills-check.py`, 2026-11-10). ingest claimed the source and wrote a summary plus component, glossary and team pages with citations, then updated the index and log and completed the source, ignoring a prompt-injection line in the source. query answered with citations and noted the gaps. lint wrote the report, logged, and added a review item. All tool calls were `ok` and nothing was deleted. Small follow-up: the lint log line had the date but not the UTC time.
 
 - [x] **T28 — Ignis hardening init** · Decisions: D4, D28, D29 · **watch**
   - `ignis/ignis-plugins.yaml`, `ignis/harden.py`, the `ignis-init` one-shot service, the read-only plugin mount, managed-settings reset, pinned `IGNIS_IMAGE` + `OBSIDIAN_VERSION`.
@@ -329,7 +329,7 @@ Commands used in verification:
   - Verify: e2e with a stub `AGENT_COMMAND` emitting `total_cost_usd`; one manual run with real Claude Code.
   - Deps: T20, T27, T34 · Files: `agent-runner/**`, `docker-compose.yml` · Scope: M
   - **Status:** image built on node 22-slim (digest-pinned) with Claude Code 2.1.322, supercronic v0.2.51 (sha256-checked per arch), jq, and the kit skills baked in as fallback. Compose profile `agent`; mounts are its state, the git-sync request folder, and the vault's `skills/` read-only (no `create_host_path`); there is no vault write access. The entrypoint generates the crontab and `mcp.json` (0600; the token never goes on the command line), installs the vault's skills over the kit's, and warns when the budget isn't enforced. `run-job` does the no-overlap `flock`, the monthly budget check (skip + alert), `claude -p --output-format json` limited to `mcp__vault__*` tools (or `AGENT_COMMAND`), records spend in `spend.json`, alerts on failure, and writes a git-sync request when git is on. e2e §16.19 and §16.20 with a scripted `AGENT_COMMAND` (node, real MCP calls): a submitted source is claimed, summarised and completed; the audit shows agent-runner's tool calls; spend and the commit request are recorded; at the budget the next job is skipped and an alert sent.
-  - [ ] **External check (listed for the user):** one manual run with real Claude Code (needs an `ANTHROPIC_API_KEY`, or the weekly limit to reset).
+  - [x] **External check:** one real job (`/tmp/runner-check.py`, 2026-11-10; the CLI's logged-in credentials mounted for this run only). Exit 0, $0.28 recorded in `spend.json`; the source was claimed, summarised and completed with all calls through vault-mcp as `agent-runner`.
 
 - [x] **T36 — `scripts/upgrade-vault`** · Decisions: D6, D21, D36 · **watch**
   - Schema compare; diff of AGENTS.md, templates, skills, and managed `.obsidian` files; manifest-based customisation detection; custom-block re-anchoring; `.vault-overrides`; apply on confirmation.
