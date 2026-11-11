@@ -34,7 +34,7 @@ Commands used in verification:
   - Acceptance: the connector completes the flow and calls a dummy tool. Path customisation confirmed, or the D17 fallback written into plan.md.
   - Verify: manual connector run; notes in plan.md D17.
   - Deps: none · Files: plan.md only · Scope: S
-  - **Status:** local part done (scripted MCP SDK client against fastmcp 3.4.11; the D17 fallback, SDK endpoints at the root, is written into plan.md). **Still open:** the real Claude.ai connector run, deferred by the user to Checkpoint D. Don't tick until it passes.
+  - **Status:** local part done (scripted MCP SDK client against fastmcp 3.4.11; the D17 fallback, SDK endpoints at the root, is written into plan.md). The live-client run is now the Claude Code plugin (the user dropped the Claude.ai connector test on 2026-11-11; see §16.6 below).
 
 - [x] **T3 — History handoff spike** · Decisions: D6, D21, D22 · **watch**
   - Prototype: a watchdog observer in a container on a bind mount. A writer runs the D21 transaction: flock → prepare → `os.replace` → audit → commit rename → wait for ack. It makes 20 back-to-back writes to one file, interleaved with simulated Ignis-style rapid saves. Fault injection:
@@ -240,7 +240,7 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** a manual sign-in with a real Google OAuth client (and optionally GitHub / Microsoft Entra apps) through a public `MCP_OAUTH_ISSUER`.
 
 ### Checkpoint D — after T24–T25
-- [ ] §16.6 manual: the Claude.ai connector completes both modes, scopes are enforced, and revocation works
+- [ ] §16.6 manual (SPEC amended 2026-11-11: the agent plugin replaces the Claude.ai connector as the client): the plugin completes both modes, scopes are enforced, and revocation works. **Done 2026-11-11, approval-code mode:** the `docs-vault` Claude Code plugin signed in on bookbotkids.com (grant `oauth:Claude-Code-plugin-docs-vault-vault-…`, write) and `get_schema` was audited under it. **Open:** upstream-provider mode with a real IdP (needs a Google OAuth client), a read-scope sign-in, and revoking the grant.
 - [x] Security review of the OAuth code (`security-auditor`) before continuing — report in `docs/reviews/2026-11-10-oauth-security-review.md` (0 critical, 0 high, 6 medium, 6 low). Fixed: M1 (parameter lengths and pending-request caps), M2 (`/authorize` errors show a page instead of redirecting), M3 (`user@host` redirect URIs refused; consent shows the hostname only and marks the name unverified), M4 (Google requires `hd`; Entra by tenant domain now works), M5 (no server-wide lockout, an alert instead), M6 (unused clients pruned after 1 h and evicted at the cap), L1 (own `/revoke` for public clients), L2 (a concurrent refresh replay revokes), L3 (security events audited; refresh reuse alerts), L5 (OS protocol-handler schemes refused), L6 (owner email normalised and validated). Documented, not changed: L4 (approval codes are sha256 of 50 bits) and the M4 remainders (Entra guest accounts, GitHub verified emails that outlive the mailbox) go into SECURITY.md (T41). 13 regression tests.
 
 ## Phase 5 — Template, skills, Ignis hardening, setup
@@ -383,7 +383,7 @@ Commands used in verification:
   - Verify: manual connection per client.
   - Deps: T24, T27 · Files: `docs/{USER-GUIDE,CONNECT-AGENTS,IMPORTING}.md` · Scope: M
   - **Status:** written by a delegated agent from the code: the user guide (editing, maintainer, review queue, sources, history, secrets, limits), connecting agents (tokens; Claude Code, Cursor, Codex, Claude.ai and ChatGPT; skills; all 14 tools; error codes) and importing (submit_source, URL stubs, adoption, bulk ingest, prompt injection). Gaps it found were fixed in code: `scripts/oauth`, `WebFetch` for agent-runner, ingest caps in compose, and the review-item text. Still open: Claude.ai's "published identity" option isn't supported, so use dynamic registration.
-  - [ ] **External check (listed for the user):** connect each client by hand. **Done 2026-11-10:** Claude Code (2.1.285) and Codex CLI (0.167.0; the snap 0.114 is too old for the current model list) both pass, with each step `ok` and audited (`/tmp/codex-check.py`). **Open:** Cursor, Claude.ai, and ChatGPT (optional).
+  - [ ] **External check (listed for the user):** connect each client by hand. **Done 2026-11-10:** Claude Code (2.1.285) and Codex CLI (0.167.0; the snap 0.114 is too old for the current model list) both pass, with each step `ok` and audited (`/tmp/codex-check.py`). Claude Code plugin with OAuth also passes (2026-11-11). **Open:** Cursor and ChatGPT (optional). The user dropped the Claude.ai check: the plugin is the main sign-in path.
 
 - [x] **T41 — SECURITY.md + LIMITATIONS.md (final)** · Decisions: D6, D16, D17, D20, D24, D28 · **watch**
   - Threat model, Ignis having no auth, plugin allowlist, token/OAuth lifecycle, secrets, offboarding checklist; LIMITATIONS covering T1 results, the Ignis/MCP write race, web attribution, Ignis legal basis, Obsidian terms.
@@ -397,5 +397,5 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** enable private vulnerability reporting in the GitHub repository settings.
 
 ### Checkpoint H — complete
-- [ ] All 22 §16 acceptance tests pass (CI e2e + nightly + documented manual runs) — **CI (PR #1, run 42767114630):** lint, unit, and e2e 76 passed / 1 skipped (the nightly browser test, which runs in nightly.yml). **Local:** unit 520+, e2e 74 passed / 2 skipped (host firewall) in both profiles, nightly browser test passes locally. Automated locally: §16.2, 4, 5, 7–11, 13–22 and the §16.1 local deploy (§16.12 via the nightly test). **External, listed per task:** §16.1 cloudflare/caddy and a timed clean-VM run, §16.3 on real hosts, §16.6 Claude.ai connector, manual client connections, a real Claude Code agent-runner run, the nightly and release workflows on GitHub.
+- [ ] All 22 §16 acceptance tests pass (CI e2e + nightly + documented manual runs) — **CI (PR #1, run 42767114630):** lint, unit, and e2e 76 passed / 1 skipped (the nightly browser test, which runs in nightly.yml). **Local:** unit 520+, e2e 74 passed / 2 skipped (host firewall) in both profiles, nightly browser test passes locally. Automated locally: §16.2, 4, 5, 7–11, 13–22 and the §16.1 local deploy (§16.12 via the nightly test). **External, listed per task:** §16.1 cloudflare/caddy and a timed clean-VM run, §16.3 on real hosts, §16.6 via the agent plugin (approval-code mode done), manual client connections, a real Claude Code agent-runner run, the nightly and release workflows on GitHub.
 - [ ] CHANGELOG updated; v0.1.0 tag published — CHANGELOG is up to date (Unreleased). Tagging v0.1.0 publishes images to GHCR, so it waits for the user's go-ahead.

@@ -237,7 +237,7 @@ Copied into new vaults by `scripts/setup`; existing vaults can adopt it.
 
 ### 10.1 Team members' agents
 
-- Claude Code / Cursor / Codex: bearer token. [Claude.ai](http://Claude.ai) / ChatGPT: OAuth custom connector to [`https://docs-mcp.<domain>/mcp`](https://docs-mcp.<domain>/mcp).
+- Main path: the kit's agent plugin installed in the person's agent harness (Claude Code first), which adds the MCP server and skills and signs in with OAuth in the browser. Fallbacks: a bearer token (Claude Code / Cursor / Codex), or an OAuth custom connector to [`https://docs-mcp.<domain>/mcp`](https://docs-mcp.<domain>/mcp) in hosted apps ([Claude.ai](http://Claude.ai) / ChatGPT; supported, not acceptance-tested).
 - Fetch sources from anywhere using their own tools/connectors (web, GitHub, Slack, Drive…), then `submit_source`, or ingest directly via `claim_source` → edit → `complete_source`.
 - Install the kit's skills for consistent behaviour.
 - `docs/[CONNECT-AGENTS.md](http://CONNECT-AGENTS.md)`: copy-paste setup per client.
@@ -359,7 +359,7 @@ CHANGELOG.md
 3. Allowed user logs into Ignis and edits a note; disallowed user is denied (cloudflare, caddy).
 4. `check-exposure` passes for each profile and fails clearly for a proxy without auth.
 
-**MCP auth** 5. Bearer token: read-only token cannot modify anything; missing/invalid/revoked token → 401. 6. [Claude.ai](http://Claude.ai) custom connector completes OAuth (upstream OIDC and admin-approval-code modes), and can search/read/write per granted scope; grant is revocable. 7. Per-credential folder scope and `read.deny` paths are enforced for read, search, and write. 8. Exceeding rate limits returns a rate-limit error; alert fires on repeated hits.
+**MCP auth** 5. Bearer token: read-only token cannot modify anything; missing/invalid/revoked token → 401. 6. The kit's agent plugin completes OAuth from an agent harness (upstream OIDC and admin-approval-code modes), and can search/read/write per granted scope; grant is revocable. 7. Per-credential folder scope and `read.deny` paths are enforced for read, search, and write. 8. Exceeding rate limits returns a rate-limit error; alert fires on repeated hits.
 
 **Concurrency &amp; safety** 9. Web edit between agent `read` and `write` → write rejected with `conflict`; no data lost. 10. Agent write to a `maintainer: human` page rejected; `review_queue_add` works. 11. Two agents call `claim_source` on the same file → exactly one succeeds; expired lease returns file to `raw/`. 12. Note open in Ignis while an agent edits it → Ignis shows new content; no overwrite on next autosave. 13. Content containing a fake API key: rejected via MCP; detected + alerted when added via Ignis.
 
