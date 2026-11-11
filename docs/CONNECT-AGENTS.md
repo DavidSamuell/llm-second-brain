@@ -23,6 +23,10 @@ SDK's own client). Cursor, Claude.ai and ChatGPT are **not yet tested against a 
 their snippets follow each client's documentation as of 2026-11-10. If one doesn't work for you,
 tell your admin so the guide can be fixed.
 
+The **Claude Code plugin** was tested on 2026-11-11 against a public deployment with Claude Code
+2.1.285: installed at user scope, signed in with `claude mcp login … --no-browser` and an approval
+code, and `/docs-vault:connect` called `get_schema` under the resulting OAuth grant.
+
 ## The server address
 
 | Deployment | MCP URL |
