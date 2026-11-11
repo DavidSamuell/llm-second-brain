@@ -248,9 +248,11 @@ docker compose logs ignis | grep -E 'Obsidian (ready|already set up)'
 
 **Community plugins:** the kit ships with an empty plugin allowlist ([`ignis/ignis-plugins.yaml`](../ignis/ignis-plugins.yaml)), and plugins can't be installed from the editor. To allow a plugin, pin its release and file hashes in that file as its comments describe, then restart (`docker compose up -d`). Each person must still switch community plugins on once in their own browser, because Obsidian stores that per browser.
 
-## 7. Agent access: bearer tokens
+## 7. Agent access: the Docs Vault plugin and bearer tokens
 
-Claude Code, Cursor, Codex, scripts and agents on the server use bearer tokens. Create one per person and device:
+The main way for people to connect Claude Code, Codex or omp is the Docs Vault plugin: run `scripts/agent-plugin` (it reads `MCP_HOST` from `.env`; `--url` overrides it), publish the `agent-plugin-dist/` folder it writes as a git repository your team can read, and send people the install commands in [CONNECT-AGENTS.md](CONNECT-AGENTS.md). They sign in with OAuth (section 8), so you don't hand out tokens. Rebuild and push it when `MCP_HOST` changes or after upgrading the kit (the skills come from `vault-template/skills/`).
+
+Clients configured by hand, scripts and agents on the server use bearer tokens. Create one per person and device:
 
 ```bash
 scripts/token create --name alice-laptop --owner alice@example.com --scope write
@@ -267,9 +269,9 @@ scripts/token revoke alice-laptop
 
 The MCP endpoint is `https://<MCP_HOST>/mcp` (or `http://127.0.0.1:8082/mcp` through the SSH tunnel for `local`). Client-by-client setup is in [CONNECT-AGENTS.md](CONNECT-AGENTS.md).
 
-## 8. Agent access: OAuth for Claude.ai and ChatGPT
+## 8. Agent access: OAuth (the plugin, Claude.ai, ChatGPT)
 
-Hosted clients (Claude.ai, ChatGPT custom connectors) can't use a pasted bearer token; they sign in with OAuth. vault-mcp runs its own OAuth server. It is on only when both are true:
+The Docs Vault plugin and hosted clients (Claude.ai, ChatGPT custom connectors) sign in with OAuth instead of a pasted bearer token. vault-mcp runs its own OAuth server. It is on only when both are true:
 
 - `MCP_OAUTH_ENABLED=true` (the default), and
 - `MCP_OAUTH_ISSUER` is set to the public origin of the MCP host: `https://` plus `MCP_HOST`, no path, no trailing slash. Setup fills it in for every profile except `local`.

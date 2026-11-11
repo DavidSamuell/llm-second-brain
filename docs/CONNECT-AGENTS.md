@@ -9,8 +9,8 @@ There are three ways to connect:
 
 | Client | How it signs in |
 |---|---|
-| Claude Code with the **Docs Vault plugin** (easiest) | **OAuth**: you sign in once in the browser; no token to copy |
-| Claude Code, Cursor, Codex CLI (tools on your computer) | A personal **bearer token** from your admin |
+| Claude Code, Codex, omp with the team's **Docs Vault plugin** (main way) | **OAuth**: you sign in once in the browser; no token to copy |
+| Claude Code, Cursor, Codex CLI configured by hand | A personal **bearer token** from your admin |
 | Claude.ai, ChatGPT (hosted apps) | **OAuth**: you sign in through a browser page and approve access |
 
 ## Test status
@@ -23,9 +23,10 @@ SDK's own client). Cursor, Claude.ai and ChatGPT are **not yet tested against a 
 their snippets follow each client's documentation as of 2026-11-10. If one doesn't work for you,
 tell your admin so the guide can be fixed.
 
-The **Claude Code plugin** was tested on 2026-11-11 against a public deployment with Claude Code
-2.1.285: installed at user scope, signed in with `claude mcp login … --no-browser` and an approval
-code, and `/docs-vault:connect` called `get_schema` under the resulting OAuth grant.
+The **Docs Vault plugin** was tested on 2026-11-11 against a public deployment: in Claude Code
+2.1.285 (user scope, signed in with `claude mcp login … --no-browser` and an approval code;
+`/docs-vault:connect` called `get_schema` under the resulting OAuth grant), and installed in
+Codex 0.167.1 and omp, where the server is found and asks for sign-in.
 
 ## The server address
 
@@ -42,52 +43,64 @@ has OAuth turned on (`MCP_OAUTH_ENABLED=true` with `MCP_OAUTH_ISSUER` set; see
 
 The examples below use `https://docs-mcp.example.com/mcp`; replace it with your URL.
 
-## Claude Code plugin (easiest)
+## The Docs Vault plugin (main way)
 
-The kit repository is also a Claude Code plugin marketplace. The `docs-vault` plugin adds the
-vault's MCP server and the kit's three skills, and you sign in through the browser instead of
-pasting a token. Your admin must have OAuth turned on (see above) and gives you the vault's MCP
-address.
+Your admin builds a plugin for your vault and publishes it as a git repository. It contains the
+vault's MCP address, the kit's three skills and a `connect` command, and works in Claude Code,
+Codex and omp. You install it and sign in through the browser; there is no token to copy.
+
+**Admin**, once per deployment (and again when `MCP_HOST` changes):
 
 ```bash
-claude plugin marketplace add DavidSamuell/llm-second-brain     # once
-claude plugin install docs-vault@docs-vault-kit --scope user    # see "Scope" below
+scripts/agent-plugin                 # address from MCP_HOST in .env; or --url https://…/mcp
+cd agent-plugin-dist && git init && git add -A && git commit -m "docs-vault plugin"
+git remote add origin git@github.com:your-org/docs-vault-plugin.git && git push -u origin HEAD
 ```
 
-Claude Code asks for the plugin's one option, **Vault MCP address** (e.g.
-`https://docs-mcp.example.com/mcp`). Set or change it later with
-`/plugin configure docs-vault@docs-vault-kit`, or from a shell:
-`echo '{"mcp_url":"https://docs-mcp.example.com/mcp"}' | claude plugin configure docs-vault@docs-vault-kit --values-stdin`.
+Make the repository readable by the team (private is fine). OAuth must be on (see above). Below,
+`your-org/docs-vault-plugin` stands for that repository.
 
-Then sign in, either way:
+**You**, in your agent:
 
-- In a session: `/mcp` → `plugin:docs-vault:vault` → **Authenticate**.
-- From a shell: `claude mcp login plugin:docs-vault:vault`. Over SSH, add `--no-browser`: open
-  the printed URL on your own computer, sign in, then paste the address your browser ends up on
-  (a `localhost` page that fails to load) back into the terminal.
+| Agent | Install | Sign in |
+|---|---|---|
+| Claude Code | `claude plugin marketplace add your-org/docs-vault-plugin`, then `claude plugin install docs-vault@docs-vault --scope user` | `/mcp` → `plugin:docs-vault:vault` → **Authenticate**, or `claude mcp login plugin:docs-vault:vault` in a shell |
+| Codex | `codex plugin marketplace add your-org/docs-vault-plugin`, then `codex plugin add docs-vault@docs-vault` | `codex mcp login vault` |
+| omp | `omp plugin marketplace add your-org/docs-vault-plugin`, then `omp plugin install docs-vault@docs-vault` | `/mcp reauth docs-vault:vault` in a session |
 
 The sign-in page asks for your company login, or for a one-time code from your admin
 (`scripts/oauth approve-code --owner you@example.com --scope write`), depending on how the server
-is set up. Run `/docs-vault:connect` to check the connection.
+is set up. On a remote machine (SSH) the sign-in redirects to a `localhost` address on that
+machine: open the link in a browser that runs there or forwards its ports (VS Code and similar
+remote editors do), or use `claude mcp login … --no-browser`, which asks you to paste the final
+address back. Check the connection with the plugin's `connect` command (`/docs-vault:connect` in
+Claude Code).
 
-**Scope.** Choose where the plugin is turned on:
+**Where the access applies.** Your sign-in is saved once per agent, per computer account, and
+every session of that agent where the plugin is turned on uses it. The install scope only decides
+where the plugin is turned on:
 
-| You want | Do |
-|---|---|
-| Every Claude Code session on this computer | `--scope user` |
-| Everyone who works in one project repo | `--scope project`, then commit `.claude/settings.json` (each person still installs and signs in) |
-| Only you, only in this project | `--scope local` |
-| Only one session | Skip the install; start `claude --plugin-dir <kit checkout>/plugins/docs-vault`. Set the address once for this mode with `claude --plugin-dir <same path> plugin configure docs-vault@inline --values-stdin` (same JSON as above) |
+| You want | Claude Code | Codex | omp |
+|---|---|---|---|
+| Every session | `--scope user` | default (`~/.codex/config.toml`) | `--scope user` (default) |
+| One project | `--scope project` (commit `.claude/settings.json`) or `--scope local` (just you) | `[plugins."docs-vault@docs-vault"]` in the project's `.codex/config.toml` | `--scope project` |
+| One session | `claude --plugin-dir <clone>/docs-vault` instead of installing | — | `omp --plugin-dir <clone>/docs-vault` instead of installing |
+
+Loading the plugin for one session doesn't make the sign-in temporary. To end access, sign out
+(`claude mcp logout plugin:docs-vault:vault`, `codex mcp logout vault`, or `/mcp unauth
+docs-vault:vault` in omp), and ask your admin to revoke the grant: each sign-in appears in
+`scripts/token list` as its own `oauth:…` entry.
 
 Notes:
 
-- The plugin's tools are named `mcp__plugin_docs-vault_vault__<tool>`. The skills work with any
-  prefix.
-- Claude Code skips a plugin server whose address is already configured by hand. If you added
-  the vault with `claude mcp add` before, remove that entry (`claude mcp remove vault -s user`)
-  and ask your admin to revoke its token.
-- Sign-in is per computer. `claude mcp logout plugin:docs-vault:vault` signs out; your admin can
-  also end the grant (`scripts/token revoke`).
+- Tool names carry the plugin prefix, e.g. `mcp__plugin_docs-vault_vault__read` in Claude Code.
+  The skills work with any prefix.
+- An agent skips the plugin's server when the same address is already configured by hand (seen in
+  Claude Code). Remove the hand-made entry (`claude mcp remove vault -s user`) and ask your admin
+  to revoke its token.
+- Updates: when the admin rebuilds and pushes the plugin, update it with
+  `claude plugin marketplace update docs-vault`, `codex plugin marketplace upgrade docs-vault` or
+  `omp plugin marketplace update docs-vault`.
 
 ## Step 1 (local tools): get a token from your admin
 
@@ -273,10 +286,10 @@ The kit ships three skills that teach an agent the vault's procedures:
 | `docs-query` | Answer a question from the vault, citing pages |
 | `docs-lint` | Check the wiki for broken links, missing citations and so on, and file review items |
 
-The Claude Code plugin above already includes them. For other setups, they are in the kit
-repository under `vault-template/skills/` (the plugin's copy in `plugins/docs-vault/skills/` is
-kept identical), and in your vault's `skills/` folder. If your admin customised them, use the
-vault's copy. Copy each folder (it contains a `SKILL.md`) into your client's skills directory:
+The Docs Vault plugin above already includes them (`scripts/agent-plugin` copies them in). For
+other setups, they are in the kit repository under `vault-template/skills/`, and in your vault's
+`skills/` folder. If your admin customised them, use the vault's copy. Copy each folder (it
+contains a `SKILL.md`) into your client's skills directory:
 
 ```bash
 git clone https://github.com/DavidSamuell/llm-second-brain.git docs-vault-kit

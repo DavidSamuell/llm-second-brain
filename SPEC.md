@@ -237,7 +237,7 @@ Copied into new vaults by `scripts/setup`; existing vaults can adopt it.
 
 ### 10.1 Team members' agents
 
-- Main path: the kit's agent plugin installed in the person's agent harness (Claude Code first), which adds the MCP server and skills and signs in with OAuth in the browser. Fallbacks: a bearer token (Claude Code / Cursor / Codex), or an OAuth custom connector to [`https://docs-mcp.<domain>/mcp`](https://docs-mcp.<domain>/mcp) in hosted apps ([Claude.ai](http://Claude.ai) / ChatGPT; supported, not acceptance-tested).
+- Main path: the kit's agent plugin, built per deployment by `scripts/agent-plugin` and published as a git marketplace, installed in the person's agent harness (Claude Code, Codex, omp). It adds the MCP server and skills and signs in with OAuth in the browser. Fallbacks: a bearer token (Claude Code / Cursor / Codex), or an OAuth custom connector to [`https://docs-mcp.<domain>/mcp`](https://docs-mcp.<domain>/mcp) in hosted apps ([Claude.ai](http://Claude.ai) / ChatGPT; supported, not acceptance-tested).
 - Fetch sources from anywhere using their own tools/connectors (web, GitHub, Slack, Drive…), then `submit_source`, or ingest directly via `claim_source` → edit → `complete_source`.
 - Install the kit's skills for consistent behaviour.
 - `docs/[CONNECT-AGENTS.md](http://CONNECT-AGENTS.md)`: copy-paste setup per client.

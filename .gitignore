@@ -224,3 +224,4 @@ compose.plugins.yml
 !scripts/lib/
 backups/
 restored-config/
+agent-plugin-dist/
