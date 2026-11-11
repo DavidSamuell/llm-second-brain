@@ -1,0 +1,21 @@
+# Weekly dependency updates (plan D38). Pins stay explicit: each update arrives as a PR that
+# must pass CI; the Ignis image is pinned by hand with OBSIDIAN_VERSION (docs/UPGRADING.md).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: uv
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      python:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directories: [/vault-mcp, /vault-watcher, /git-sync, /agent-runner]
+    schedule: { interval: weekly }
+  - package-ecosystem: docker-compose
+    directories: [/, /ingress/cloudflare, /ingress/caddy]
+    schedule: { interval: weekly }
+    ignore:
+      - dependency-name: nobbe/ignis  # pinned together with OBSIDIAN_VERSION

@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+# Check that the kit is exposed safely (SPEC §5.4, §16.4, plan D35).
+#
+#   CHECK_TOKEN=vmcp_… scripts/check-exposure https://docs.example.com https://docs-mcp.example.com
+#
+# Checks: HTTPS with a valid certificate; Ignis refuses visitors without login; /mcp answers
+# 401 with OAuth discovery and accepts a valid bearer token; OAuth metadata is reachable
+# without browser login; the raw ports are not reachable on this host's public addresses.
+# Prints PASS / FAIL / SKIP per check; the exit code is the number of FAILs.
+#
+# Environment:
+#   CHECK_TOKEN      a read token for the bearer check (never pass tokens as arguments)
+#   CHECK_CA_FILE    extra CA bundle (private CAs, tests)
+#   CHECK_SKIP       comma-separated checks to skip, e.g. ignis-login when the editor is
+#                    tailnet-only and this host is inside the tailnet
+#   ENV_FILE         .env to read IGNIS_PORT, MCP_PORT, MCP_OAUTH_ENABLED from (default .env)
+#   CHECK_PUBLIC_IPS addresses to probe for raw ports instead of this host's public ones
+#                    (space-separated; probed as given, without the public-address filter)
+set -uo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 2
+
+if [ $# -ne 2 ]; then
+  sed -n '2,20p' "$0"
+  exit 2
+fi
+IGNIS_URL=${1%/}
+MCP_URL=${2%/}
+
+env_value() {  # env_value KEY DEFAULT: from the environment, else ENV_FILE, else DEFAULT
+  local key=$1 default=$2 line
+  if [ -n "${!key:-}" ]; then printf '%s' "${!key}"; return; fi
+  line=$(grep -E "^${key}=" "${ENV_FILE:-.env}" 2>/dev/null | tail -n1)
+  line=${line#*=}; line=${line%%[[:space:]]#*}; line=${line//\'/}; line=${line//\"/}
+  printf '%s' "${line:-$default}"
+}
+IGNIS_PORT=$(env_value IGNIS_PORT 8081)
+MCP_PORT=$(env_value MCP_PORT 8082)
+OAUTH_ENABLED=$(env_value MCP_OAUTH_ENABLED true)
+
+CURL=(curl -sS --max-time 15 --proto "=https,http")
+[ -z "${CHECK_CA_FILE:-}" ] || CURL+=(--cacert "$CHECK_CA_FILE")
+
+FAILS=0
+pass() { printf 'PASS  %s\n' "$*"; }
+fail() { printf 'FAIL  %s\n' "$*"; FAILS=$((FAILS + 1)); }
+skip() { printf 'SKIP  %s\n' "$*"; }
+skipped() { [[ ",${CHECK_SKIP:-}," == *",$1,"* ]]; }
+
+# 1. HTTPS with a valid certificate --------------------------------------------------------------
+for url in "$IGNIS_URL" "$MCP_URL"; do
+  if [[ $url != https://* ]]; then
+    fail "https: $url is not HTTPS (Ignis needs a secure context; tokens must not travel in clear)"
+  elif err=$("${CURL[@]}" -o /dev/null "$url/" 2>&1); then
+    pass "https: $url has a valid certificate"
+  else
+    fail "https: $url: ${err##*curl: }"
+  fi
+done
+
+# 2. Ignis refuses visitors without login ----------------------------------------------------------
+if skipped ignis-login; then
+  skip "ignis-login: skipped by CHECK_SKIP (check from a machine outside your network/tailnet)"
+else
+  body=$("${CURL[@]}" -k "$IGNIS_URL/" 2>/dev/null || true)
+  if grep -qE 'apple-mobile-web-app-title" content="Ignis"|id="ignis-status"' <<<"$body"; then
+    fail "ignis-login: $IGNIS_URL serves the editor without login (put it behind your proxy's authentication)"
+  else
+    pass "ignis-login: $IGNIS_URL does not serve the editor to anonymous visitors"
+  fi
+fi
+
+# 3. /mcp: 401 with OAuth discovery; a valid bearer token works ------------------------------------
+init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"check-exposure","version":"1"}}}'
+headers=$("${CURL[@]}" -k -o /dev/null -D - -X POST -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' --data "$init" "$MCP_URL/mcp" 2>/dev/null || true)
+status=$(awk 'toupper($1) ~ /^HTTP/ {code=$2} END {print code}' <<<"$headers")
+if [ "$status" != 401 ]; then
+  fail "mcp-auth: $MCP_URL/mcp without credentials answered ${status:-nothing}, expected 401 (is it behind a browser login, or not routed?)"
+elif [ "$OAUTH_ENABLED" = true ] && ! grep -qi '^www-authenticate:.*resource_metadata' <<<"$headers"; then
+  fail "mcp-auth: 401 has no OAuth discovery header (set MCP_OAUTH_ISSUER, or MCP_OAUTH_ENABLED=false for bearer-only)"
+else
+  pass "mcp-auth: $MCP_URL/mcp rejects anonymous requests with 401"
+fi
+if [ -z "${CHECK_TOKEN:-}" ]; then
+  skip "mcp-token: no CHECK_TOKEN given"
+else
+  code=$("${CURL[@]}" -k -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' -H @<(printf 'Authorization: Bearer %s\n' "$CHECK_TOKEN") \
+    --data "$init" "$MCP_URL/mcp" 2>/dev/null || true)
+  if [ "$code" = 200 ]; then pass "mcp-token: a valid bearer token is accepted"
+  else fail "mcp-token: a valid bearer token got ${code:-nothing}, expected 200"; fi
+fi
+
+# 4. OAuth metadata reachable without browser login --------------------------------------------------
+if [ "$OAUTH_ENABLED" != true ]; then
+  skip "oauth-metadata: MCP_OAUTH_ENABLED is not true"
+else
+  for path in /.well-known/oauth-authorization-server /.well-known/oauth-protected-resource/mcp; do
+    out=$("${CURL[@]}" -k -w '\n%{http_code}' "$MCP_URL$path" 2>/dev/null || true)
+    code=${out##*$'\n'}
+    if [ "$code" = 200 ] && grep -q '"issuer"\|"authorization_servers"' <<<"$out"; then
+      pass "oauth-metadata: $path is public"
+    else
+      fail "oauth-metadata: $MCP_URL$path answered ${code:-nothing} (route the whole MCP host without login)"
+    fi
+  done
+fi
+
+# 5. Raw ports not reachable on public addresses --------------------------------------------------------
+is_public() {
+  case "$1" in
+    10.*|127.*|169.254.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*) return 1 ;;
+    100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*) return 1 ;;  # CGNAT / tailnet
+    ::1|fe80:*|fc*|fd*) return 1 ;;
+  esac
+  return 0
+}
+explicit=0
+if [ -n "${CHECK_PUBLIC_IPS+set}" ]; then read -r -a ips <<<"$CHECK_PUBLIC_IPS"; explicit=1
+else read -r -a ips <<<"$(hostname -I 2>/dev/null || true)"
+fi
+probed=0
+for ip in "${ips[@]}"; do
+  [ "$explicit" = 1 ] || is_public "$ip" || continue
+  for port in "$IGNIS_PORT" "$MCP_PORT"; do
+    probed=1
+    target=$ip; [[ $ip == *:* ]] && target="[$ip]"
+    if timeout 3 bash -c "exec 3<>/dev/tcp/$target/$port" 2>/dev/null; then
+      fail "raw-ports: $ip:$port is reachable; bind to 127.0.0.1 (BIND_ADDR) and use the proxy"
+    else
+      pass "raw-ports: $ip:$port is closed"
+    fi
+  done
+done
+[ "$probed" = 1 ] || skip "raw-ports: no public address on this host; probe from outside: nc -zv <server> $IGNIS_PORT $MCP_PORT"
+
+if [ "$FAILS" = 0 ]; then echo "all checks passed"; else echo "$FAILS check(s) failed"; fi
+exit "$FAILS"

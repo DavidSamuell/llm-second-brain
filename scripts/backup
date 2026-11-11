@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Hot backup of the vault and /data: history, tokens, leases, audit log, search index,
+# Ignis state (SPEC §12, plan D37). The stack keeps running; writes pause while the vault lock
+# is held.
+#
+#   scripts/backup [--include-config] [--out DIR]
+#
+# Writes DIR/vault-backup-<UTC>.tar.gz (mode 600; default DIR: ./backups). --include-config adds
+# .env (which contains secrets) and vault-mcp.yaml (policy): store such archives accordingly.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+OUT=$PWD/backups
+CONFIG=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --include-config) CONFIG=1 ;;
+    --out) OUT=$2; shift ;;
+    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+mkdir -p "$OUT"
+OUT=$(cd "$OUT" && pwd)
+name="vault-backup-$(date -u +%Y%m%dT%H%M%SZ).tar.gz"
+
+mounts=(-v "$OUT:/backups")
+args=()
+if [ "$CONFIG" = 1 ]; then
+  for f in .env vault-mcp.yaml; do
+    [ -f "$f" ] && mounts+=(-v "$PWD/$f:/config-in/$f:ro")
+  done
+  args+=(--include-config)
+fi
+docker compose run --rm --no-deps -T "${mounts[@]}" vault-watcher backup "/backups/$name" "${args[@]}"
+echo "$OUT/$name"

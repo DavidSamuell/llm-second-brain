@@ -1,0 +1,35 @@
+# INGRESS=caddy (SPEC §5.2, plan D5/D39): Caddy terminates HTTPS with Let's Encrypt;
+# oauth2-proxy signs people in before the editor. The MCP host is passed through untouched:
+# vault-mcp authenticates every request itself (bearer tokens and OAuth).
+{
+	email {$ACME_EMAIL}
+}
+
+{$IGNIS_HOST} {
+	# oauth2-proxy's own pages: sign-in, callback, sign-out
+	handle /oauth2/* {
+		reverse_proxy oauth2-proxy:4180 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-Uri {uri}
+		}
+	}
+	handle {
+		forward_auth oauth2-proxy:4180 {
+			uri /oauth2/auth
+			copy_headers X-Auth-Request-User X-Auth-Request-Email
+			@unauthenticated status 401
+			handle_response @unauthenticated {
+				redir * /oauth2/sign_in?rd={scheme}://{host}{uri} 302
+			}
+		}
+		# WebSockets pass through reverse_proxy unchanged.
+		reverse_proxy ignis:8080
+	}
+}
+
+{$MCP_HOST} {
+	# The whole host, no login: /mcp, /.well-known/*, /authorize, /token, /register, /revoke, /oauth/*.
+	reverse_proxy vault-mcp:8082 {
+		flush_interval -1
+	}
+}

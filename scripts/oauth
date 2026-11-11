@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# OAuth sign-in helpers for hosted MCP clients (SPEC §6.3 (2b), plan D17).
+#
+#   scripts/oauth approve-code --owner alice@example.com [--scope read|write] [--ttl 1h]
+#
+# Prints a one-time code the person enters on the sign-in page when connecting Claude.ai or
+# ChatGPT (used when OAUTH_UPSTREAM_PROVIDER=none). Runs inside the vault-mcp container.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+if [ -n "$(docker compose ps --status running --quiet vault-mcp 2>/dev/null)" ]; then
+  exec docker compose exec -T vault-mcp vault-mcp oauth "$@"
+else
+  exec docker compose run --rm --no-deps -T vault-mcp vault-mcp oauth "$@"
+fi

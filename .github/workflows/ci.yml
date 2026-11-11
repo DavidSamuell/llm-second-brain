@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --all-packages
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - name: shellcheck (scripts/ and *.sh)
+        run: |
+          mapfile -t files < <(git ls-files 'scripts/**' '*.sh' | xargs -r grep -lE '^#!.*\b(ba|da)?sh\b' || true)
+          if [ "${#files[@]}" -eq 0 ]; then echo "no shell scripts yet"; exit 0; fi
+          shellcheck -x "${files[@]}"
+      - name: hadolint (Dockerfiles)
+        run: |
+          mapfile -t files < <(git ls-files '*Dockerfile*')
+          if [ "${#files[@]}" -eq 0 ]; then echo "no Dockerfiles yet"; exit 0; fi
+          docker run --rm -v "$PWD:/w" -w /w hadolint/hadolint:v2.12.0 hadolint "${files[@]}"
+
+  unit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --all-packages
+      - run: uv run pytest
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --all-packages
+      - name: End-to-end tests (INGRESS=local and none)
+        run: uv run pytest e2e -m "(profile_local or profile_none) and not nightly" -rs

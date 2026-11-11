@@ -1,0 +1,15 @@
+# vault-mcp policy (SPEC §6.5). scripts/setup copies this file to vault-mcp.yaml,
+# which is yours to edit; vault-mcp and vault-watcher read it at startup (restart to apply).
+write:
+  allow: [wiki/, raw/, _system/]   # plus any page with `maintainer: agent` or `maintainer: shared`
+  human_pages: read_only           # `maintainer: human` pages: agents must use review_queue_add
+  delete: false                    # no delete tool exists in v1
+  max_file_mb: 10
+read:
+  deny: [private/, hr/]            # never served over MCP, never indexed for MCP search
+rate_limits:                       # per credential
+  requests_per_minute: 120
+  writes_per_minute: 30
+  writes_per_day: 2000
+secrets:
+  reject_on_write: true            # API keys, tokens, private keys, connection strings

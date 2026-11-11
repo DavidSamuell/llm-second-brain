@@ -1,0 +1,10 @@
+{
+  "attachmentFolderPath": "attachments",
+  "userIgnoreFilters": [
+    "_system/",
+    "raw/_processing/",
+    "raw/_processed/"
+  ],
+  "alwaysUpdateLinks": true,
+  "newLinkFormat": "shortest"
+}

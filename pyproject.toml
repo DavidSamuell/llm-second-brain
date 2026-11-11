@@ -1,0 +1,60 @@
+[project]
+name = "docs-vault-kit"
+version = "0.0.0"
+description = "Workspace root for the Docs Vault Kit services (not published)."
+requires-python = ">=3.13,<3.14"
+license = "MIT"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+    "types-pyyaml>=6",
+]
+nightly = [
+    "playwright>=1.48,<2",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["vault-core", "vault-mcp", "vault-watcher"]
+
+[tool.uv.sources]
+vault-core = { workspace = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["docs/reviews"]  # review reports are kept verbatim
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF", "S", "PTH", "ASYNC"]
+ignore = ["E501"]  # ruff format owns line length; long strings stay readable
+
+[tool.ruff.lint.isort]
+known-first-party = ["vault_core", "vault_mcp", "vault_watcher"]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests/**" = ["S101", "S104", "S105", "S106", "S603", "S607", "ASYNC240"]  # S105/S106: fixed test credentials
+"e2e/**" = ["S101", "S104", "S603", "S607", "ASYNC240"]
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
+packages = ["vault_core", "vault_mcp", "vault_watcher"]
+mypy_path = ["vault-core/src", "vault-mcp/src", "vault-watcher/src"]
+
+[tool.pytest.ini_options]
+testpaths = ["vault-core/tests", "vault-mcp/tests", "vault-watcher/tests"]
+addopts = ["--import-mode=importlib", "--strict-markers"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "profile_local: end-to-end tests against the INGRESS=local stack",
+    "profile_none: end-to-end tests against the INGRESS=none stack",
+    "nightly: browser tests against the pinned Ignis (uv sync --group nightly; playwright install chromium)",
+]

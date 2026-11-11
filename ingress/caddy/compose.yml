@@ -1,0 +1,50 @@
+# INGRESS=caddy (SPEC §5.2, plan D5/D39): Caddy (HTTPS, Let's Encrypt) + oauth2-proxy (editor login).
+# Only Caddy publishes ports (80 for the ACME challenge and redirects, 443); IGNIS_PORT and
+# MCP_PORT stay on 127.0.0.1. See docs/ingress/caddy.md.
+services:
+  caddy:
+    image: caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d  # 2.10.2-alpine
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
+      IGNIS_HOST: ${IGNIS_HOST:?set IGNIS_HOST in .env}
+      MCP_HOST: ${MCP_HOST:?set MCP_HOST in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./ingress/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DATA_PATH:?set DATA_PATH in .env}/caddy:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:2019/config/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      oauth2-proxy:
+        condition: service_healthy
+    restart: unless-stopped
+
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy@sha256:1e04100f7b44290bc39bf52412153bb27edfc6141f3529b67ea543737a689ae2  # v7.12.0-alpine
+    environment:
+      OAUTH2_PROXY_PROVIDER: ${OAUTH_PROVIDER:-google}
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH_CLIENT_ID:?set OAUTH_CLIENT_ID in .env}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:?set OAUTH_CLIENT_SECRET in .env}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH_COOKIE_SECRET:?run scripts/setup to generate OAUTH_COOKIE_SECRET}
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH_ALLOWED_EMAIL_DOMAINS:?set OAUTH_ALLOWED_EMAIL_DOMAINS in .env}
+      OAUTH2_PROXY_REDIRECT_URL: https://${IGNIS_HOST}/oauth2/callback
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_UPSTREAMS: static://202
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: lax
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ${IGNIS_HOST}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4180/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

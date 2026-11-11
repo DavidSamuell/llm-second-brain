@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Manage vault-mcp bearer tokens and OAuth grants (SPEC §6.3).
+#
+#   scripts/token create --name alice-laptop --owner alice@example.com --scope read|write \
+#                        [--folders wiki/,raw/] [--expires 90d|never]
+#   scripts/token list [--json]
+#   scripts/token revoke <name-or-id>
+#
+# Runs the CLI inside the vault-mcp container, so the host needs only docker.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+if [ -n "$(docker compose ps --status running --quiet vault-mcp 2>/dev/null)" ]; then
+  exec docker compose exec -T vault-mcp vault-mcp token "$@"
+else
+  exec docker compose run --rm --no-deps -T vault-mcp vault-mcp token "$@"
+fi
