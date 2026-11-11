@@ -30,6 +30,8 @@ jobs:
           mapfile -t files < <(git ls-files 'scripts/**' '*.sh' | xargs -r grep -lE '^#!.*\b(ba|da)?sh\b' || true)
           if [ "${#files[@]}" -eq 0 ]; then echo "no shell scripts yet"; exit 0; fi
           shellcheck -x "${files[@]}"
+      - name: Plugin skills match vault-template/skills
+        run: diff -r vault-template/skills plugins/docs-vault/skills
       - name: hadolint (Dockerfiles)
         run: |
           mapfile -t files < <(git ls-files '*Dockerfile*')

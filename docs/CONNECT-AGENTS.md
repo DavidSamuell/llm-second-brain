@@ -5,10 +5,11 @@ ChatGPT) to read and update the team docs. The tools talk to the vault's MCP ser
 `vault-mcp`. Every call goes through it, so permissions, edit-conflict checks, history and the
 audit log apply to agents the same way.
 
-There are two ways to connect:
+There are three ways to connect:
 
 | Client | How it signs in |
 |---|---|
+| Claude Code with the **Docs Vault plugin** (easiest) | **OAuth**: you sign in once in the browser; no token to copy |
 | Claude Code, Cursor, Codex CLI (tools on your computer) | A personal **bearer token** from your admin |
 | Claude.ai, ChatGPT (hosted apps) | **OAuth**: you sign in through a browser page and approve access |
 
@@ -36,6 +37,53 @@ has OAuth turned on (`MCP_OAUTH_ENABLED=true` with `MCP_OAUTH_ISSUER` set; see
 [SECURITY.md](SECURITY.md).
 
 The examples below use `https://docs-mcp.example.com/mcp`; replace it with your URL.
+
+## Claude Code plugin (easiest)
+
+The kit repository is also a Claude Code plugin marketplace. The `docs-vault` plugin adds the
+vault's MCP server and the kit's three skills, and you sign in through the browser instead of
+pasting a token. Your admin must have OAuth turned on (see above) and gives you the vault's MCP
+address.
+
+```bash
+claude plugin marketplace add DavidSamuell/llm-second-brain     # once
+claude plugin install docs-vault@docs-vault-kit --scope user    # see "Scope" below
+```
+
+Claude Code asks for the plugin's one option, **Vault MCP address** (e.g.
+`https://docs-mcp.example.com/mcp`). Set or change it later with
+`/plugin configure docs-vault@docs-vault-kit`, or from a shell:
+`echo '{"mcp_url":"https://docs-mcp.example.com/mcp"}' | claude plugin configure docs-vault@docs-vault-kit --values-stdin`.
+
+Then sign in, either way:
+
+- In a session: `/mcp` → `plugin:docs-vault:vault` → **Authenticate**.
+- From a shell: `claude mcp login plugin:docs-vault:vault`. Over SSH, add `--no-browser`: open
+  the printed URL on your own computer, sign in, then paste the address your browser ends up on
+  (a `localhost` page that fails to load) back into the terminal.
+
+The sign-in page asks for your company login, or for a one-time code from your admin
+(`scripts/oauth approve-code --owner you@example.com --scope write`), depending on how the server
+is set up. Run `/docs-vault:connect` to check the connection.
+
+**Scope.** Choose where the plugin is turned on:
+
+| You want | Do |
+|---|---|
+| Every Claude Code session on this computer | `--scope user` |
+| Everyone who works in one project repo | `--scope project`, then commit `.claude/settings.json` (each person still installs and signs in) |
+| Only you, only in this project | `--scope local` |
+| Only one session | Skip the install; start `claude --plugin-dir <kit checkout>/plugins/docs-vault`. Set the address once for this mode with `claude --plugin-dir <same path> plugin configure docs-vault@inline --values-stdin` (same JSON as above) |
+
+Notes:
+
+- The plugin's tools are named `mcp__plugin_docs-vault_vault__<tool>`. The skills work with any
+  prefix.
+- Claude Code skips a plugin server whose address is already configured by hand. If you added
+  the vault with `claude mcp add` before, remove that entry (`claude mcp remove vault -s user`)
+  and ask your admin to revoke its token.
+- Sign-in is per computer. `claude mcp logout plugin:docs-vault:vault` signs out; your admin can
+  also end the grant (`scripts/token revoke`).
 
 ## Step 1 (local tools): get a token from your admin
 
@@ -221,9 +269,10 @@ The kit ships three skills that teach an agent the vault's procedures:
 | `docs-query` | Answer a question from the vault, citing pages |
 | `docs-lint` | Check the wiki for broken links, missing citations and so on, and file review items |
 
-They are in the kit repository under `vault-template/skills/`, and in your vault's `skills/`
-folder. If your admin customised them, use the vault's copy. Copy each folder (it contains a
-`SKILL.md`) into your client's skills directory:
+The Claude Code plugin above already includes them. For other setups, they are in the kit
+repository under `vault-template/skills/` (the plugin's copy in `plugins/docs-vault/skills/` is
+kept identical), and in your vault's `skills/` folder. If your admin customised them, use the
+vault's copy. Copy each folder (it contains a `SKILL.md`) into your client's skills directory:
 
 ```bash
 git clone https://github.com/DavidSamuell/llm-second-brain.git docs-vault-kit

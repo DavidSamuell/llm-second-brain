@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Claude Code plugin marketplace (`.claude-plugin/marketplace.json`) with the `docs-vault` plugin: the vault's MCP server (address set once as a plugin option, browser OAuth sign-in instead of a pasted token), the three kit skills, and `/docs-vault:connect`. Install at user, project or local scope, or load for one session with `--plugin-dir`. CI checks that the plugin's skills match `vault-template/skills/`.
 - `vault-core`: vault path rules, `vault-mcp.yaml` policy model with read/write decisions, advisory vault lock, atomic writes with sha256 versions, audit log, webhook alerts, and curated secret rules.
 - `vault-mcp`: bearer-token credential store and `vault-mcp token create|list|revoke` (`scripts/token`); MCP server with `get_schema`, `read`, `list` over streamable HTTP (`/mcp`) and stdio, unauthenticated `/health`, audit line per tool call.
 - `docker-compose.yml` with Ignis, vault-mcp and vault-watcher; ports bound to `BIND_ADDR`; `vault-mcp.example.yaml`.

@@ -1,0 +1,16 @@
+{
+  "name": "docs-vault-kit",
+  "owner": {
+    "name": "Docs Vault Kit"
+  },
+  "metadata": {
+    "description": "Connect your coding agent to a Docs Vault Kit server."
+  },
+  "plugins": [
+    {
+      "name": "docs-vault",
+      "source": "./plugins/docs-vault",
+      "description": "Connects Claude Code to your team's docs vault (vault-mcp, browser sign-in) and adds the docs-ingest, docs-query and docs-lint skills."
+    }
+  ]
+}
