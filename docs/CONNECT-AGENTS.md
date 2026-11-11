@@ -25,8 +25,9 @@ tell your admin so the guide can be fixed.
 
 The **Docs Vault plugin** was tested on 2026-11-11 against a public deployment: in Claude Code
 2.1.285 (user scope, signed in with `claude mcp login … --no-browser` and an approval code;
-`/docs-vault:connect` called `get_schema` under the resulting OAuth grant), and installed in
-Codex 0.167.1 and omp, where the server is found and asks for sign-in.
+`/docs-vault:connect` called `get_schema` under the resulting OAuth grant), in Codex 0.167.1
+(`codex mcp login vault`, file credential store; `codex exec` called `get_schema`) and in omp
+(`/mcp reauth`; tools called in a session). Each sign-in is its own audited grant.
 
 ## The server address
 
@@ -100,6 +101,15 @@ Notes:
   `codex mcp list` still says `Not logged in`. Add `mcp_oauth_credentials_store = "file"` at the
   top of `~/.codex/config.toml` (before any `[section]`) and sign in again; the sign-in is then
   kept in a file in `~/.codex` readable only by you.
+- **Codex asks before each vault tool call.** To let it use the plugin's vault tools without
+  asking, add this to `~/.codex/config.toml` (the vault still enforces your access and the page
+  rules). It must be in the file: a `-c` override on the command line didn't take effect in
+  Codex 0.167.1.
+
+  ```toml
+  [plugins."docs-vault@docs-vault".mcp_servers.vault]
+  default_tools_approval_mode = "approve"
+  ```
 - An agent skips the plugin's server when the same address is already configured by hand (seen in
   Claude Code). Remove the hand-made entry (`claude mcp remove vault -s user`) and ask your admin
   to revoke its token.
