@@ -95,6 +95,11 @@ Notes:
 
 - Tool names carry the plugin prefix, e.g. `mcp__plugin_docs-vault_vault__read` in Claude Code.
   The skills work with any prefix.
+- **Codex on Linux servers:** Codex keeps MCP sign-ins in the desktop keyring by default. On a
+  server over SSH that keyring is usually locked, so `codex mcp login` appears to succeed but
+  `codex mcp list` still says `Not logged in`. Add `mcp_oauth_credentials_store = "file"` at the
+  top of `~/.codex/config.toml` (before any `[section]`) and sign in again; the sign-in is then
+  kept in a file in `~/.codex` readable only by you.
 - An agent skips the plugin's server when the same address is already configured by hand (seen in
   Claude Code). Remove the hand-made entry (`claude mcp remove vault -s user`) and ask your admin
   to revoke its token.
