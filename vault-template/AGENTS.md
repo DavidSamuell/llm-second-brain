@@ -1,5 +1,5 @@
 ---
-schema_version: 2
+schema_version: 3
 title: Rules for agents
 maintainer: human
 ---
@@ -231,7 +231,11 @@ a time.
    where the source states a relationship, and prefer `insert_after` / `replace_section`.
 6. Update or create the human docs the source affects (section 5, Human docs): the right
    sections only, one `## Change log` line each, linked from the project page, with
-   `documented_in` from the matching wiki pages.
+   `documented_in` from the matching wiki pages. **Required, however small the change:** every
+   human doc you create or change (a decision record included) is the object of a `documented_in`
+   edge on at least one wiki page about the component or concept it concerns. Create that page if
+   it is missing, state the current fact there with a citation, and give the edge the source and
+   an evidence quote.
 7. Add new wiki pages to `_system/index.md` under the right heading (`insert_after`).
 8. `append` one line to `_system/log.md`:
    `- 2026-11-10 09:30Z ingest [[wiki/sources/<name>]] — <one-line summary> (by <your name>)`
@@ -285,6 +289,7 @@ you work, ingest it now, in the current session. Nothing is left in `raw/` for a
 - **Steps:** gather the content (fetch a URL with your own tools first; for a repository read the
   README and the relevant files and note the commit) → `submit_source` (origin
   `repo:<remote>@<commit>` for repository readings) → `claim_source` → `read` → source summary →
-  human docs and atomic wiki pages with typed edges (section 9, steps 4–6) → index and log →
+  human docs and atomic wiki pages with typed edges (section 9, steps 4–6, including the required
+  `documented_in` edge for every human doc touched) → index and log →
   `complete_source`.
 - On failure, `release_source` and report truthfully which pages were already written.

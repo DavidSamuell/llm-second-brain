@@ -16,9 +16,10 @@ from vault_watcher.upgrade import (
 )
 
 KIT = Path(__file__).resolve().parents[2] / "vault-template"
-# Every managed file of the released schema-1 kit, byte for byte (captured before schema 2).
-SCHEMA1_KIT = Path(__file__).parent / "fixtures" / "schema1-kit"
-SCHEMA1_HINT = "<!-- Add team-specific rules between these markers. Upgrades keep this block. -->"
+# Every managed file of each released kit, byte for byte (captured before the next schema bump).
+FIXTURES = Path(__file__).parent / "fixtures"
+RELEASED_KITS = {1: FIXTURES / "schema1-kit", 2: FIXTURES / "schema2-kit"}
+CUSTOM_HINT = "<!-- Add team-specific rules between these markers. Upgrades keep this block. -->"
 
 AGENTS_V1 = """---
 schema_version: 1
@@ -109,45 +110,50 @@ def test_16_22_custom_blocks_survive_and_kit_content_is_updated(
     assert plan(vault, kits[1]).changes == []  # idempotent
 
 
-def test_the_schema1_fixture_is_the_released_schema1_kit() -> None:
+@pytest.mark.parametrize("version", sorted(RELEASED_KITS))
+def test_each_fixture_is_the_released_kit(version: int) -> None:
+    released = RELEASED_KITS[version]
     files = {
-        p.relative_to(SCHEMA1_KIT).as_posix(): kit_hash(p.read_bytes())
-        for p in SCHEMA1_KIT.rglob("*")
+        p.relative_to(released).as_posix(): kit_hash(p.read_bytes())
+        for p in released.rglob("*")
         if p.is_file()
     }
-    assert files == load_manifest(KIT)["versions"]["1"]
+    assert files == load_manifest(KIT)["versions"][str(version)]
 
 
-def test_a_schema1_vault_upgrades_to_the_shipped_schema2_keeping_custom_blocks(
-    tmp_path: Path,
+@pytest.mark.parametrize("version", sorted(RELEASED_KITS))
+def test_a_released_vault_upgrades_to_the_shipped_kit_keeping_custom_blocks(
+    version: int, tmp_path: Path
 ) -> None:
     vault = tmp_path / "vault"
-    shutil.copytree(SCHEMA1_KIT, vault)
+    shutil.copytree(RELEASED_KITS[version], vault)
     agents = vault / "AGENTS.md"
-    agents.write_text(agents.read_text().replace(SCHEMA1_HINT, "Always cite Jira tickets."))
+    agents.write_text(agents.read_text().replace(CUSTOM_HINT, "Always cite Jira tickets."))
     pipeline = vault / "_system" / "templates" / "pipeline.md"
     pipeline.write_text(pipeline.read_text() + "\n## Our own section\n")
 
     manifest = load_manifest(KIT)
-    v1, v2 = manifest["versions"]["1"], manifest["versions"]["2"]
-    expected = {rel: "add" for rel in v2 if rel not in v1}
-    expected |= {rel: "update" for rel in v2 if rel in v1 and v1[rel] != v2[rel]}
+    current = manifest["schema_version"]
+    old, new = manifest["versions"][str(version)], manifest["versions"][str(current)]
+    expected = {rel: "add" for rel in new if rel not in old}
+    expected |= {rel: "update" for rel in new if rel in old and old[rel] != new[rel]}
     expected["_system/templates/pipeline.md"] = "customised"
     assert expected["AGENTS.md"] == "update"
-    assert expected["_system/graph/ontology.yaml"] == "add"
+    if version == 1:
+        assert expected["_system/graph/ontology.yaml"] == "add"
 
     p = plan(vault, KIT)
-    assert (p.vault_version, p.kit_version) == (1, 2)
+    assert (p.vault_version, p.kit_version) == (version, current)
     assert {c.path: c.action for c in p.changes} == expected
     apply(p, vault, tmp_path / "data")
 
-    assert vault_schema_version(vault) == 2
+    assert vault_schema_version(vault) == current
     text = agents.read_text()
     assert "## 12. In-session capture" in text
     assert "<!-- custom -->\nAlways cite Jira tickets.\n<!-- /custom -->" in text
     assert "Kept from your previous version" not in text
     assert text.index("Always cite Jira tickets.") < text.index("## 1. Safety rules (always)")
-    for rel, digest in v2.items():
+    for rel, digest in new.items():
         if rel != "_system/templates/pipeline.md":
             assert kit_hash((vault / rel).read_bytes()) == digest, rel
     assert pipeline.read_text().endswith("\n## Our own section\n")

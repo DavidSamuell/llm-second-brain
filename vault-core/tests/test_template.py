@@ -68,10 +68,10 @@ def test_manifest_version_is_the_agents_md_schema_version() -> None:
     assert load_manifest(TEMPLATE)["schema_version"] == schema_version(TEMPLATE)
 
 
-def test_the_template_is_schema_2_and_keeps_every_released_version() -> None:
+def test_the_manifest_keeps_every_released_version() -> None:
     manifest = load_manifest(TEMPLATE)
-    assert schema_version(TEMPLATE) == 2
-    assert sorted(manifest["versions"]) == ["1", "2"]
+    current = schema_version(TEMPLATE)
+    assert sorted(manifest["versions"], key=int) == [str(v) for v in range(1, current + 1)]
     assert "_system/graph/ontology.yaml" not in manifest["versions"]["1"]
     assert "_system/graph/ontology.yaml" in manifest["versions"]["2"]
 

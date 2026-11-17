@@ -42,8 +42,11 @@ person asks you not to capture, stop for this session.
    reading, or `capture:<repo id>@<commit>` for a session finding. Keep the returned `raw/…`
    path.
 5. Follow the `docs-ingest` skill from its claim step with that path, to the end
-   (`complete_source`). The human docs it updates get a change-log line and citations; the wiki
-   pages get typed edges with evidence and `documented_in` links.
+   (`complete_source`). The human docs it updates get a change-log line and citations. Every
+   human doc you create or change, including a one-line decision record, also gets a wiki page
+   (the component or concept it concerns; create it if missing) that states the current fact and
+   carries a `documented_in` edge to that doc with source and evidence. Don't skip this for small
+   findings.
 6. Tell the person in one line what you saved and where (source summary and docs touched).
 
 If a step fails, `docs-ingest` releases the source (`release_source`); tell the person which

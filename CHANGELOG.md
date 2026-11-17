@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Vault schema 2: shared human-doc templates, project/repo/graph metadata, change logs and managed ontology; upgrades preserve released schema-1 hashes and custom blocks.
 - Opt-in, credential-free session hooks for Claude Code and omp: repo allowlist, per-repo/session opt-outs, startup/compaction context and every-tenth-prompt capture reminders. Codex CLI automatic capture remains unsupported.
 - Host `scripts/maintenance` for post-backup ingestion, structural/semantic lint and direct fixes through MCP, with estimated-spend/time limits, private logs, fresh-report checks, read-only preview and one Slack-compatible failure alert per run.
+- Vault schema 3: ingest and in-session capture now require every human doc they create or change (decision records included) to be the object of a `documented_in` edge from a wiki page about the component or concept it concerns. Run `scripts/upgrade-vault`; released schema-1 and schema-2 files upgrade with custom blocks kept.
+
+### Fixed
+
+- The generated Claude Code plugin no longer pins `version`, so `claude plugin update` installs each rebuild the admin pushes (Claude Code versions it by commit). Update instructions now include the plugin update step for Claude Code and omp.
 
 ## [0.1.0] - 2026-11-17
 

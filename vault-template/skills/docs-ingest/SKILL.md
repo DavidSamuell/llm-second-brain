@@ -78,7 +78,11 @@ them. Nothing is left in `raw/` for a later run.
    `read` the existing page; add facts with `insert_after` / `replace_section` (`base_version`),
    citing the summary. Create missing pages from the matching template. Wiki pages stay atomic:
    facts, links and typed edges; they link to human docs with `documented_in` instead of
-   repeating them. Example frontmatter:
+   repeating them. **Required, however small the change:** every human doc you created or changed
+   in step 7, a decision record included, is the object of a `documented_in` edge on at least one
+   wiki page about the component or concept it concerns. If no such page exists, create it and
+   state the current fact there. "Too small for a wiki page" is not a reason to skip. Example
+   frontmatter:
 
    ```yaml
    graph:
@@ -122,5 +126,5 @@ and to `raw/_processed/<name>` at the end; write pages directly; commit as
 ## Done when
 
 The summary exists; the affected human docs are current, cited, linked from their project page
-and have a change-log line; touched wiki pages cite the summary and carry `documented_in`; the
-index and log are updated; and the source is in `raw/_processed/`.
+and have a change-log line; each of them is the object of a `documented_in` edge from a wiki page
+that cites the summary; the index and log are updated; and the source is in `raw/_processed/`.
