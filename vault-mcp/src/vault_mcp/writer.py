@@ -13,14 +13,23 @@ import os
 import secrets
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
 from vault_core import frontmatter, review_queue
+from vault_core.alerts import AlertSender
 from vault_core.audit import AuditLog, new_id
 from vault_core.fsio import fsync_dir, replace_from_temp, version_of, write_temp_sibling
+from vault_core.graph import (
+    GraphError,
+    clean_reference,
+    default_ontology,
+    extract,
+    load_ontology,
+    validate,
+)
 from vault_core.history import HistoryStore, Spool, parse_ts
 from vault_core.lock import AsyncVaultLock
 from vault_core.paths import PathError, is_hidden, normalize, resolve_in_vault, through_symlink
@@ -28,6 +37,7 @@ from vault_core.policy import Decision, Policy, check_read, check_write
 from vault_core.secrets import scan_added_lines
 from vault_mcp import sections
 from vault_mcp.errors import VaultToolError
+from vault_mcp.graph_links import rewrite_graph_links
 from vault_mcp.links import VaultFiles, links_to, rebase_relative_links, rewrite_links
 from vault_mcp.notices import NoticeLog
 from vault_mcp.store import Credential
@@ -73,6 +83,7 @@ class VaultWriter:
         *,
         ack_timeout_s: float = 5.0,
         lock: AsyncVaultLock | None = None,
+        alerts: AlertSender | None = None,
     ) -> None:
         self.vault_dir = vault_dir
         self.data_dir = data_dir
@@ -84,6 +95,98 @@ class VaultWriter:
         self.heartbeat = data_dir / "vault-watcher" / "heartbeat"
         self.lock = lock or AsyncVaultLock(data_dir, "vault-mcp")
         self.notices = NoticeLog(data_dir)
+        self.graph_alerts = alerts or AlertSender(None, service="vault-mcp")
+        self._graph_ontology = default_ontology()
+        self._graph_stamp: tuple[int, int, int] | None = None
+
+    def _refresh_graph_ontology(self) -> None:
+        ontology_path = self.vault_dir / "_system/graph/ontology.yaml"
+        try:
+            if through_symlink(self.vault_dir, "_system/graph/ontology.yaml"):
+                raise ValueError("ontology may not be a symlink")
+            stat = ontology_path.stat()
+            stamp = (stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size)
+            if stamp != self._graph_stamp:
+                self._graph_stamp = stamp
+                self._graph_ontology = load_ontology(ontology_path.read_text())
+        except FileNotFoundError:
+            pass  # Schema-1 vaults use the built-in starter until upgrade.
+        except (ValueError, OSError):
+            self.graph_alerts.send(
+                "graph_ontology_invalid",
+                "high",
+                "Invalid graph ontology; continuing with the last valid vocabulary.",
+            )
+
+    def _validate_graph(
+        self,
+        cred: Credential,
+        rel: str,
+        content: bytes,
+        prospective: dict[str, bytes | None] | None = None,
+    ) -> None:
+        if not rel.endswith(".md"):
+            return
+        text = content.decode("utf-8", "replace")
+        meta, body = frontmatter.parse(text)
+        if meta is None:
+            header = text.split("---", 2)[1] if text.startswith("---") else ""
+            if any(
+                line.strip().startswith(("graph:", '"graph":', "'graph':"))
+                for line in header.splitlines()
+            ):
+                error = GraphError(
+                    rel, "graph", "invalid_shape", "graph frontmatter must be valid YAML"
+                )
+                raise VaultToolError(
+                    "invalid", error.message, path=rel, graph_errors=[asdict(error)]
+                )
+            return
+        if "graph" not in meta:
+            return
+        self._refresh_graph_ontology()
+        graph = extract(rel, meta, body, self._graph_ontology)
+        source_types: dict[str, str] = {}
+        overlay = prospective or {}
+        for reference in {e.source for e in graph.edges if e.explicit and e.source}:
+            if reference is None:
+                continue
+            ref = clean_reference(reference)
+            candidates = [ref + ".md"]
+            if "/" not in ref:
+                candidates = sorted(
+                    {
+                        p.relative_to(self.vault_dir).as_posix()
+                        for p in self.vault_dir.rglob("*.md")
+                        if p.stem == ref
+                    }
+                    | {p for p in overlay if Path(p).stem == ref}
+                )
+            candidates = [p for p in candidates if overlay.get(p, b"") is not None]
+            if len(candidates) != 1:
+                continue
+            candidate = candidates[0]
+            if not check_read(candidate, self.policy, cred.folders).allowed:
+                continue
+            try:
+                target = resolve_in_vault(self.vault_dir, normalize(candidate))
+                data = overlay[candidate] if candidate in overlay else target.read_bytes()
+                if data is None:
+                    continue
+                source_meta, _ = frontmatter.parse(data.decode("utf-8", "replace"))
+                source_type = (source_meta or {}).get("type")
+                if source_type in ("source", "source-summary"):
+                    source_types[ref] = source_type
+            except (PathError, OSError):
+                continue
+        errors = validate(graph, self._graph_ontology, source_types=source_types)
+        if errors:
+            raise VaultToolError(
+                "invalid",
+                "invalid graph metadata; correct the listed fields",
+                path=rel,
+                graph_errors=[asdict(error) for error in errors],
+            )
 
     # -- public tools ----------------------------------------------------------------------
 
@@ -340,6 +443,7 @@ class VaultWriter:
                 size=len(new),
                 limit=limit,
             )
+        self._validate_graph(cred, rel, new)
         if self.policy.secrets.reject_on_write:
             old_text = current.decode("utf-8", "replace") if current is not None else None
             findings = scan_added_lines(old_text, new.decode("utf-8", "replace"))
@@ -521,13 +625,24 @@ class VaultWriter:
         # Preflight: every page linking to the file must be writable, or nothing happens.
         files, pages = self._vault_files()
         linkers: dict[str, bytes] = {}
+        self._refresh_graph_ontology()
+        current_meta, current_body = frontmatter.parse(current.decode("utf-8", "replace"))
+        old_graph = extract(rel, current_meta or {}, current_body, self._graph_ontology)
+        new_graph = extract(new_rel, current_meta or {}, current_body, self._graph_ontology)
+
+        def graph_rewrite(text: str) -> str:
+            return rewrite_graph_links(
+                text, rel, new_rel, old_graph.node.id, new_graph.node.id, files.paths
+            )
+
         visible_blockers: list[str] = []
         hidden_blockers = 0
         for other in pages:
             if other == rel:
                 continue
             data = (self.vault_dir / other).read_bytes()
-            if not links_to(data.decode("utf-8", "replace"), other, rel, files):
+            text = data.decode("utf-8", "replace")
+            if not links_to(text, other, rel, files) and graph_rewrite(text) == text:
                 continue
             decision = self._write_decision(cred, other, data)
             if decision.allowed:
@@ -556,12 +671,18 @@ class VaultWriter:
                 o,
                 self.vault_dir / o,
                 data,
-                rewrite_links(data.decode("utf-8", "replace"), o, rel, new_rel, files).encode(),
+                graph_rewrite(
+                    rewrite_links(data.decode("utf-8", "replace"), o, rel, new_rel, files)
+                ).encode(),
                 None,
             )
             for o, data in linkers.items()
         ]
-        plan.append((rel, dest, current, moved_text.encode(), new_rel))
+        plan.append((rel, dest, current, graph_rewrite(moved_text).encode(), new_rel))
+        prospective: dict[str, bytes | None] = {rel: None}
+        prospective.update({moved_to or o: after for o, _, _, after, moved_to in plan})
+        for o, _, _, after, moved_to in plan:
+            self._validate_graph(cred, moved_to or o, after, prospective)
 
         # D21 for a group: prepare all, re-check all, apply all, audit all, commit all.
         group_id = new_id()

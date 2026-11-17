@@ -25,6 +25,7 @@ from vault_mcp.oauth.upstream import build_upstream
 from vault_mcp.ratelimit import RateLimiter
 from vault_mcp.sources import SourceTools
 from vault_mcp.store import Credential, CredentialStore
+from vault_mcp.tools_graph import GraphTools
 from vault_mcp.tools_read import ReadTools
 from vault_mcp.tools_search import SearchTools
 from vault_mcp.writer import VaultWriter
@@ -61,12 +62,17 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     audit = AuditLog(settings.data_dir / "audit.log")
     reads = ReadTools(settings.vault_dir, policy)
     searches = SearchTools(settings.data_dir / "index.db", policy)
+    graphs = GraphTools(settings.vault_dir, settings.data_dir, policy)
+    alerts = AlertSender(settings.alert_webhook, service="vault-mcp")
     writer = VaultWriter(
-        settings.vault_dir, settings.data_dir, policy, ack_timeout_s=settings.history_ack_timeout
+        settings.vault_dir,
+        settings.data_dir,
+        policy,
+        ack_timeout_s=settings.history_ack_timeout,
+        alerts=alerts,
     )
 
     sources = SourceTools(writer)
-    alerts = AlertSender(settings.alert_webhook, service="vault-mcp")
     limiter = RateLimiter(policy.rate_limits, alerts=alerts)
 
     def oauth_event(event: str, details: dict[str, Any]) -> None:
@@ -184,6 +190,56 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         """Full-text search (title, headings, path, frontmatter, body). Words are matched
         literally and all must appear; `folder` narrows the search to one folder."""
         return audited("search", folder, lambda cred: searches.search(cred, query, folder, limit))
+
+    @mcp.tool(name="graph_neighbors")
+    def graph_neighbors(
+        node: str,
+        predicate: str | None = None,
+        direction: str = "both",
+        depth: int = 1,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Navigate typed and implicit relationships around a node id, alias or page path.
+        Only readable endpoints and intermediate pages participate; depth is 1 or 2."""
+        return audited(
+            "graph_neighbors",
+            None,
+            lambda cred: graphs.neighbors(cred, node, predicate, direction, depth, limit),
+        )
+
+    @mcp.tool(name="graph_edges")
+    def graph_edges(
+        subject: str | None = None,
+        predicate: str | None = None,
+        object: str | None = None,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Find relationships, including low-confidence navigation links. Evidence is
+        returned only when its source-summary page is readable."""
+        return audited(
+            "graph_edges",
+            None,
+            lambda cred: graphs.edges(cred, subject, predicate, object, status, limit),
+        )
+
+    @mcp.tool(name="graph_path")
+    def graph_path(from_node: str, to_node: str, max_depth: int = 4) -> dict[str, Any]:
+        """Return a deterministic shortest path through readable graph nodes."""
+        return audited(
+            "graph_path", None, lambda cred: graphs.path(cred, from_node, to_node, max_depth)
+        )
+
+    @mcp.tool(name="backlinks")
+    def backlinks(path: str) -> dict[str, Any]:
+        """List readable pages that refer to this page through links or graph metadata."""
+        return audited("backlinks", path, lambda cred: graphs.backlinks(cred, path))
+
+    @mcp.tool(name="graph_lint")
+    def graph_lint(folder: str | None = None) -> dict[str, Any]:
+        """Report invalid graph metadata, dangling references, orphans and contradictions
+        within the caller's readable graph. Does not change Markdown."""
+        return audited("graph_lint", folder, lambda cred: graphs.lint(cred, folder))
 
     @mcp.tool(name="write")
     async def write(
