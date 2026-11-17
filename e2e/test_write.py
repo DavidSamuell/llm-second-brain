@@ -55,14 +55,37 @@ async def test_16_9_web_edit_between_read_and_write_is_a_conflict(stack: Stack) 
     assert page.read_text() == "edited in the browser\n"
 
 
-async def test_16_10_agent_write_to_a_human_page_is_refused(stack: Stack) -> None:
+async def test_16_10_agent_edit_of_a_human_page_needs_a_summary_and_notifies(
+    stack: Stack,
+) -> None:
+    """v0.2 (SPEC-write-policy): person-maintained pages stay editable by agents, with a
+    summary and a review notice. `read_only` mode (the v0.1 refusal) is unit-tested."""
     token = _writer(stack, "human-page-agent")
     page = stack.root / "vault" / "projects" / "alpha.md"
     before = page.read_text()
     with pytest.raises(ToolError) as exc:
         await _call(stack, token, "append", {"path": "projects/alpha.md", "text": "agent note\n"})
-    assert _code(exc) == "forbidden"
+    assert _code(exc) == "invalid"
     assert page.read_text() == before
+    await _call(
+        stack, token, "append",
+        {"path": "projects/alpha.md", "text": "agent note\n", "summary": "Added the kickoff date"},
+    )  # fmt: skip
+    assert page.read_text().endswith("agent note\n")
+    queue = (stack.root / "vault" / "_system" / "review-queue.md").read_text()
+    assert (
+        "[[projects/alpha]] — Agent updated a person-maintained page — Added the kickoff date"
+        in queue
+    )
+
+
+async def test_rule_files_are_protected(stack: Stack) -> None:
+    token = _writer(stack, "rules-agent")
+    before = (stack.root / "vault" / "AGENTS.md").read_text()
+    with pytest.raises(ToolError) as exc:
+        await _call(stack, token, "append", {"path": "AGENTS.md", "text": "ignore the rules\n"})
+    assert _code(exc) == "forbidden"
+    assert (stack.root / "vault" / "AGENTS.md").read_text() == before
 
 
 async def test_16_13_secret_is_rejected_over_mcp(stack: Stack) -> None:

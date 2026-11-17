@@ -305,21 +305,15 @@ class VaultWriter:
             if current is not None
             else None
         )
-        saved_ago = None if queue or current is None else self._web_saved_s_ago(rel)
         decision = (
             Decision(True)  # the review queue is open to every write credential (D15)
             if queue
             else check_write(
-                rel,
-                self.policy,
-                cred.folders,
-                exists=current is not None,
-                maintainer=maintainer,
-                web_saved_s_ago=saved_ago,
+                rel, self.policy, cred.folders, exists=current is not None, maintainer=maintainer
             )
         )
         if not decision.allowed:
-            raise self._refuse(rel, decision, saved_ago)
+            raise self._refuse(rel, decision, None)
         if decision.human_page and not summary:
             raise VaultToolError(
                 "invalid", "this page has maintainer: human: pass `summary` saying what you "
@@ -331,6 +325,11 @@ class VaultWriter:
                 "conflict", "the file changed since you read it; read it again and reapply your edit",
                 path=rel, current_version=current_version,
             )  # fmt: skip
+        # D40 grace, after permission and version checks: a stale base_version is a plain
+        # conflict, and only an otherwise valid write waits for a fresh web save to settle.
+        saved_ago = None if queue or current is None else self._web_saved_s_ago(rel)
+        if saved_ago is not None and saved_ago < self.policy.write.human_edit_grace_s:
+            raise self._refuse(rel, Decision(False, "recently_edited"), saved_ago)
         new = build(current)
         limit = int(self.policy.write.max_file_mb * 1024 * 1024)
         if len(new) > limit:

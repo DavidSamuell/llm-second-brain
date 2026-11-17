@@ -1,6 +1,6 @@
 # Spec: write-policy
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Draft · **Depends on:** —
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Approved; implementation awaiting Checkpoint I review · **Depends on:** —
 
 ## Objective
 
@@ -9,7 +9,7 @@ Agents keep the whole team documentation current, not only `wiki/`. Today `vault
 - Agents may create and edit pages in `projects/`, `specs/`, `pipelines/` and `runbooks/` (the human-facing folders).
 - People usually edit through an agent. When a person edits a page by hand, the page stays editable by agents, so obsolete information can still be corrected later.
 - A short list of files that define the rules stays locked against agents, whatever their frontmatter says.
-- An agent never overwrites a page a person saved in the last moments.
+- Once the watcher records a web save, agents wait through the configured grace period. This reduces concurrent-edit risk; it cannot protect unsaved keystrokes or saves the watcher has not recorded yet.
 
 **Users:** team members (through their agents), the nightly maintenance agent, and admins who set the policy.
 
@@ -20,7 +20,7 @@ Agents keep the whole team documentation current, not only `wiki/`. Today `vault
 ```yaml
 write:
   allow: [wiki/, raw/, _system/, projects/, specs/, pipelines/, runbooks/]
-  human_pages: edit_with_notice    # edit_with_notice (new default) | read_only (v0.1 behaviour)
+  human_pages: edit_with_notice    # new-deployment example; omitted field keeps v0.1 read_only
   protected: [AGENTS.md, CLAUDE.md, skills/, _system/templates/, _system/graph/ontology.yaml]
   human_edit_grace_s: 90           # refuse agent writes this soon after a web-editor save
   delete: false
@@ -31,7 +31,7 @@ write:
 
 1. Readable (`read.deny`, hidden paths, credential `--folders`): unchanged from v0.1.
 2. Under `write.protected` → refused `forbidden`, reason `protected`. Applies to `write`, `append`, section tools and `move` (source and target).
-3. The last history version of the file came from the web editor (`source: web`) less than `human_edit_grace_s` ago → refused `recently_edited` with `details.retry_after_s`. Nothing is written.
+3. The most recent history version with `source: web` is less than `human_edit_grace_s` old → refused `recently_edited` with `details.retry_after_s`. Later MCP or scan versions must not hide that save. Nothing is written.
 4. `maintainer: agent|shared` → allowed anywhere readable.
 5. `maintainer: human`:
    - `read_only` → refused `forbidden`, reason `human_page`, as in v0.1;
@@ -39,6 +39,8 @@ write:
 6. No `maintainer` → allowed only under `write.allow`.
 
 The write tools gain an optional `summary` argument (≤ 200 characters). It is used in the notice and in the audit line, and is required when the target is a `maintainer: human` page (`invalid` without it).
+
+For version-checked writes, the writer validates permissions and the required summary, then checks `base_version` before checking grace. A stale base therefore remains `conflict`, independent of watcher debounce timing; a current base inside the recorded web-save window gets `recently_edited`. Grace still blocks every otherwise-permitted write and move.
 
 ### `maintainer` values (AGENTS.md, schema_version 2)
 
@@ -65,7 +67,7 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 ## Project structure
 
 - `vault-core/src/vault_core/policy.py`: `WritePolicy` fields and `check_write` order above.
-- `vault-mcp/src/vault_mcp/writer.py`: grace check (reads the history head), notice, audit field, `summary` argument.
+- `vault-mcp/src/vault_mcp/writer.py`: grace check (finds the most recent web version), notice, audit field, `summary` argument.
 - `vault-core/src/vault_core/review_queue.py`: notice format (`#review/agent-edit`, one per page per day).
 - `vault-mcp.example.yaml`, `vault-template/AGENTS.md` (§3), `docs/USER-GUIDE.md`, `docs/CONNECT-AGENTS.md`, `docs/SECURITY.md`, `docs/UPGRADING.md`.
 
@@ -97,7 +99,7 @@ def check_write(
 ## Testing strategy
 
 - **Unit (vault-core):** a table test of `check_write` over every row of the decision order, both `human_pages` modes, and `protected` matching for files and folders.
-- **Unit (vault-mcp):** the grace window with a fake clock and a history head from the web; notice deduplication per page per day; `summary` required on human pages; audit field present.
+- **Unit (vault-mcp):** recent and expired web-save timestamps; notice deduplication per page per day; `summary` required on human pages; audit field present.
 - **e2e (local and none profiles):** acceptance 1–6 below against the real stack, with web saves simulated by filesystem writes, as in §16.14.
 - Update the v0.1 tests that assert `human_page` refusal to run in `read_only` mode, which still behaves the same.
 

@@ -38,7 +38,7 @@ Security fixes go into the latest minor release (SPEC §15). Dependabot opens we
 | Actor | Trusted with | Main risks |
 |---|---|---|
 | Team members (browser) | Everything in the vault: Ignis has no per-user permissions. | Mistakes, overwriting each other (LIMITATIONS.md), pasting secrets, changing Ignis server settings (below), keeping access after leaving. |
-| Team members' agents (Claude Code, Cursor, Codex) | What their bearer token allows: read or write, optional `--folders`, never `read.deny`. | Leaked tokens, over-broad tokens, prompt injection from sources they read. |
+| Team members' agents (Claude Code, Cursor, Codex) | What their bearer token allows: read or write, optional `--folders`, never `read.deny`, never the protected rule files. | Leaked tokens, over-broad tokens, prompt injection from sources they read (which can now reach people's docs; see "What agents may change"). |
 | Hosted connectors (Claude.ai, ChatGPT) | What the OAuth grant allows: read or write, all folders except `read.deny`. | Phishing for consent, stolen refresh tokens, grants that outlive the person. |
 | Server-side agent (`agent-runner`) | A write token for all folders, plus web fetching. | Prompt injection through ingested sources (below). |
 | Internet attackers | Nothing. They can reach the MCP host (it has no browser login) and the ingress login page. | Guessing credentials, abusing open OAuth client registration, flooding, finding an editor exposed without login. |
@@ -196,6 +196,22 @@ These came out of the 2026-11-10 OAuth review and were documented rather than ch
 - **GitHub verified emails outlive the mailbox.** A GitHub address stays "verified" after the person loses the mailbox. A former employee whose primary GitHub email is still `@yourcompany.com` can keep signing in, and after you revoke a grant they can **create a new one**. GitHub mode has no organisation-membership check. Prefer approval codes, or an identity provider your organisation controls (Google Workspace, Entra ID, your own OIDC).
 - **Approval codes are 50 bits, stored as unsalted SHA-256.** A code is 10 Crockford base32 characters. Online guessing is impractical: 5 tries per sign-in, and an `oauth_code_guessing` alert above 30 failures in 10 minutes. But anyone holding a copy of `tokens.db` (for example from a backup) could brute-force a code that is still valid and sign in as its owner. Outstanding codes can't be listed. `scripts/oauth revoke-codes --owner <email>` cancels all unused codes of one person; otherwise they expire. Keep `--ttl` short, send codes over a private channel, and protect backups.
 - **Some secrets in `tokens.db` are not hashed:** the client secrets of confidential OAuth clients (the SDK compares them in plain text) and, for up to 15 minutes, the PKCE verifier and nonce of an upstream sign-in in progress.
+
+## What agents may change
+
+`vault-mcp.yaml` decides which pages agents may write (SPEC-write-policy). With the v0.2 example policy, subject to the credential's scope and `read.deny`:
+
+- **Agents keep the team's docs current.** They may create and edit pages in `wiki/`, `raw/`, `_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`, and any page marked `maintainer: agent` or `shared`.
+- **Pages people marked `maintainer: human`** (`human_pages: edit_with_notice`): agents may still update them when information is out of date, but every such edit:
+  - needs a `summary` of what changed and why;
+  - is audited with `human_page: true`;
+  - raises one `#review/agent-edit` item per page per day in the review queue.
+
+  Every version stays in history, so a person can restore it (`scripts/history restore`). Set `human_pages: read_only` to forbid these edits entirely (the v0.1 behaviour); agents then propose changes through the review queue.
+- **The rule files are never writable by agents**, whatever their frontmatter says: `AGENTS.md`, `CLAUDE.md`, `skills/`, `_system/templates/` and `_system/graph/ontology.yaml` (`write.protected`). They tell agents how to behave, so a prompt-injected source must not be able to rewrite them. Change them in the editor or on disk.
+- **A recorded editor save starts a grace period** of `human_edit_grace_s` (90 s). An otherwise-permitted agent write gets `recently_edited` with `retry_after_s`; a stale `base_version` still gets `conflict`. This reduces concurrent-edit risk but is not an editor lock: it cannot protect keystrokes not yet saved, saves not yet recorded by the watcher, or Ignis' residual unlocked-save race (LIMITATIONS.md).
+
+**The risk this adds.** The old example policy limited ordinary agent writes to `wiki/`, `raw/` and `_system/`, while also allowing pages marked `agent` or `shared`. The new example includes human-facing folders and permits updates to `human` pages. Prompt injection can therefore reach more team documentation. Version checks, secret scanning, history, credential-attributed audit lines and human-page notices remain safeguards, not proof that an edit is correct. Watch the `#review/agent-edit` items, and keep `read.deny` for content agents must not reach.
 
 ## Secrets in the vault
 

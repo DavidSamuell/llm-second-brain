@@ -72,24 +72,27 @@ Keep the dashes and the `name: value` lines intact; agents and search read them.
 
 ## What `maintainer` means for you
 
-Every page says who looks after it:
+Every page says who looks after it. With the v0.2 example policy:
 
 | Value | What it means |
 |---|---|
-| `maintainer: human` | A page people write. Agents never change it. If an agent thinks it is wrong or out of date, it adds an item to the review queue instead. All the people templates use this. |
-| `maintainer: agent` | A page agents keep up to date, usually in `wiki/`. You may still edit it, and your edit wins: agents re-read the page before they change it. |
+| `maintainer: human` | A page a person wrote by hand. Agents may still update it when its information is out of date, and every such change puts a `#review/agent-edit` item in the review queue so you can check it (your admin can switch this off). |
+| `maintainer: agent` | A page agents keep up to date, usually in `wiki/`. You may still edit it. Agents re-read before changing it; this is not a lock against simultaneous editing. |
 | `maintainer: shared` | Both people and agents edit it. Agents make small, section-sized changes. The review queue is a shared page. |
 
-Pages with no `maintainer` line are treated as people's pages everywhere except `wiki/`, `raw/`
-and `_system/`. Don't change the `maintainer` value of an existing page to let an agent in; ask
-whoever owns the page.
+With that policy, pages with no `maintainer` line can be edited by agents in `wiki/`, `raw/`,
+`_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`. Existing deployments keep their
+old permissions until an admin opts in. Agents cannot edit the protected rules: `AGENTS.md`,
+`CLAUDE.md`, `skills/`, the templates or the graph ontology. After the watcher records an
+editor save, agents wait 90 seconds by default before updating that page. Unsaved typing and
+saves not yet recorded are not protected; avoid simultaneous editing of the same page.
 
 ## The review queue
 
 `_system/review-queue.md` is a to-do list of things an agent wants a person to decide. Agents add
 an item when they:
 
-- want to change a `maintainer: human` page,
+- changed a `maintainer: human` page (tagged `#review/agent-edit`: check the change and tick it), or want to change one when the admin has kept `read_only`,
 - find two sources that disagree,
 - couldn't fetch a source someone submitted,
 - want to rename a page they aren't allowed to edit.

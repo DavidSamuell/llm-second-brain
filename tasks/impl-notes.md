@@ -172,3 +172,14 @@ Decisions:
 - **Claude Code:** `hooks/hooks.json` with `SessionStart` (all sources) and `UserPromptSubmit` (nudge every 10 prompts). `Stop` can't add context without forcing a continuation, so it isn't used.
 - **omp:** `hooks/pre/docs-vault.ts` calling the same shell script; inject on the first `before_agent_start` and after `session_clear`/compaction; nudge every 10 prompts.
 - **Codex:** not supported for v0.2 (SPEC-session-hooks criterion 6 → documented). The plugin still gives Codex the MCP server and skills; people can ask in plain words.
+
+## T43–T45 — Write-policy checkpoint
+
+- Implemented: protected file/folder prefixes; opt-in `edit_with_notice` for human pages; summaries, audit flags and daily notices; recorded-web-save grace across write and move/link-update paths.
+- Compatibility: omitting `human_pages` retains `read_only`; existing `write.allow` stays unchanged. Protected-path defaults and the 90 s grace apply to old policy files too. Bookbot's live deployment is untouched until T58.
+- Deviation from the original history-head plan: use the most recent `web` version even when a later MCP or scan version is the head. Otherwise a later version could hide a still-active grace window.
+- Deviation in error precedence: after permissions and required-summary validation, stale `base_version` returns `conflict` before grace. This preserves §16.9 deterministically across watcher debounce timing. A current base inside the grace window returns `recently_edited`. D40 and SPEC-write-policy record the distinction.
+- Limits: grace begins only after a save is recorded; it cannot protect unsaved keystrokes or the unlocked Ignis save race. Daily notices use a persistent claim before queue append; a process crash between those operations can leave a missing notice for that day. History and audit remain the record of the content edit.
+- Retained verification before session resume: ruff and mypy (41 source files) passed; vault-mcp 238 passed; full non-nightly local/none e2e 81 passed, 2 host-firewall skips, 2 nightly tests deselected. No repeat of these successful checks.
+- T45 adds explicit real-stack acceptance in `e2e/test_write_policy.py`: human-facing folder creation with audit/history; three human edits with one notice; protected write/move; a recorded web save refused then accepted after the actual 90 s window; legacy `read_only` refusal with policy restored in `finally`. Existing §16.10 lives in `e2e/test_write.py`.
+- T45 verification after resume: focused ruff and format checks passed; `uv run pytest e2e/test_write_policy.py -m '(profile_local or profile_none) and not nightly' -q --tb=short -p no:cacheprovider` → 10 passed in 259.19 s. Both profiles exercised the actual 90 s window. Checkpoint I is ready for human review; Phase 11 has not started.

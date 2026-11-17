@@ -435,20 +435,22 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - **Status:** `WritePolicy` gains `human_pages: edit_with_notice`, `protected` (files or `folder/` prefixes; defaults to the rule files, so v0.1 policy files get the protection too) and `human_edit_grace_s` (default 90). `check_write(…, web_saved_s_ago=)` follows the D40 order and returns `Decision.human_page=True` for allowed human-page edits. 21 new test cases (decision table, v0.1 file loading, field validation). The example policy is now the v0.2 one, so the e2e harness runs with it (the §16.10 refusal test moves to `read_only` mode in T45).
 
 - [x] **T44 — Writer: grace, summary, human-page notice** [write-policy] · Decisions: D40 · **watch**
-  - Head-of-history lookup before the policy check; `summary` on all write tools (required on human pages); `human_page: true` in audit; daily notice deduplicated in `state.db`; `move` checks `protected` on both paths.
-  - Acceptance: SPEC-write-policy criteria 2, 4, 5 pass in unit tests with a fake clock; v0.1 human-page tests run in `read_only` mode and pass.
+  - Latest-web-history lookup; `summary` on all write tools (required on human pages); `human_page: true` in audit; daily notice deduplicated in `state.db`; `move` checks `protected` on both paths.
+  - Acceptance: SPEC-write-policy criteria 2, 4, 5 pass in unit tests with recent/expired history timestamps; v0.1 human-page tests run in `read_only` mode and pass.
   - Verify: `uv run pytest vault-mcp -k "write or human or protected or grace"`.
   - Deps: T43 · Files: `vault-mcp/src/vault_mcp/writer.py`, `vault-mcp/src/vault_mcp/server.py`, `vault-core/src/vault_core/review_queue.py`, tests · Scope: M
   - **Status:** `write`, `append`, `replace_section`, `insert_after` and `move` take an optional `summary` (≤ 200 chars; required on `maintainer: human` pages, `invalid` otherwise), stored in the audit line with `human_page: true`. Grace: the most recent `web` version of the file in history (not just the head: a later scan or agent write mustn't hide it) younger than `human_edit_grace_s` → new error code `recently_edited` with `retry_after_s`; it also blocks a move when the page or any linking page was just saved. Notices: `#review/agent-edit` item, one per page per UTC day, claimed in `state.db` (`vault_mcp/notices.py`), released if the queue write fails; a move notifies person pages whose links it rewrote. `protected` refusals reuse `forbidden` with `reason: protected`. 6 new tests against a real watcher; the v0.1 tests run with `human_edit_grace_s: 0` in their read-only fixture policy. 546 unit tests pass.
 
-- [ ] **T45 — write-policy e2e and docs** [write-policy] · Decisions: D40 · **delegate**
+- [x] **T45 — write-policy e2e and docs** [write-policy] · Decisions: D40 · **delegate**
   - e2e for criteria 1–6 in both profiles; SECURITY.md (protected files, injection risk now covers human docs), UPGRADING.md (new policy block), CONNECT-AGENTS.md error codes (`recently_edited`, `protected`).
   - Acceptance: e2e passes; the full v0.1 e2e suite still passes.
   - Verify: `uv run pytest e2e -k "write_policy" -m "(profile_local or profile_none) and not nightly"`.
   - Deps: T44 · Files: `e2e/test_write_policy.py`, `docs/SECURITY.md`, `docs/UPGRADING.md`, `docs/CONNECT-AGENTS.md` · Scope: M
+  - **Status:** `e2e/test_write_policy.py`: 10 passed across local/none profiles (including actual 90 s grace expiry and legacy `read_only` refusal); focused ruff and format checks passed. Retained full non-nightly e2e: 81 passed, 2 host-firewall skips, 2 nightly deselected; vault-mcp 238 passed; ruff and mypy passed before resume. SECURITY, UPGRADING, CONNECT-AGENTS, USER-GUIDE and changelog updated. D40/SPEC-write-policy clarify latest-web lookup and stale-base conflict precedence. Live deployment unchanged.
 
 ### Checkpoint I — after T43–T45
 - [ ] SPEC-write-policy success criteria 1–6 pass; lint, unit and e2e green; human review of the decision order.
+  - Automated acceptance complete; **human review pending**. Review D40's stale-base `conflict` precedence and the recorded-save/unsaved-typing limits in `tasks/impl-notes.md`. Do not start Phase 11 until approved.
 
 ## Phase 11 — knowledge-graph
 

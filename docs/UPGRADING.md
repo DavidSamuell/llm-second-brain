@@ -53,6 +53,8 @@ Use that only when the changelog lists no new settings: setup is what adds them 
 
 After pulling, also compare your policy with the new example and copy over anything you want:
 
+- **v0.2 policy.** Agents may now write the human-facing folders and update `maintainer: human` pages with a notice. Your existing `vault-mcp.yaml` keeps the v0.1 behaviour (`human_pages: read_only`, the old `write.allow`) until you change it; the rule files (`AGENTS.md`, `CLAUDE.md`, `skills/`, `_system/templates/`, `_system/graph/ontology.yaml`) are protected either way, and the 90 s grace after a web save applies either way (`human_edit_grace_s`). To opt in, copy the `write:` block from `vault-mcp.example.yaml`. Details: SECURITY.md, "What agents may change".
+
 ```bash
 diff vault-mcp.example.yaml vault-mcp.yaml
 docker compose restart vault-mcp vault-watcher      # after editing vault-mcp.yaml

@@ -344,10 +344,16 @@ returns the vault's rulebook (`AGENTS.md`).
 
 There is no delete tool. A read token can use `get_schema`, `read`, `list` and `search` only.
 
-What a write token may change is set by the admin's `vault-mcp.yaml`. By default agents may write
-in `wiki/`, `raw/` and `_system/`, plus any page marked `maintainer: agent` or `shared`; never a
-`maintainer: human` page. Folders in `read.deny` (default `private/`, `hr/`) are invisible to
-every tool.
+What a write token may change is set by the admin's `vault-mcp.yaml`. The v0.2 example allows writes
+in `wiki/`, `raw/`, `_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`, plus any page
+marked `maintainer: agent` or `shared`. A `maintainer: human` page can be updated too, with a
+`summary` argument saying what changed and why (the person gets a review-queue notice); the admin
+can keep the previous restriction (`human_pages: read_only`). Existing policy files are not widened automatically. The rule files (`AGENTS.md`, `CLAUDE.md`, `skills/`,
+`_system/templates/`, the graph ontology) are never writable. Folders in `read.deny` (default
+`private/`, `hr/`) are invisible to every tool.
+
+The write tools (`write`, `append`, `replace_section`, `insert_after`, `move`) take an optional
+`summary` (up to 200 characters), recorded in the audit log.
 
 Default limits per credential: 120 requests a minute, 30 writes a minute, 2000 writes a day, and
 10 MB per file.
@@ -359,9 +365,10 @@ Errors come back as JSON: `{"code": "...", "message": "...", "details": {...}}`.
 | Code | Meaning | What the agent should do |
 |---|---|---|
 | `conflict` | The file changed since it was read (`base_version` is stale). | Read it again, re-apply the change to the new text, retry. |
-| `forbidden` | Outside the credential's folders or write scope, a `maintainer: human` page, a denied path, or a move blocked by a page it can't edit. | Use `review_queue_add` instead. |
+| `forbidden` | Outside the credential's folders or write scope, a protected rule file (`details.reason: protected`), a `maintainer: human` page when the admin set `read_only`, a denied path, or a move blocked by a page it can't edit. | Use `review_queue_add` instead. |
+| `recently_edited` | Someone saved the page in the editor moments ago. Nothing was written. | Wait `details.retry_after_s`, read the page again, re-apply the change. |
 | `not_found` | No such file (`append` doesn't create files; use `write`). | Check the path. |
-| `invalid` | Bad argument, e.g. a malformed path, a non-http(s) URL, a source not directly in `raw/`, `ttl_minutes` out of range. | Fix the call. |
+| `invalid` | Bad argument, e.g. a malformed path, a non-http(s) URL, a source not directly in `raw/`, `ttl_minutes` out of range, a `summary` over 200 characters, or no `summary` on a `maintainer: human` page. | Fix the call. |
 | `too_large` | The result would exceed `max_file_mb`. | Split the content. |
 | `secret_detected` | The new or changed lines look like a secret. | Write `[secret removed]` instead and add a review item. Don't try to get around it. |
 | `rate_limited` | Too many calls. | Wait `details.retry_after_s` seconds. |
