@@ -409,3 +409,147 @@ Commands used in verification:
 - [ ] Cursor and ChatGPT clients (optional; T40).
 - [ ] Manual review of the ingress recipes against §5.1 (T33).
 
+
+---
+
+# v0.2 — Second brain
+
+Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.md` § v0.2. Module id in brackets after each task.
+
+## Phase 9 — Spike
+
+- [ ] **T42 — Harness hook spike** [session-hooks] · Decisions: D44 · **watch**
+  - In Claude Code, omp and Codex CLI, install a throwaway plugin whose `SessionStart` hook prints a marker context block, plus a turn-end and a pre-compact hook that log to a file. Record in `tasks/impl-notes.md`: does the context reach the model, which events fire, how each harness loads plugin hooks (omp: `omp.extensions` module vs Claude-hook compatibility; Codex: plugin `hooks/hooks.json` after `/hooks` trust), and the output schema each expects.
+  - Acceptance: a per-harness table of what works, and the chosen wiring for each; Codex marked supported or not for v0.2.
+  - Verify: the marker appears in each harness's first answer; logs show the events.
+  - Deps: none · Files: throwaway (deleted), `tasks/impl-notes.md` · Scope: S
+
+## Phase 10 — write-policy
+
+- [ ] **T43 — Policy model and decision order** [write-policy] · Decisions: D40 · **watch**
+  - `WritePolicy`: `protected`, `human_pages: read_only|edit_with_notice`, `human_edit_grace_s`; `check_write` order per SPEC-write-policy; new reasons `protected`, `recently_edited`.
+  - Acceptance: a table test covers every row of the decision order in both modes; `protected` matches files and folders; v0.1 default config still loads.
+  - Verify: `uv run pytest vault-core -k policy`.
+  - Deps: none · Files: `vault-core/src/vault_core/policy.py`, `vault-core/tests/test_policy.py`, `vault-mcp.example.yaml` · Scope: S
+
+- [ ] **T44 — Writer: grace, summary, human-page notice** [write-policy] · Decisions: D40 · **watch**
+  - Head-of-history lookup before the policy check; `summary` on all write tools (required on human pages); `human_page: true` in audit; daily notice deduplicated in `state.db`; `move` checks `protected` on both paths.
+  - Acceptance: SPEC-write-policy criteria 2, 4, 5 pass in unit tests with a fake clock; v0.1 human-page tests run in `read_only` mode and pass.
+  - Verify: `uv run pytest vault-mcp -k "write or human or protected or grace"`.
+  - Deps: T43 · Files: `vault-mcp/src/vault_mcp/writer.py`, `vault-mcp/src/vault_mcp/server.py`, `vault-core/src/vault_core/review_queue.py`, tests · Scope: M
+
+- [ ] **T45 — write-policy e2e and docs** [write-policy] · Decisions: D40 · **delegate**
+  - e2e for criteria 1–6 in both profiles; SECURITY.md (protected files, injection risk now covers human docs), UPGRADING.md (new policy block), CONNECT-AGENTS.md error codes (`recently_edited`, `protected`).
+  - Acceptance: e2e passes; the full v0.1 e2e suite still passes.
+  - Verify: `uv run pytest e2e -k "write_policy" -m "(profile_local or profile_none) and not nightly"`.
+  - Deps: T44 · Files: `e2e/test_write_policy.py`, `docs/SECURITY.md`, `docs/UPGRADING.md`, `docs/CONNECT-AGENTS.md` · Scope: M
+
+### Checkpoint I — after T43–T45
+- [ ] SPEC-write-policy success criteria 1–6 pass; lint, unit and e2e green; human review of the decision order.
+
+## Phase 11 — knowledge-graph
+
+- [ ] **T46 — Graph model: ontology, extraction, validation** [knowledge-graph] · Decisions: D41, D42 · **watch**
+  - `vault_core.graph`: ontology model and loader; `extract()` (typed, mentions, sourced_from, summarizes_raw, belongs_to_project, has_repo); `validate()`; starter `vault-template/_system/graph/ontology.yaml`.
+  - Acceptance: fixtures produce the expected nodes and edges; each validation error kind is reported with its field.
+  - Verify: `uv run pytest vault-core -k graph`.
+  - Deps: none · Files: `vault-core/src/vault_core/graph.py`, `vault-core/tests/test_graph.py`, `vault-template/_system/graph/ontology.yaml` · Scope: M
+
+- [ ] **T47 — Graph store in vault-watcher** [knowledge-graph] · Decisions: D41, D42 · **watch**
+  - `graph.sqlite` schema; per-page update in the index pass (edit, rename, delete); `reindex` rebuilds it; ontology reload with alert on an invalid file.
+  - Acceptance: incremental result equals a full rebuild; `read.deny` pages never compiled; 5,000 pages / 50,000 edges rebuild < 60 s.
+  - Verify: `uv run pytest vault-watcher -k graph`.
+  - Deps: T46 · Files: `vault-watcher/src/vault_watcher/graph_store.py`, `vault-watcher/src/vault_watcher/{recorder,cli}.py`, tests · Scope: M
+
+- [ ] **T48 — Graph tools and write-time validation** [knowledge-graph] · Decisions: D41 · **watch**
+  - `graph_neighbors`, `graph_edges`, `graph_path`, `backlinks`, `graph_lint` with permission filtering; agent writes with an invalid `graph:` block → `invalid` + `graph_errors`.
+  - Acceptance: SPEC-knowledge-graph criteria 2–4 in unit tests, including a folder-scoped credential and a `read.deny` endpoint; depth-2 neighbours < 200 ms on the 50k-edge fixture.
+  - Verify: `uv run pytest vault-mcp -k graph`.
+  - Deps: T47 · Files: `vault-mcp/src/vault_mcp/tools_graph.py`, `vault-mcp/src/vault_mcp/{server,writer}.py`, tests · Scope: M
+
+- [ ] **T49 — knowledge-graph e2e and docs** [knowledge-graph] · **delegate**
+  - e2e for criteria 1–6 (including backup → restore → reindex graph counts); CONNECT-AGENTS tools table; SETUP reindex note.
+  - Verify: `uv run pytest e2e -k graph -m "(profile_local or profile_none) and not nightly"`.
+  - Deps: T48 · Files: `e2e/test_graph.py`, `docs/CONNECT-AGENTS.md`, `docs/SETUP.md` · Scope: S
+
+### Checkpoint J — after T46–T49
+- [ ] SPEC-knowledge-graph criteria 1–6 pass; lint, unit and e2e green.
+
+## Phase 12 — doc-authoring
+
+- [ ] **T50 — Repo identity and `project_context`** [doc-authoring] · **watch**
+  - `normalise_remote()`; `project_context(repo?, project?)` (project page summary and status, 1-hop graph neighbourhood, open review items for those pages, last 5 change-log lines; ≤ 4,000 chars; permission-filtered).
+  - Acceptance: SPEC-doc-authoring criterion 2; unknown repo → `{project: null}`.
+  - Verify: `uv run pytest vault-core vault-mcp -k "remote or project_context"`.
+  - Deps: T48 · Files: `vault-core/src/vault_core/repos.py`, `vault-mcp/src/vault_mcp/tools_project.py`, `vault-mcp/src/vault_mcp/server.py`, tests · Scope: M
+
+- [ ] **T51 — Skills: ingest, query, lint, capture** [doc-authoring] · **watch**
+  - Update `docs-ingest` (human docs after the wiki step), `docs-query` (graph first), `docs-lint` (human-doc drift, graph lint); new `docs-capture`.
+  - Acceptance: each skill names tools without prefixes and follows SPEC-doc-authoring's writing rules; `scripts/agent-plugin` copies the new skill.
+  - Verify: `uv run pytest e2e/test_agent_plugin.py`; `claude plugin validate` on the generated plugin.
+  - Deps: T50 · Files: `vault-template/skills/*/SKILL.md` · Scope: M
+
+- [ ] **T52 — Template schema 2** [doc-authoring, write-policy, knowledge-graph] · Decisions: D43, D36 · **watch**
+  - AGENTS.md v2 (layout, `maintainer` meanings, writing rules, typed edges, capture); templates with `repo:`, `project:`, `graph`, `## Change log`; `.kit-manifest.json`; `upgrade-vault` from 1 to 2 keeps `<!-- custom -->` blocks.
+  - Acceptance: SPEC-doc-authoring criterion 4; a fresh vault gets schema 2.
+  - Verify: `uv run pytest vault-watcher -k upgrade` + `uv run pytest e2e -k upgrade`.
+  - Deps: T51 · Files: `vault-template/AGENTS.md`, `vault-template/_system/templates/*`, `vault-template/.kit-manifest.json`, upgrade tests · Scope: M
+
+- [ ] **T53 — doc-authoring e2e and user docs** [doc-authoring] · **delegate**
+  - Scripted-agent e2e: new pipeline source → `pipelines/<name>.md`, project link, `documented_in` edge; second source updates one section + one change-log line. USER-GUIDE (where things live now, agent edits, notices), IMPORTING (repo summaries).
+  - Verify: `uv run pytest e2e -k doc_authoring -m "(profile_local or profile_none) and not nightly"`.
+  - Deps: T52 · Files: `e2e/test_doc_authoring.py`, `docs/USER-GUIDE.md`, `docs/IMPORTING.md` · Scope: M
+
+### Checkpoint K — after T50–T53
+- [ ] SPEC-doc-authoring criteria 1–4 pass; lint, unit and e2e green.
+
+## Phase 13 — session-hooks and scheduled-maintenance (parallel)
+
+- [ ] **T54 — Hook scripts** [session-hooks] · Decisions: D44 · **watch**
+  - `agent-plugin/hooks/session-start.sh`, `turn-end.sh` (every 10 turns), pre-compact reminder; repo detection, allowlist, opt-outs, 1,500-char cap, per-harness output from T42.
+  - Acceptance: fixture tests for allowed/not-allowed, ssh/https, no remote, `.docs-vault-ignore`, `DOCS_VAULT_CAPTURE=off`, nudge cadence, missing `jq`/git (exit 0, no output).
+  - Verify: `uv run pytest e2e/test_hooks.py`; shellcheck.
+  - Deps: T42, T50 · Files: `agent-plugin/hooks/*.sh`, `e2e/test_hooks.py` · Scope: M
+
+- [ ] **T55 — Plugin generator: hooks and allowlist** [session-hooks] · Decisions: D44 · **watch**
+  - `scripts/agent-plugin --capture-repos`; per-harness wiring per T42; plugin README; CONNECT-AGENTS section on automatic behaviour, opt-out and Codex hook trust.
+  - Acceptance: generated output validates (`claude plugin validate`), contains each harness's hook wiring and the baked allowlist; existing generator tests pass.
+  - Verify: `uv run pytest e2e/test_agent_plugin.py`.
+  - Deps: T54 · Files: `scripts/agent-plugin`, `e2e/test_agent_plugin.py`, `docs/CONNECT-AGENTS.md` · Scope: M
+
+- [ ] **T56 — `scripts/maintenance`** [scheduled-maintenance] · Decisions: D45 · **watch**
+  - `--setup` (token), run (MCP config, `claude -p` with `mcp__vault__*` only, budget, timeout, outcome check, alert), `--dry-run`, `MAINTENANCE_AGENT_COMMAND`.
+  - Acceptance: stub-agent e2e for ok, failing agent, no report, unreachable vault-mcp, dry-run; exactly one `maintenance_failed` alert on the webhook stub per failure.
+  - Verify: `uv run pytest e2e -k maintenance -m "(profile_local or profile_none) and not nightly"`; shellcheck.
+  - Deps: T51 · Files: `scripts/maintenance`, `e2e/test_maintenance.py` · Scope: M
+
+- [ ] **T57 — Maintenance prompt and docs** [scheduled-maintenance] · **delegate**
+  - The run prompt (ingest, structural, semantic, fix, report) aligned with `docs-lint`/`docs-ingest`; SETUP "Nightly maintenance" (host cron after backup; agent-runner as the container alternative); SECURITY (maintenance token).
+  - Deps: T56 · Files: `scripts/maintenance` (prompt block), `docs/SETUP.md`, `docs/SECURITY.md` · Scope: S
+
+### Checkpoint L — after T54–T57
+- [ ] SPEC-session-hooks criteria 4–5 and SPEC-scheduled-maintenance criteria 3–4 pass in automated tests; lint, unit and e2e green.
+
+## Phase 14 — Bookbot rollout and v0.2.0
+
+- [ ] **T58 — Deploy v0.2 to Bookbot-GPU1** · Decisions: D46 · **watch** (ask before each live step)
+  - Backup; pull/build images; `upgrade-vault` to schema 2; new policy (old kept as `vault-mcp.yaml.v1`); reindex; check-exposure; smoke test through MCP (graph tools, `project_context`).
+  - Acceptance: services healthy; check-exposure passes; existing grants still work.
+  - Deps: Checkpoint K · Scope: S
+
+- [ ] **T59 — Plugin with hooks, live** [session-hooks] · **watch**
+  - `scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbot-kids/*'`; push to `bookbot-hive/bookbot-doc-vault`; update Claude Code, omp (and Codex if supported).
+  - Acceptance: SPEC-session-hooks criteria 1–3 and 6 in real sessions; audit shows the user's grant.
+  - Deps: T55, T58 · Scope: S
+
+- [ ] **T60 — Nightly maintenance, live** [scheduled-maintenance] · **watch**
+  - `scripts/maintenance --setup`; one `--dry-run` reviewed with the user; one real run reviewed; wire into `~/docs-vault-ops/nightly-backup.sh` after the backup; one deliberately failed run to check the Slack alert.
+  - Acceptance: SPEC-scheduled-maintenance criteria 1, 2, 4; report reviewed by the user.
+  - Deps: T57, T58 · Scope: S
+
+- [ ] **T61 — Release v0.2.0** · **watch** (tag needs the user's go-ahead)
+  - CHANGELOG `[0.2.0]`, versions, README status, `SPEC.md` status; CI green; tag after go-ahead; GHCR images checked.
+  - Deps: T59, T60 · Scope: S
+
+### Checkpoint M — v0.2 complete
+- [ ] All five module specs' success criteria pass (automated + documented live runs); v0.2.0 released.

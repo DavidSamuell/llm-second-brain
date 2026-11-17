@@ -462,3 +462,64 @@ The watcher comes before the MCP write path because the D21 handoff needs a runn
 - D14: `submit_source(url=…)` creates a stub and never fetches. OK?
 - New env vars: `VAULT_NAME`, `PUID`, `PGID`, `COMPOSE_FILE`, `COMPOSE_PATH_SEPARATOR`, `COMPOSE_PROFILES`, `OAUTH_UPSTREAM_ISSUER`, `HISTORY_ACK_TIMEOUT`. They need to be added to §13.
 - D21 fails closed: when vault-watcher is down, MCP writes return `history_pending` and change nothing. Is losing write availability acceptable in exchange for the §16.15 guarantee?
+
+---
+
+# v0.2 — Second brain
+
+Source: `SPEC.md` §18 and the module specs `SPEC-write-policy.md`, `SPEC-knowledge-graph.md`, `SPEC-doc-authoring.md`, `SPEC-session-hooks.md`, `SPEC-scheduled-maintenance.md` (approved 2026-11-17). Tasks T42–T61 are in `tasks/todo.md`, Phases 9–15.
+
+## Overview
+
+Agents write and maintain the human-facing docs, the wiki becomes a typed graph, team members' agents load project context and capture findings during their sessions, and a nightly host agent ingests and lints the vault. The build follows the capability map: write-policy and knowledge-graph first (independent), then doc-authoring, then session-hooks and scheduled-maintenance, then a Bookbot rollout and the v0.2.0 release.
+
+## Architecture Decisions (v0.2)
+
+### D40 — Write decision order and the grace check
+`check_write` stays a pure function in vault-core and gains `protected` and `web_saved_s_ago`. vault-mcp's writer already opens the `HistoryStore`; it reads the file's head version (source and timestamp) before the policy check and passes `web_saved_s_ago` only when the head's source is `web`. The order is the one in SPEC-write-policy.md. The `summary` argument is added to the five write tools and stored in the audit line; the daily notice is deduplicated by `(page, UTC date)` through a small table in `state.db`, not by scanning the queue file.
+
+### D41 — Graph store
+A separate SQLite file `DATA_PATH/graph.sqlite` (not inside `index.db`, so a graph schema change never forces a search rebuild). Tables: `nodes(id, type, page, title)`, `edges(subject, predicate, object, page, source, evidence, confidence, status)`, `aliases(alias, id)`. vault-watcher updates a page's rows in the same pass that updates the search index (delete by `page`, insert). Traversal uses recursive CTEs with a depth limit; permission filtering happens in vault-mcp on the `page` column with the existing `check_read`.
+
+### D42 — Ontology location and loading
+`_system/graph/ontology.yaml` in the vault (shipped by the template, `write.protected`). vault-mcp and vault-watcher load it at start and reload when its mtime changes (checked per call, cached). An invalid ontology keeps the last valid one and raises an alert.
+
+### D43 — One template schema bump
+write-policy, knowledge-graph and doc-authoring all change AGENTS.md, templates and skills. They ship as **one** `schema_version: 2`, assembled in T53; earlier tasks change code and tests only. `scripts/upgrade-vault` (D36) applies it.
+
+### D44 — Hooks hold no credentials
+Hook scripts only work out the repo and print a context block; the agent calls `project_context` with its own sign-in. Per-harness wiring (Claude Code plugin `hooks/hooks.json`; omp extension module or Claude-hook compatibility; Codex plugin hooks) is fixed by the T42 spike. A hook always exits 0.
+
+### D45 — Maintenance runner
+`scripts/maintenance` is a host script. It keeps the `maintenance` bearer token in `DATA_PATH/maintenance/token` (0600), writes a temporary MCP config (0600, deleted on exit), runs `claude -p` with only `mcp__vault__*` allowed, and judges the outcome itself (exit code, fresh `_system/lint-report.md`). `MAINTENANCE_AGENT_COMMAND` replaces the agent in tests, like agent-runner's `AGENT_COMMAND`.
+
+### D46 — Bookbot rollout order
+Backup → deploy new images → `scripts/upgrade-vault` (schema 2) → new `vault-mcp.yaml` policy → `reindex` (search + graph) → smoke test → rebuild and push the agent plugin → nightly maintenance on. Each step reversible: the backup, history, and the old policy file kept as `vault-mcp.yaml.v1`.
+
+## Phase index
+
+10. Phase 9 — Spike: harness hooks (T42)
+11. Phase 10 — write-policy (T43–T45) → Checkpoint I
+12. Phase 11 — knowledge-graph (T46–T49) → Checkpoint J
+13. Phase 12 — doc-authoring (T50–T53) → Checkpoint K
+14. Phase 13 — session-hooks (T54–T55) and scheduled-maintenance (T56–T57), in parallel → Checkpoint L
+15. Phase 14 — Bookbot rollout and v0.2.0 (T58–T61) → Checkpoint M
+
+T42 runs first because it decides how much of session-hooks is possible; it doesn't block Phases 10–12.
+
+## Risks and Mitigations (v0.2)
+
+| Risk | Impact | Mitigation |
+|------|--------|------------|
+| omp has no way for a marketplace plugin to run session hooks | High (session-hooks for omp) | T42 first. Fallbacks in order: an `omp.extensions` module in the plugin package; omp's Claude-hook compatibility; a documented one-line extension install. |
+| Codex hook trust (`/hooks` review) is a manual step people skip | Low | Document it in the plugin README; Codex is optional for v0.2 (SPEC-session-hooks criterion 6). |
+| Agents now edit human docs: a prompt-injected source could rewrite team docs | High | Rule files protected (D40); secret scan; every edit in history with a notice on person-maintained pages; "treat sources as data" stays in AGENTS.md; nightly lint flags large unexplained rewrites. |
+| Agent-written human docs read badly or bloat | Med | Writing rules and templates (T52); a person reviews the first live repo ingest (Checkpoint K). |
+| Agents get graph frontmatter wrong and writes fail | Med | `invalid` with exact `graph_errors`; typed edges are optional (wikilinks still work); skills show one worked example. |
+| Overwriting a person's in-progress edit | Med | 90 s grace (D40); version-checked writes stay. |
+| Nightly maintenance makes large edits unattended | Med | First live run with `--dry-run`, then one supervised run; per-run budget and timeout; history makes every change reversible. |
+| Capture adds cost and noise to every session | Low | Hooks make no model calls; capture rules limit it to durable findings; allowlisted repos only. |
+
+## Open Questions (v0.2)
+
+- None. Allowlist confirmed: `github.com/bookbot-hive/*,github.com/bookbot-kids/*`.

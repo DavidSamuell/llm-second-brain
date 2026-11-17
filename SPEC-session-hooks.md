@@ -18,7 +18,7 @@ It works like llm-wiki-database's always-on behaviour, but against the shared va
 
 ### Where capture runs
 
-- **Repos:** only repos whose normalised remote matches the allowlist baked into the plugin: `scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbotkids/*'`. Other repos, and folders without a git remote, get no injection and no capture.
+- **Repos:** only repos whose normalised remote matches the allowlist baked into the plugin: `scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbot-kids/*'`. Other repos, and folders without a git remote, get no injection and no capture.
 - **Opting out:**
   - per repo: a `.docs-vault-ignore` file at the repo root;
   - per session: `DOCS_VAULT_CAPTURE=off`.
@@ -57,7 +57,7 @@ It works like llm-wiki-database's always-on behaviour, but against the shared va
 ## Commands
 
 ```bash
-scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbotkids/*'
+scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbot-kids/*'
 uv run pytest e2e/test_agent_plugin.py -q          # generator output: hooks per harness, allowlist baked in
 bash agent-plugin-dist/docs-vault/hooks/session-start.sh < fixture.json   # hook unit run
 ```
@@ -117,4 +117,4 @@ jq -cn --arg c "$(context_block "$repo")" '{hookSpecificOutput:{hookEventName:"S
 
 ## Open questions
 
-- The capture allowlist for Bookbot: `github.com/bookbot-hive/*` and `github.com/bookbotkids/*`? (Assumed in the commands above.)
+- None. Bookbot's capture allowlist is `github.com/bookbot-hive/*,github.com/bookbot-kids/*` (confirmed 2026-11-17).
