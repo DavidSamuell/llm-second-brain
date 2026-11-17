@@ -29,6 +29,7 @@ MANAGED = (
     ".obsidian/app.json",
     ".obsidian/templates.json",
     "_system/templates/*.md",
+    "_system/graph/ontology.yaml",
     "skills/*/*",
     "skills/*/*/*",
 )

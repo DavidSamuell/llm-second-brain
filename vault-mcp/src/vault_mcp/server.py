@@ -26,6 +26,7 @@ from vault_mcp.ratelimit import RateLimiter
 from vault_mcp.sources import SourceTools
 from vault_mcp.store import Credential, CredentialStore
 from vault_mcp.tools_graph import GraphTools
+from vault_mcp.tools_project import ProjectTools
 from vault_mcp.tools_read import ReadTools
 from vault_mcp.tools_search import SearchTools
 from vault_mcp.writer import VaultWriter
@@ -63,6 +64,7 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
     reads = ReadTools(settings.vault_dir, policy)
     searches = SearchTools(settings.data_dir / "index.db", policy)
     graphs = GraphTools(settings.vault_dir, settings.data_dir, policy)
+    projects = ProjectTools(settings.vault_dir, settings.data_dir, policy, graphs)
     alerts = AlertSender(settings.alert_webhook, service="vault-mcp")
     writer = VaultWriter(
         settings.vault_dir,
@@ -190,6 +192,12 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         """Full-text search (title, headings, path, frontmatter, body). Words are matched
         literally and all must appear; `folder` narrows the search to one folder."""
         return audited("search", folder, lambda cred: searches.search(cred, query, folder, limit))
+
+    @mcp.tool(name="project_context")
+    def project_context(repo: str | None = None, project: str | None = None) -> dict[str, Any]:
+        """Load a project's summary/status, readable one-hop graph, open review items and
+        five recent changes. Bounded to 4,000 serialized characters; unknown projects return null."""
+        return audited("project_context", None, lambda cred: projects.context(cred, repo, project))
 
     @mcp.tool(name="graph_neighbors")
     def graph_neighbors(

@@ -48,7 +48,7 @@ mkdir -p "$plugin/.claude-plugin" "$out/.claude-plugin" "$out/.agents/plugins"
 cp -R vault-template/skills "$plugin/skills"
 cp -R agent-plugin/commands "$plugin/commands"
 
-description="Connects your agent to the team docs vault at $url (browser sign-in) and adds the docs-ingest, docs-query and docs-lint skills."
+description="Connects your agent to the team docs vault at $url (browser sign-in) and adds the docs-ingest, docs-query, docs-lint and docs-capture skills and the document, ingest, ask and lint commands."
 
 # Portable Agent Plugins package (Codex, omp). No `extensions` block on the server: omp rejects
 # unknown fields there, and Codex finds the OAuth endpoints through the server's metadata.

@@ -4,13 +4,14 @@ maintainer: human
 ---
 # Team docs
 
-Welcome. This vault holds the team's documentation. People write in the folders on the left;
-AI agents keep the `wiki/` up to date from the sources you give them.
+Welcome. This vault holds the team's documentation. People and their AI agents write the docs in
+`projects/`, `specs/`, `pipelines/` and `runbooks/`; agents also keep the `wiki/` behind them up to
+date from the sources you give them.
 
 ## Where things are
 
-- `projects/`: what we're building, plans and decisions
-- `specs/`: product specs and architecture
+- `projects/`: one page per project: summary, status, team, repositories, links to its docs, change log
+- `specs/<project>/`: product specs, architecture and decisions
 - `pipelines/` and `runbooks/`: how things run, and what to do when they break
 - `wiki/`: agent-maintained reference (components, concepts, glossary, teams, source summaries)
 - [[_system/index|Wiki index]]: every wiki page
@@ -19,6 +20,9 @@ AI agents keep the `wiki/` up to date from the sources you give them.
 ## How to add knowledge
 
 - Write or edit pages directly. New pages: use a template (command palette → *Templates: Insert template*).
-- Want the wiki to learn from a document, chat, or link? Ask your AI assistant to submit it as a
-  source, or drop a Markdown file into `raw/`. An agent will summarise it into the wiki.
-- Pages marked `maintainer: human` are never changed by agents; they suggest edits in the review queue instead.
+- Want the docs to learn from a document, chat, repository or link? Ask your AI assistant to
+  ingest or document it; it does so in the same session. You can also drop a Markdown file into
+  `raw/` for an agent to ingest later.
+- Every change is kept in history. Agent edits to pages marked `maintainer: human` follow the
+  vault's policy: either agents only suggest changes in the review queue, or each edit raises a
+  review notice.

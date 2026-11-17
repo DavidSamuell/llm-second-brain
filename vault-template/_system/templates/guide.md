@@ -1,9 +1,12 @@
 ---
 title: "{{title}}"
 type: guide
-maintainer: human
+maintainer: shared
+project: []
 tags: []
+sources: []
 updated: "{{date:YYYY-MM-DD}}"
+graph: {}   # typed edges with source and evidence: AGENTS.md section 5
 ---
 # {{title}}
 
@@ -14,3 +17,5 @@ updated: "{{date:YYYY-MM-DD}}"
 1.
 
 ## Troubleshooting
+
+## Change log

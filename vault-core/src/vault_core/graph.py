@@ -99,7 +99,11 @@ def default_ontology() -> Ontology:
         ),
         ("owned_by", ["*"], ["person", "team"]),
         ("decided_in", ["*"], ["decision"]),
-        ("documented_in", ["*"], ["product-spec", "architecture", "runbook", "guide"]),
+        (
+            "documented_in",
+            ["*"],
+            ["project", "product-spec", "architecture", "decision", "pipeline", "runbook", "guide"],
+        ),
     ):
         rules[name] = Predicate(subject_types=subjects, object_types=objects)
     return Ontology(node_types=nodes, predicates=rules)

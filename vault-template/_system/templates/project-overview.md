@@ -1,25 +1,31 @@
 ---
 title: "{{title}}"
 type: project
-maintainer: human
+maintainer: shared
+repo: []      # normalised remotes, e.g. github.com/org/name
+status: active   # active | paused | done | archived
+owners: []
 tags: []
+sources: []
 updated: "{{date:YYYY-MM-DD}}"
+graph: {}   # typed edges with source and evidence: AGENTS.md section 5
 ---
 # {{title}}
 
-## Goal
+## Summary
 
 ## Status
 
-## Scope
+## Team
 
-## People
+## Repositories
 
-## Milestones
+## Specs
 
-| Date | Milestone | Status |
-|---|---|---|
+## Pipelines
+
+## Runbooks
 
 ## Decisions
 
-## Links
+## Change log

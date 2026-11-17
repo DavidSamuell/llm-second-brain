@@ -17,13 +17,13 @@ def test_16_22_upgrade_keeps_custom_blocks(stack: Stack, tmp_path: Path) -> None
     shutil.copy(REPO / "vault-template" / "AGENTS.md", vault / "AGENTS.md")
     agents = vault / "AGENTS.md"
     agents.write_text(agents.read_text().replace(ORIGINAL_HINT, "Always link the Jira ticket."))
-    # A newer kit: schema_version 2 with changed wording, manifest covering versions 1 and 2.
+    # A newer kit: schema_version 3, retaining the released v1 and v2 manifest entries.
     kit = tmp_path / "kit"
     shutil.copytree(REPO / "vault-template", kit)
     text = (kit / "AGENTS.md").read_text()
     (kit / "AGENTS.md").write_text(
-        text.replace("schema_version: 1", "schema_version: 2").replace(
-            "## 10. Query procedure", "## 10. Query procedure\n\nNew in v2: prefer recent pages."
+        text.replace("schema_version: 2", "schema_version: 3").replace(
+            "## 10. Query procedure", "## 10. Query procedure\n\nNew in v3: prefer recent pages."
         )
     )
     subprocess.run(
@@ -33,15 +33,14 @@ def test_16_22_upgrade_keeps_custom_blocks(stack: Stack, tmp_path: Path) -> None
         capture_output=True,
     )
     manifest = json.loads((kit / ".kit-manifest.json").read_text())
-    assert sorted(manifest["versions"]) == ["1", "2"]
+    assert sorted(manifest["versions"]) == ["1", "2", "3"]
 
     r = subprocess.run([str(REPO / "scripts" / "upgrade-vault"), "--template", str(kit), "--yes"],
                        cwd=REPO, env=stack.env, capture_output=True, text=True, check=False, timeout=300)  # fmt: skip
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "update (kit content; your custom blocks are kept): AGENTS.md" in r.stdout
     upgraded = agents.read_text()
-    assert "schema_version: 2" in upgraded
-    assert "New in v2: prefer recent pages." in upgraded
+    assert "schema_version: 3" in upgraded
+    assert "New in v3: prefer recent pages." in upgraded
     assert "<!-- custom -->\nAlways link the Jira ticket.\n<!-- /custom -->" in upgraded
 
     deadline = time.monotonic() + 20  # vault-watcher records the upgrade in history

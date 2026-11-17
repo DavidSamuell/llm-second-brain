@@ -142,3 +142,21 @@ def test_graph_error_fields_keep_original_relationship_indexes() -> None:
     )
     errors = validate(page, onto)
     assert any(e.field == "graph.relationships[1].predicate" for e in errors)
+
+
+def test_documented_in_accepts_pipeline_docs_with_source_evidence() -> None:
+    onto = default_ontology()
+    page = extract(
+        "wiki/components/etl.md",
+        {
+            "type": "component",
+            "graph": {
+                "relationships": [
+                    relationship(predicate="documented_in", object="pipeline:pipelines/etl"),
+                ]
+            },
+        },
+        "",
+        onto,
+    )
+    assert validate(page, onto, source_types={"wiki/sources/readme": "source-summary"}) == []

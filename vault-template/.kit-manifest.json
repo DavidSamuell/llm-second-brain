@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "versions": {
     "1": {
       ".gitignore": "d25188db96f1d8612ac49ab65b03cba2635e7dba713724c3f162c39e88d1fcf4",
@@ -22,6 +22,30 @@
       "skills/docs-ingest/SKILL.md": "4e6979a01003de4d77868d7ddf71695efdffcd82cd17acb5c251b6a8e53c9f85",
       "skills/docs-lint/SKILL.md": "847f20c0e90e2f0aa467ce148fbec1a786b5944460da00b48107bcce7a10b61d",
       "skills/docs-query/SKILL.md": "f7d9ba9a874940079b7d74a38ab403d7640a2b6c811125606b19a2fcd3978b40"
+    },
+    "2": {
+      ".gitignore": "d25188db96f1d8612ac49ab65b03cba2635e7dba713724c3f162c39e88d1fcf4",
+      ".obsidian/app.json": "b94e3dd4d37a8b1893bdbea0a546ddce598b030a46605dafd15f3c8989773916",
+      ".obsidian/templates.json": "b43ca442635fe99e907be81f12704f6ed0b4f9530140db96bbd4918c86685d59",
+      "AGENTS.md": "a43589371fe68aade60c2c27a4010111b1611026cef2e167edd2fcab21afcf05",
+      "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "_system/graph/ontology.yaml": "3896c9989550cf2e2412f6b5b9c41c1e54451b08e5516be2419fb3bad0d009c4",
+      "_system/templates/adr.md": "c6684509b84719f054208ff1ee3698be5fdb4d919f9f1bf72ae83737f85f5bd4",
+      "_system/templates/architecture.md": "c0c38a34cd2e30ccae984ad4ac796accb81a90cf27b69851e37902ac400f0dd2",
+      "_system/templates/glossary-term.md": "ed3f076dfe0cacf3b02670a8e595c9a8400fd154812f86071f22fc5afe7f7ac0",
+      "_system/templates/guide.md": "56b044f79d26a8452a3e58db1074b1114352d4459e445708a16eda8bcce1bd4b",
+      "_system/templates/pipeline.md": "f0cf872c7f190e38256794f394baba295c814df12dbd782393cf114e0494b753",
+      "_system/templates/product-spec.md": "49931b02db5ae2c5428697e614332f4a36c9d183105a7ebe1aeef4fa575faa73",
+      "_system/templates/project-overview.md": "d6b585920c83474ffaabf7f242dd9836d8fcc0f3ad8d4fa339f689a9bed398e3",
+      "_system/templates/runbook.md": "68222123fbfa751973173339f5681ecc79ea0acf5c6a224d4442da9cb0ac1c7c",
+      "_system/templates/source-summary.md": "ca2562de8bfca253e7609ae8cc41ec14600142ca5aed739d62172499083ebadd",
+      "_system/templates/wiki-component.md": "fe2388b1b03fd19bf61eccff86f59d1b65cc0abe6f57b14e575a7964b5b8f729",
+      "_system/templates/wiki-concept.md": "1d12c91c09637a79ac31ad9fb9c9cad67361a7c8d65b98b9a9cb5d8ac850be5f",
+      "_system/templates/wiki-team.md": "b8dcdbf75c884e6df5b94a22f5f390a32ce791954e7391d456acbfd09201a2aa",
+      "skills/docs-capture/SKILL.md": "17ff7e7f5dadfad9a263354d98e629fcfba3e368ce00f2302c6f764a049e608d",
+      "skills/docs-ingest/SKILL.md": "5a6add54a271e36336c2218655fdd6fb1fcdfa9a8cd1f115284887e90d55cfbe",
+      "skills/docs-lint/SKILL.md": "a266dbbaf7ad9432ee39086283d0d9666235294c1426a236d055f4ff9ed4e43a",
+      "skills/docs-query/SKILL.md": "8d9fb86567c96c48a79b10f434617d8b4d7b24bf869a0fe3376d1d2031145f3e"
     }
   }
 }

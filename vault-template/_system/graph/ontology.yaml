@@ -137,6 +137,9 @@ predicates:
     subject_types:
     - '*'
     object_types:
+    - project
+    - decision
+    - pipeline
     - product-spec
     - architecture
     - runbook
