@@ -157,3 +157,18 @@ At this stage the location is the plan line where the deviation is decided. Code
 - [x] [T1] Restricted mode is per browser. Should the kit's default allowlist be **empty**, so nothing depends on community plugins? Or should USER-GUIDE tell every user to switch community plugins on once per browser? The kit can't set it on the server without modifying Ignis, which §2 excludes.
 - [x] [T1] Should vault-mcp refuse writes (as `conflict`) to a note whose file changed within the last N seconds and isn't recorded in history yet? That's a sign someone is typing in it. It would reduce, not remove, the lost-keystrokes window seen in T1, and it's new behaviour the spec doesn't ask for. The default is to not add it and only document the limit.
 - [x] [T2] Move from fastmcp 3.x to 4.x? 4.x is the current major (4.1.6). Staying on 3.4.11 is the approved plan. An upgrade changes the mcp SDK major (1.30 → 2.3, `httpx` → `httpx2`) and needs its own task.
+
+## T42 — Harness hook spike (2026-11-17)
+
+Throwaway plugin with a `SessionStart` hook that injected a password, logging every event; one sample repo. Plugin removed afterwards (and the Codex trust entry for the throwaway folder).
+
+| Harness | Loads plugin hooks from | Context reaches the model | Events seen | Notes |
+|---|---|---|---|---|
+| Claude Code 2.1.285 | `hooks/hooks.json` (command hooks), via `--plugin-dir` and installs | **Yes**: `SessionStart` and `UserPromptSubmit` `hookSpecificOutput.additionalContext` both answered correctly | SessionStart (`source` startup/resume/compact), UserPromptSubmit, Stop, PreCompact, SessionEnd | After `/compact`, `SessionStart` fires again (source `compact`), so re-injection after compaction comes for free. Hook input is JSON on stdin with `session_id`, `cwd`, `source`. |
+| omp | `hooks/pre/*.ts` factories in the plugin tree, via `--plugin-dir` **and** marketplace install | **Yes**: `before_agent_start` returning `{message: {customType, content, display:false}}` | session_start (with `ctx.cwd`), before_agent_start (per prompt), turn_end, agent_end, session_shutdown | omp ignores `hooks/hooks.json` (no double injection). `before_agent_start` fires per prompt, so the module injects once per session and nudges by counting prompts. |
+| Codex CLI 0.167.1 and 0.169.0 | — | **No** | — | `/hooks` lists only user/config hooks; plugin `hooks/hooks.json`, a `.codex-plugin/plugin.json` `hooks` entry, and `extensions.com.openai.hooks` were all ignored, also with `--dangerously-bypass-hook-trust`. Matches the plugin docs ("supported for plugins installed manually in Codex desktop"). |
+
+Decisions:
+- **Claude Code:** `hooks/hooks.json` with `SessionStart` (all sources) and `UserPromptSubmit` (nudge every 10 prompts). `Stop` can't add context without forcing a continuation, so it isn't used.
+- **omp:** `hooks/pre/docs-vault.ts` calling the same shell script; inject on the first `before_agent_start` and after `session_clear`/compaction; nudge every 10 prompts.
+- **Codex:** not supported for v0.2 (SPEC-session-hooks criterion 6 → documented). The plugin still gives Codex the MCP server and skills; people can ask in plain words.

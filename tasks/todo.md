@@ -418,11 +418,12 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
 
 ## Phase 9 — Spike
 
-- [ ] **T42 — Harness hook spike** [session-hooks] · Decisions: D44 · **watch**
+- [x] **T42 — Harness hook spike** [session-hooks] · Decisions: D44 · **watch**
   - In Claude Code, omp and Codex CLI, install a throwaway plugin whose `SessionStart` hook prints a marker context block, plus a turn-end and a pre-compact hook that log to a file. Record in `tasks/impl-notes.md`: does the context reach the model, which events fire, how each harness loads plugin hooks (omp: `omp.extensions` module vs Claude-hook compatibility; Codex: plugin `hooks/hooks.json` after `/hooks` trust), and the output schema each expects.
   - Acceptance: a per-harness table of what works, and the chosen wiring for each; Codex marked supported or not for v0.2.
   - Verify: the marker appears in each harness's first answer; logs show the events.
   - Deps: none · Files: throwaway (deleted), `tasks/impl-notes.md` · Scope: S
+  - **Status:** done. Claude Code (`hooks/hooks.json`: SessionStart + UserPromptSubmit context) and omp (`hooks/pre/*.ts`, `before_agent_start` message) both inject context from an installed plugin. Codex CLI 0.167–0.169 ignores plugin hooks, so Codex is out for v0.2. Details and wiring in impl-notes.
 
 ## Phase 10 — write-policy
 
@@ -506,8 +507,8 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
 ## Phase 13 — session-hooks and scheduled-maintenance (parallel)
 
 - [ ] **T54 — Hook scripts** [session-hooks] · Decisions: D44 · **watch**
-  - `agent-plugin/hooks/session-start.sh`, `turn-end.sh` (every 10 turns), pre-compact reminder; repo detection, allowlist, opt-outs, 1,500-char cap, per-harness output from T42.
-  - Acceptance: fixture tests for allowed/not-allowed, ssh/https, no remote, `.docs-vault-ignore`, `DOCS_VAULT_CAPTURE=off`, nudge cadence, missing `jq`/git (exit 0, no output).
+  - `agent-plugin/hooks/session-start.sh`, `prompt-nudge.sh` (every 10th prompt), re-injection after compaction; repo detection, allowlist, opt-outs, 1,500-char cap, per-harness output from T42.
+  - Acceptance: fixture tests for allowed/not-allowed, ssh/https, no remote, `.docs-vault-ignore`, `DOCS_VAULT_CAPTURE=off`, nudge cadence, missing `jq`/git (exit 0, no output); omp module `hooks/pre/docs-vault.ts` injects once per session.
   - Verify: `uv run pytest e2e/test_hooks.py`; shellcheck.
   - Deps: T42, T50 · Files: `agent-plugin/hooks/*.sh`, `e2e/test_hooks.py` · Scope: M
 

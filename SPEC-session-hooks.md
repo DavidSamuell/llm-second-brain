@@ -10,7 +10,7 @@ When a team member opens an agent session in a project repo with the docs-vault 
 2. ingests durable findings into the vault **as they happen during the session**, fully, not only at the end and not queued for later (the same model as llm-wiki-database);
 3. writes a repo summary and project page the first time it meets a repo the vault doesn't know.
 
-It works like llm-wiki-database's always-on behaviour, but against the shared vault through vault-mcp. Harnesses: **Claude Code and omp** are required. **Codex** is included if the plan's spike confirms its plugin-bundled hooks work in the CLI. Its docs (2026-11) describe plugin hooks with `SessionStart` and `additionalContext`, behind a one-time `/hooks` trust review.
+It works like llm-wiki-database's always-on behaviour, but against the shared vault through vault-mcp. Harnesses: **Claude Code and omp.** **Codex is out for v0.2:** the T42 spike showed Codex CLI 0.167–0.169 ignores plugin-bundled hooks (supported only in Codex desktop). The plugin still gives Codex the MCP server and skills.
 
 **Users:** Bookbot team members working in project repos.
 
@@ -48,11 +48,11 @@ It works like llm-wiki-database's always-on behaviour, but against the shared va
   4. `complete_source`.
 
   If a step fails, `release_source` hands the source back, and the nightly run picks it up.
-- **Turn-end nudge** (Claude Code `Stop`, omp's equivalent, Codex `Stop`): at most once every 10 turns per session, the hook adds a one-line reminder to capture anything durable so far. It never blocks the turn and never forces a continuation.
+- **Prompt nudge** (Claude Code `UserPromptSubmit`, omp `before_agent_start`): on every 10th prompt of a session, the hook adds a one-line reminder to capture anything durable so far. It never blocks a prompt. (`Stop` isn't used: it can't add context without forcing a continuation.)
 
 ### Before compaction and at session end
 
-- On `PreCompact` (or the harness's equivalent) and on session end, inject a reminder to capture outstanding findings. If the harness can't run a model step at session end (Claude Code's `SessionEnd` can't), the compaction and turn-end reminders are the safety net; nothing more runs after the session closes.
+- After compaction the context block is injected again (Claude Code fires `SessionStart` with `source: compact`; omp re-injects after `session.compacting`/`session_clear`), with a reminder to capture anything outstanding. Nothing runs after a session closes (no model step is possible then); the prompt nudges are the safety net.
 - The nightly maintenance run is only a safety net. It ingests sources nobody finished: files dropped in through the editor, released sources, and sessions that ended mid-ingest (scheduled-maintenance).
 
 ### Cost
@@ -72,8 +72,8 @@ bash agent-plugin-dist/docs-vault/hooks/session-start.sh < fixture.json   # hook
 
 - `agent-plugin/hooks/`:
   - `session-start.sh` (repo detection, allowlist, opt-out, context block);
-  - `turn-end.sh` (every-10-turns nudge, state in the harness's session temp dir);
-  - per-harness wiring: Claude Code `hooks/hooks.json`, Codex `hooks/hooks.json` under its plugin rules, and omp, whatever the spike shows works: an extension module in the plugin package, or omp reading Claude plugin hooks.
+  - `prompt-nudge.sh` (every 10th prompt, state per session id in `$TMPDIR`);
+  - wiring: Claude Code `hooks/hooks.json` (`SessionStart`, `UserPromptSubmit`); omp `hooks/pre/docs-vault.ts` (calls the same scripts; `before_agent_start`).
 - `scripts/agent-plugin`: copies hooks and wiring, and bakes in the allowlist.
 - `docs/CONNECT-AGENTS.md` (what the plugin does automatically, opt-out, Codex hook trust), and the plugin repo README.
 
@@ -100,7 +100,7 @@ jq -cn --arg c "$(context_block "$repo")" '{hookSpecificOutput:{hookEventName:"S
   - output schema per harness;
   - the 1,500-character cap.
 - **Generator:** `scripts/agent-plugin` output contains the hooks for each harness and the baked allowlist, and still validates (`claude plugin validate`).
-- **Spike (plan, first task):** in each harness, confirm that a plugin-bundled `SessionStart` injects context and that turn-end/pre-compact events fire (omp: extension vs Claude-hook support; Codex: CLI plugin hooks after `/hooks` trust).
+- **Spike (T42, done):** results in `tasks/impl-notes.md`.
 - **Manual (live, Bookbot):** in Claude Code and omp, open a session in a bookbot-hive repo:
   - the agent calls `project_context` first;
   - a decision made mid-session appears in the vault within that session (audit shows the person's grant);
@@ -119,7 +119,7 @@ jq -cn --arg c "$(context_block "$repo")" '{hookSpecificOutput:{hookEventName:"S
 3. A repo the vault doesn't know gets a project page and repo summary after the user agrees.
 4. Non-allowlisted repos, `.docs-vault-ignore` and `DOCS_VAULT_CAPTURE=off` produce no injection and no vault calls.
 5. A hook failure (e.g. no `jq`, no git) leaves the session working normally.
-6. Codex: the same as 1–2 if the spike passes; otherwise documented as not supported in v0.2.
+6. Codex: documented as not supported for automatic behaviour in v0.2 (CONNECT-AGENTS and the plugin README); its MCP server and skills still work.
 
 ## Open questions
 
