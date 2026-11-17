@@ -26,7 +26,7 @@ services:
     restart: unless-stopped
 
   oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy@sha256:1e04100f7b44290bc39bf52412153bb27edfc6141f3529b67ea543737a689ae2  # v7.12.0-alpine
+    image: quay.io/oauth2-proxy/oauth2-proxy@sha256:c3415e8660af553f5e18f5d90db050614c02493c0ac6260ac59442f6d9b12048  # v7.12.0-alpine
     environment:
       OAUTH2_PROXY_PROVIDER: ${OAUTH_PROVIDER:-google}
       OAUTH2_PROXY_CLIENT_ID: ${OAUTH_CLIENT_ID:?set OAUTH_CLIENT_ID in .env}
