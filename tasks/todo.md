@@ -571,11 +571,12 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
     - Reported cost: Claude Code $3.2858638 (7 runs), omp $1.4982161 (5 sessions).
     - All 16 fixture pages set `status: archived` through MCP with a 1 h write token (revoked); fixture repos deleted. Lint archived one pre-existing ticked review item into the new `_system/review-archive.md`, as AGENTS.md prescribes.
 
-- [ ] **T60 — Nightly maintenance, live** [scheduled-maintenance] · **watch**
+- [x] **T60 — Nightly maintenance, live** [scheduled-maintenance] · **watch**
   - `scripts/maintenance --setup`; one `--dry-run` reviewed with the user; one real run reviewed; wire into `~/docs-vault-ops/nightly-backup.sh` after the backup; one deliberately failed run to check the Slack alert.
   - Acceptance: SPEC-scheduled-maintenance criteria 1, 2, 4; report reviewed by the user.
   - Deps: T57, T58 · Scope: S
   - **Status (2026-11-17, awaiting the user's Slack confirmation and report review):** setup created `maintenance`/`maintenance-preview` tokens (owner david@bookbotkids.com). Two previews (schema 2: $0.249665; schema 3 after the graph fix: $0.310355), nothing written. First real run `20261117T081002Z-cfa4d46b`: ok, $0.3869732, two `documented_in` fixes on archived fixture components, report `errors: 0`, `unresolved: 0`. `~/docs-vault-ops/nightly-backup.sh` now runs `scripts/maintenance` (Sonnet) after the backup, with `--after-backup-failure` when the backup is still failing; its result never changes the backup job's exit code; the existing 00:00 crontab line is unchanged. End-to-end job run: backup `vault-backup-20261117T081124Z.tar.gz` + maintenance `20261117T081125Z-6183e3a3` ok ($0.2623426). Deliberate failure (`MAINTENANCE_MCP_URL=http://127.0.0.1:9/mcp`): exit 1, "vault-mcp is unreachable", one `maintenance_failed` (high) alert; the Slack webhook accepted it (no delivery error; dedupe stamp written at 19:12:03 local).
+  - **Done:** the user confirmed the `maintenance_failed` Slack message arrived and was shown the first report summary (2026-11-17).
 
 - [ ] **T61 — Release v0.2.0** · **watch** (tag needs the user's go-ahead)
   - CHANGELOG `[0.2.0]`, versions, README status, `SPEC.md` status; CI green; tag after go-ahead; GHCR images checked.
