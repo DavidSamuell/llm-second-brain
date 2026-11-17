@@ -1,6 +1,6 @@
 # Spec: doc-authoring
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Draft · **Depends on:** write-policy, knowledge-graph
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; Checkpoint K ready for review (criteria 1–4 verified, live criterion 5 at T59) · **Depends on:** write-policy, knowledge-graph
 
 ## Objective
 
@@ -75,6 +75,11 @@ Plain requests ("create pipeline docs for this project and put them in the vault
   - the 5 most recent change-log lines.
 
   It stays within 4,000 characters and is permission-filtered. `repo` is a normalised git remote (`github.com/org/name`, from https or ssh forms). Unknown repo → `{project: null}`.
+
+  Context is a bounded preview, not an exhaustive project export: long text is shortened,
+  at most three readable open review items are included, and only whole graph records that fit
+  are returned. Use `read` and the graph tools for complete detail. If both selectors are given,
+  they must identify the same readable project; ambiguous matches also return `{project: null}`.
 
 ## Commands
 

@@ -6,13 +6,13 @@ folder of Markdown files.
 
 There are two kinds of import:
 
-- **As sources.** The document goes into `raw/`, and an agent turns it into wiki pages
-  (`wiki/sources/` summary plus updates to components, concepts, glossary and teams), with
-  citations. The original is kept in `raw/_processed/`. Use this for material the wiki should
-  learn from.
-- **As people's pages.** The files go straight into `projects/`, `specs/`, `pipelines/` or
-  `runbooks/` and stay as they are. Agents read, search and cite them but never change them. Use
-  this for documents your team will keep maintaining by hand.
+- **As sources.** The document goes through `raw/` while an agent writes a source summary,
+  current human-facing docs, and atomic wiki references with typed links. The original stays in
+  `raw/_processed/` for provenance. Explicit ingest/document requests finish in the current session.
+- **As existing human docs.** Files go straight into `projects/`, `specs/`, `pipelines/` or
+  `runbooks/`. With the v0.2 example policy agents may maintain them too. A manual edit or
+  `maintainer: human` label is not a permanent lock: permitted human-page edits need a summary
+  and create a review notice. Admins can retain `human_pages: read_only`.
 
 ## How sources get in
 
@@ -25,8 +25,8 @@ fetch, GitHub, Google Drive, Slack, Notion and so on).
 
 Ask your connected assistant (see [CONNECT-AGENTS.md](CONNECT-AGENTS.md)), for example:
 
-> Fetch the "Search ranking design" doc from Google Drive, convert it to Markdown, and submit it
-> to the docs vault as a source with origin "Google Drive".
+> Fetch the "Search ranking design" doc from Google Drive, ingest it into the docs vault now,
+> update the relevant project/spec docs and wiki pages, and keep its origin as "Google Drive".
 
 The agent calls:
 
@@ -42,6 +42,28 @@ The server writes `raw/<date>-<slug>.md`, for example `raw/2026-11-10-search-ran
 Limits: `content` must be text (convert PDFs and office files to Markdown first); the file may
 be at most `max_file_mb` (default 10 MB); lines that look like secrets are refused with
 `secret_detected`.
+
+In Claude Code or omp, `/docs-vault:ingest <file, URL or text>` performs the whole lifecycle,
+not just `submit_source`. The low-level tool by itself only queues a source; use it alone when
+you deliberately want a pending item for a later ingest.
+
+### Repository documentation and durable findings
+
+Run `/docs-vault:document pipeline docs for this project`, or ask the same in plain language.
+The agent identifies the remote and commit, reads the relevant README/code, and submits a short
+summary with origin `repo:<host/org/repo>@<commit>`. Each fact cites `repo@commit:path`; `.env`,
+credentials and large code dumps are excluded. Only committed code is cited as that revision.
+The source is claimed, summarized, used to update the project and its human docs plus wiki/graph,
+indexed, logged and completed before the command returns.
+
+`project_context(repo=...)` recognizes equivalent SSH/HTTPS remotes and loads readable project
+summary/status, one-hop relationships, open review items and recent changes within 4,000
+serialized characters. Unknown or ambiguous projects return `project: null`; a document request
+may create the missing project from cited repo facts.
+
+`docs-capture` uses the same lifecycle whenever a finding becomes durable during a session.
+It is not an end-of-session dump. Session-hook installation is separate from the manual commands;
+neither requires sharing one person's vault credentials with the team.
 
 ### URL-only submissions
 
@@ -97,8 +119,8 @@ Setup copies in the kit's files that don't exist yet (`AGENTS.md`, `Home.md`, th
 `_system/`, templates, skills) and never overwrites an existing file. Without `--adopt`,
 interactive setup asks first; non-interactive setup leaves a vault that has no `AGENTS.md`
 unchanged and warns that agents will lack the rules. After adopting, move your notes into the
-kit's folders where they fit; pages outside `wiki/`, `raw/` and `_system/` with no `maintainer`
-line are already treated as people's pages.
+kit's folders where they fit. Which pages an agent may maintain is controlled by the existing
+`vault-mcp.yaml`; adoption does not widen that policy automatically.
 
 ### As people's pages
 
@@ -108,10 +130,11 @@ cp -r ~/old-docs/. /srv/vault/specs/legacy/
 chown -R 1000:1000 /srv/vault/specs/legacy
 ```
 
-Agents may not edit these files: anything outside `wiki/`, `raw/` and `_system/` without
-`maintainer: agent` or `maintainer: shared` is read-only to them. Adding `maintainer: human` to the
-frontmatter makes that explicit. The history service records a first version of every new file,
-the search index picks them up, and the secret scan checks them (see below).
+Under the v0.2 example policy, agents may maintain these folders even without a `maintainer`
+field. Prefer `maintainer: shared` for collaboratively maintained docs. `maintainer: human`
+requires a change summary and review notice in `edit_with_notice` mode; it is read-only in
+`read_only` mode. History records incoming files, search/graph index readable pages, and the
+secret scanner checks changed text. Existing policies keep their permissions until explicitly updated.
 
 ### As sources for the wiki
 
@@ -177,9 +200,11 @@ This is what an ingesting agent does for each source. It is defined in the vault
    agent calls `release_source` and adds a review item.
 4. Write the summary `wiki/sources/<same name as the raw file>` from the `source-summary`
    template: what it is, key facts, decisions, people and systems, open questions, and the origin.
-5. Update or create pages in `wiki/components/`, `wiki/concepts/`, `wiki/glossary/` and
-   `wiki/people-teams/`, citing the summary on every new fact. Changes to `maintainer: human`
-   pages and contradictions between sources become review items.
+5. Update or create cited atomic wiki references and the affected human docs in `projects/`,
+   `specs/`, `pipelines/` and `runbooks/`. Link each doc from its project; wiki pages use
+   `documented_in` rather than duplicate narrative. Edit only affected sections and add one dated
+   change-log line. Supported newer claims replace obsolete text; unresolved contradictions
+   become review items. Human-page edits follow the configured policy and summary requirement.
 6. Add new pages to `_system/index.md`.
 7. Append one line to `_system/log.md`.
 8. `complete_source(path, summary_page="wiki/sources/<name>.md")`. The source moves to
@@ -203,9 +228,10 @@ steer an AI ("ignore your instructions and…"). The kit's defences:
   agent-runner prompt all tell agents to treat source content as data, never as instructions.
   This depends on the model following it; it is not a guarantee.
 - **The server does the dangerous parts itself, or not at all.** It never fetches URLs. It refuses
-  writes outside the token's scope, to `maintainer: human` pages, to `read.deny` folders, and
-  anything that looks like a secret. There is no delete tool. A hijacked agent can at worst make
-  bad edits to agent-writable pages, and every edit is in the history and audit log.
+  writes outside the token's scope, to protected rule files, to `read.deny` folders, to recently
+  saved pages, and anything that looks like a secret. Human pages follow the admin's mode.
+  There is no delete tool. A hijacked agent can still make bad edits to allowed human docs and
+  wiki pages; history, audit and notices aid recovery but do not prove an edit correct.
 - **Review queue items can't smuggle links.** `review_queue_add` flattens each field to one line and
   strips `[[` / `]]`, so an injected item can't break the task list or add links.
 - **agent-runner is boxed in.** It may only use the vault tools (`mcp__vault__*`) and Claude
@@ -217,7 +243,7 @@ What you can do:
 
 - Give agents that only answer questions a `--scope read` token.
 - Give ingest agents a write token limited to the folders they need, e.g.
-  `scripts/token create --name ingest-bot --owner you@example.com --scope write --folders wiki/,raw/,_system/`.
+  `scripts/token create --name ingest-bot --owner you@example.com --scope write --folders wiki/,raw/,_system/,projects/,specs/,pipelines/,runbooks/`.
   (`review_queue_add` still works with folder-limited tokens.)
 - Don't ingest sources with the same assistant session that has access to your email, chat or
   other write-capable tools; an injected instruction could reach those tools.

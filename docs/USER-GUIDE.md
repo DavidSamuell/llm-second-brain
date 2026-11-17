@@ -20,21 +20,21 @@ SSH tunnel instead; they will give you the exact command.
 
 ## How the vault is organised
 
-Some folders belong to people, some to the AI agents that keep the wiki up to date.
+The human-facing folders hold the current documentation; agents maintain them and people may edit them too. The wiki is an atomic reference map, linking to those docs rather than copying their narrative.
 
 | Folder | Written by | What goes there |
 |---|---|---|
 | `Home.md` | people | Start page |
-| `projects/` | people | Project overviews, plans, decisions (ADRs) |
-| `specs/` | people | Product specs and architecture docs |
-| `pipelines/` | people | Data and build pipelines |
-| `runbooks/` | people | How to run things, and what to do when they break |
+| `projects/` | agents and people | Project goal, status, owners, repos, and links to specs, pipelines, runbooks and decisions |
+| `specs/` | agents and people | Product specs, architecture and `specs/<project>/decisions/` ADRs |
+| `pipelines/` | agents and people | Data, training and build pipelines: inputs, steps, outputs and where they run |
+| `runbooks/` | agents and people | How to run things, onboarding guides, and what to do when things break |
 | `attachments/` | people | Images and files you link from pages (Obsidian puts pasted images here) |
 | `wiki/` | agents | Reference pages built from sources: `components/`, `concepts/`, `glossary/`, `people-teams/`, `sources/` |
-| `raw/` | anyone | Sources waiting to be turned into wiki pages |
+| `raw/` | anyone | Incoming sources; explicit ingest/document requests process them in the same session |
 | `_system/` | agents | The wiki index, activity log, review queue, lint report, and page templates |
 
-`_system/`, `raw/_processing/` and `raw/_processed/` are left out of search and the graph view.
+In the editor, `_system/`, `raw/_processing/` and `raw/_processed/` are left out of search and the graph view.
 Use the "Wiki index" and "Review queue" links on `Home` to reach `_system/index.md` and
 `_system/review-queue.md`.
 
@@ -62,9 +62,12 @@ Each template starts with a block like this, called frontmatter:
 ---
 title: "Restarting the ingest job"
 type: runbook
-maintainer: human
+maintainer: shared
+project: [projects/search]
+sources: []
+graph: {}
 tags: []
-updated: "2026-11-10"
+updated: "2026-11-17"
 ---
 ```
 
@@ -129,26 +132,41 @@ What to do:
    credential is the fix; deleting the text only stops it spreading further.
 3. Tick the item.
 
-## Getting sources into the wiki
+## Asking your agent to document or ingest
 
-The `wiki/` is built from sources: design docs, meeting notes, chat threads, web pages, and so on.
-You don't write wiki pages yourself; you hand the source over and an agent summarises it, with
-citations back to the source.
+With the generated authoring plugin installed in Claude Code or omp, ask in plain language:
 
-Two ways to hand over a source:
+> Create pipeline docs for this project and ingest the relevant repo knowledge into the vault.
 
-- **Ask your AI assistant** (Claude, ChatGPT, Cursor and so on, once it is connected to the vault;
-  see [CONNECT-AGENTS.md](CONNECT-AGENTS.md)). For example: *"Fetch this Google Doc and submit it
-  to the docs vault as a source."* The assistant reads the content with its own tools and calls
-  `submit_source`. If it can only pass a link, the vault stores the link and the ingest agent
-  fetches it later. The vault server itself never opens links.
-- **Drop a Markdown file into `raw/`.** Create a new note directly in `raw/` (not in a subfolder),
-  paste the text in, and give it a clear name such as `raw/2026-11-10-search-design-notes.md`.
+The agent reads the relevant committed README/code, records a cited source summary, creates or
+updates the human doc, links it from the project, adds the wiki reference and typed relationships,
+and completes the source **during this session**. It does not wait for the nightly job.
 
-An agent then picks the source up, writes a summary in `wiki/sources/`, updates the related wiki
-pages, and moves the source to `raw/_processed/`. If your admin runs the scheduled agent, this
-happens about once an hour; otherwise ask someone with a connected AI assistant to run an ingest.
-More detail, including bulk imports, is in [IMPORTING.md](IMPORTING.md).
+| Command | When to use it |
+|---|---|
+| `/docs-vault:document pipeline docs for this project` | Create or update a project, spec, pipeline or runbook from the repo and conversation |
+| `/docs-vault:ingest <file, URL or pasted text>` | Read/fetch the source, submit it and fully ingest it now |
+| `/docs-vault:ask <question>` | Read-only answers from the vault, with citations and explicit gaps |
+| `/docs-vault:lint [folder]` | Check and repair permitted docs, citations, structure and graph relationships now |
+| `/docs-vault:connect` | Check sign-in and connectivity |
+
+Codex gets the same skills; use `$docs-ingest`, `$docs-query`, `$docs-lint`, `$docs-capture` or
+plain requests rather than these namespaced commands. Automatic session hooks are configured
+separately; the manual commands do not require them.
+
+Durable findings are captured as they become settled during work, not only at the end: decisions,
+architecture, interfaces, pipeline/runbook steps, incidents and conventions. The agent excludes
+secrets, personal data, guesses and transient debugging. Tell it not to capture to opt out.
+
+Human docs keep the current state first, cite a source summary or `repo@commit:path`, and record
+one dated `## Change log` line per update. An unresolved contradiction becomes a review item;
+supported obsolete statements are replaced in place, with the older claim preserved in provenance.
+
+You may also paste a Markdown source directly into `raw/`. That alone only queues it: ask a
+connected agent to ingest it, or let an enabled scheduled agent pick it up. A successful manual
+ingest leaves its source in `raw/_processed/`, with summary, docs, index and log updated. If it
+fails, the agent reports any pages already changed and releases the source for another attempt.
+More detail and bulk imports: [IMPORTING.md](IMPORTING.md).
 
 ## Page history and restoring a version
 

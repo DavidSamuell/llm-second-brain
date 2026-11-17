@@ -293,13 +293,14 @@ Sign in and approve as described above.
 
 ## Install the kit's skills
 
-The kit ships three skills that teach an agent the vault's procedures:
+The kit ships four skills that teach an agent the vault's procedures:
 
 | Skill | Use it to |
 |---|---|
-| `docs-ingest` | Turn one source in `raw/` into wiki pages with citations |
-| `docs-query` | Answer a question from the vault, citing pages |
-| `docs-lint` | Check the wiki for broken links, missing citations and so on, and file review items |
+| `docs-ingest` | Fully ingest one source into cited human docs and atomic wiki/graph references in the same session |
+| `docs-query` | Answer from project context, graph and pages with citations, without writing |
+| `docs-lint` | Check/fix structure, graph relationships and human docs citing superseded sources |
+| `docs-capture` | Fully ingest each durable finding as it becomes settled during work |
 
 The Docs Vault plugin above already includes them (`scripts/agent-plugin` copies them in). For
 other setups, they are in the kit repository under `vault-template/skills/`, and in your vault's
@@ -331,6 +332,7 @@ returns the vault's rulebook (`AGENTS.md`).
 | `read(path)` | Reads a file. Returns `content` (or `content_base64` for binary files) and its `version` (sha256); pass that version as `base_version` when you write. |
 | `list(folder="")` | Lists one folder (`""` is the vault root), with a frontmatter summary per Markdown page. |
 | `search(query, folder=None, limit=20)` | Full-text search over title, headings, path, frontmatter and body. Words are matched literally and all must appear; `folder` narrows the search. |
+| `project_context(repo=None, project=None)` | Readable project summary/status, one-hop graph, open review items and five recent change-log lines, within 4,000 serialized characters. Accepts canonical, SSH or HTTPS repo forms. Unknown, ambiguous or unreadable projects return `project: null`. |
 | `graph_neighbors(node, predicate=None, direction="both", depth=1, limit=50)` | Nodes and edges within one or two hops. `node` accepts a node id, unambiguous alias or page path; direction is `in`, `out` or `both`. |
 | `graph_edges(subject=None, predicate=None, object=None, status=None, limit=100)` | Matching typed and implicit edges. `explicit` distinguishes declared claims from navigation links. |
 | `graph_path(from_node, to_node, max_depth=4)` | One deterministic shortest directed path through readable nodes; maximum depth is 4. |
@@ -341,13 +343,19 @@ returns the vault's rulebook (`AGENTS.md`).
 | `replace_section(path, heading, content, base_version)` | Replaces the body under one heading, subsections included, keeping the heading line. `heading` is the text (`Usage`) or the full line (`## Usage`). |
 | `insert_after(path, heading, content)` | Inserts content directly below a heading, before the section's existing body. |
 | `review_queue_add(page, issue, suggestion)` | Proposes a change instead of editing: adds a task to `_system/review-queue.md`. |
-| `move(path, new_path, base_version)` | Renames a page and updates every link to it in one step. Refused, with nothing changed, if a page the credential can't edit links to it. |
+| `move(path, new_path, base_version)` | Renames a page and updates body links and graph references. Refused, with nothing changed, if a page the credential can't edit refers to it. |
 | `submit_source(title, origin, content=None, url=None)` | Drops a source into `raw/` for ingest. Pass the content you fetched; a `url` alone is recorded for the ingest agent to fetch. The server never fetches it. |
 | `claim_source(path, ttl_minutes=None)` | Claims a source in `raw/` before ingesting it: moves it to `raw/_processing/` with a lease (default 30 minutes, 1 to 1440). |
 | `complete_source(path, summary_page)` | Finishes a claimed source: moves it to `raw/_processed/` and releases the lease. |
 | `release_source(path)` | Gives a claimed source back, for example after a failed ingest: returns it to `raw/`. |
 
-There is no delete tool. Read tokens may use the read/search tools and all five graph tools.
+There is no delete tool. Read tokens may use read/search, `project_context` and all five graph tools.
+
+`project_context` is a compact preview: up to three review items, shortened text and only whole
+graph records that fit. Use `read` and graph tools for full detail. If both selectors are given,
+they must identify the same project. Manual plugin commands are covered in
+[the user guide](USER-GUIDE.md); they finish ingestion in the same session,
+not at the nightly maintenance run.
 
 What a write token may change is set by the admin's `vault-mcp.yaml`. The v0.2 example allows writes
 in `wiki/`, `raw/`, `_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`, plus any page

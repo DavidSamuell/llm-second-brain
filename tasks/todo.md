@@ -482,36 +482,41 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - **Status:** all four profile scenarios passed: local write/query/permission/move/lint on the first run, then both corrected restore fixtures and the none-profile browser-debounce wait on the focused retry (3 passed, 1 unchanged scenario deselected). All six graph success criteria covered. CONNECT-AGENTS, SETUP, changelog and graph spec updated; no live deployment.
 
 ### Checkpoint J — after T46–T49
-- [ ] SPEC-knowledge-graph criteria 1–6 pass; lint, unit and e2e green.
-  - Automated acceptance complete; **human review pending** before Phase 12. Review full-path derived ids versus stable explicit ids, source provenance versus quote truth, and schema-1/default-ontology compatibility. Local checks passed; GitHub CI performance gates are configured, not yet observed on the runner.
+- [x] SPEC-knowledge-graph criteria 1–6 pass; lint, unit and e2e green.
+  - Approved by the user. Phase 12 may proceed; live deployment remains gated on T58.
 
 ## Phase 12 — doc-authoring
 
-- [ ] **T50 — Repo identity and `project_context`** [doc-authoring] · **watch**
+- [x] **T50 — Repo identity and `project_context`** [doc-authoring] · **watch**
   - `normalise_remote()`; `project_context(repo?, project?)` (project page summary and status, 1-hop graph neighbourhood, open review items for those pages, last 5 change-log lines; ≤ 4,000 chars; permission-filtered).
   - Acceptance: SPEC-doc-authoring criterion 2; unknown repo → `{project: null}`.
   - Verify: `uv run pytest vault-core vault-mcp -k "remote or project_context"`.
   - Deps: T48 · Files: `vault-core/src/vault_core/repos.py`, `vault-mcp/src/vault_mcp/tools_project.py`, `vault-mcp/src/vault_mcp/server.py`, tests · Scope: M
+  - **Status:** canonical SSH/HTTPS/git remote matching, GitHub case folding and non-GitHub path-case preservation; rejects local/unsafe locations. Context reads canonical project metadata, filters graph/review/changelog data by permission, rejects ambiguous selection, and bounds serialized output including Unicode escapes. 33 focused tests passed; mypy passed (47 source files).
 
-- [ ] **T51 — Skills: ingest, query, lint, capture** [doc-authoring] · **watch**
+- [x] **T51 — Skills: ingest, query, lint, capture** [doc-authoring] · **watch**
   - Update `docs-ingest` (human docs after the wiki step), `docs-query` (graph first), `docs-lint` (human-doc drift, graph lint); new `docs-capture` (full in-session ingest per finding). Plugin commands `document`, `ingest`, `ask`, `lint` in `agent-plugin/commands/`, each a thin wrapper over the skills, acting immediately.
   - Acceptance: each skill names tools without prefixes and follows SPEC-doc-authoring's writing rules; `scripts/agent-plugin` copies the new skill and the four commands; generated plugin validates.
   - Verify: `uv run pytest e2e/test_agent_plugin.py`; `claude plugin validate` on the generated plugin.
   - Deps: T50 · Files: `vault-template/skills/*/SKILL.md`, `agent-plugin/commands/{document,ingest,ask,lint}.md`, `e2e/test_agent_plugin.py` · Scope: M
+  - **Status:** four skills and four new commands use immediate full source completion; ask is read-only. Generator uses the existing recursive copy and validates in Claude Code. A real isolated Sonnet run exercised all four commands: document/ingest left no pending sources, ask made no write calls, lint reported and corrected a human doc citing a superseded source. Total reported cost $0.615. Live harness rollout remains T59.
 
-- [ ] **T52 — Template schema 2** [doc-authoring, write-policy, knowledge-graph] · Decisions: D43, D36 · **watch**
+- [x] **T52 — Template schema 2** [doc-authoring, write-policy, knowledge-graph] · Decisions: D43, D36 · **watch**
   - AGENTS.md v2 (layout, `maintainer` meanings, writing rules, typed edges, capture); templates with `repo:`, `project:`, `graph`, `## Change log`; `.kit-manifest.json`; `upgrade-vault` from 1 to 2 keeps `<!-- custom -->` blocks.
   - Acceptance: SPEC-doc-authoring criterion 4; a fresh vault gets schema 2.
   - Verify: `uv run pytest vault-watcher -k upgrade` + `uv run pytest e2e -k upgrade`.
   - Deps: T51 · Files: `vault-template/AGENTS.md`, `vault-template/_system/templates/*`, `vault-template/.kit-manifest.json`, upgrade tests · Scope: M
+  - **Status:** schema-2 rules, all 12 templates, shared human docs, graph/project/repo fields, change logs, managed ontology and docs-capture. Manifest preserves exact v1 hashes. Upgrade tests use actual v1 preimages and preserve custom blocks/customised templates; existing e2e upgrade scenario now tests synthetic schema 3 without overwriting released v2 hashes. Template/upgrade/generator suite: 74 passed; both profile upgrade e2e passed.
 
-- [ ] **T53 — doc-authoring e2e and user docs** [doc-authoring] · **delegate**
+- [x] **T53 — doc-authoring e2e and user docs** [doc-authoring] · **delegate**
   - Scripted-agent e2e: new pipeline source → `pipelines/<name>.md`, project link, `documented_in` edge; second source updates one section + one change-log line; the `document` and `ingest` flows finish in the same run with nothing left in `raw/`. USER-GUIDE (where things live now, agent edits, notices), IMPORTING (repo summaries).
   - Verify: `uv run pytest e2e -k doc_authoring -m "(profile_local or profile_none) and not nightly"`.
   - Deps: T52 · Files: `e2e/test_doc_authoring.py`, `docs/USER-GUIDE.md`, `docs/IMPORTING.md` · Scope: M
+  - **Status:** authoring e2e passed both profiles: same-run source completion, pipeline/project/typed edge, second-source section update, one change-log line and history. Real generated-plugin command proof also detected/fixed superseded human-doc citations. User guide, importing and agent connection docs updated. Final regression: 656 unit tests passed with graph performance enabled; ruff/format/mypy passed. No live rollout.
 
 ### Checkpoint K — after T50–T53
 - [ ] SPEC-doc-authoring criteria 1–4 pass; lint, unit and e2e green.
+  - **Ready for human review:** criteria 1–4 covered by automated acceptance and the isolated real-agent smoke. Criterion 5 remains the explicitly planned live Claude Code/omp verification in T59. Phase 13 not started.
 
 ## Phase 13 — session-hooks and scheduled-maintenance (parallel)
 

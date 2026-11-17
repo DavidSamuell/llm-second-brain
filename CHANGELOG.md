@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Derived typed knowledge graph in `DATA_PATH/graph.sqlite`, incrementally maintained by vault-watcher and rebuilt by reindex/restore; admin ontology with last-valid reload and alerting.
 - Read-scope MCP tools `graph_neighbors`, `graph_edges`, `graph_path`, `backlinks` and `graph_lint`, with endpoint/declaring-page permissions, evidence redaction, and ambiguity-safe references. MCP writes reject invalid typed metadata; browser edits remain editable and are reported by lint.
 - Graph-aware moves preserve explicit ids and rewrite derived-id, source and project references without changing evidence quotations.
+- Read-scope `project_context(repo?, project?)` with SSH/HTTPS repo normalization, permission-filtered project summary/status, one-hop graph, review items and five recent changes within 4,000 serialized characters.
+- Immediate `document`, `ingest`, `ask` and `lint` plugin commands plus `docs-capture`; durable findings are fully ingested during the session, with source provenance, human docs and atomic wiki references.
+- Vault schema 2: shared human-doc templates, project/repo/graph metadata, change logs and managed ontology; upgrades preserve released schema-1 hashes and custom blocks.
 
 ## [0.1.0] - 2026-11-17
 

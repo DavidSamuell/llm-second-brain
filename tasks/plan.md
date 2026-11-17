@@ -485,7 +485,7 @@ A separate SQLite file `DATA_PATH/graph.sqlite` (not inside `index.db`, so a gra
 `_system/graph/ontology.yaml` in the vault (shipped by the template, `write.protected`). vault-mcp and vault-watcher load it at start and reload when its mtime changes (checked per call, cached). An invalid ontology keeps the last valid one and raises an alert.
 
 ### D43 — One template schema bump
-write-policy, knowledge-graph and doc-authoring all change AGENTS.md, templates and skills. They ship as **one** `schema_version: 2`, assembled in T53; earlier tasks change code and tests only. `scripts/upgrade-vault` (D36) applies it.
+write-policy, knowledge-graph and doc-authoring all change AGENTS.md, templates and skills. They ship as **one** `schema_version: 2`, assembled in T52 and verified with the integrated authoring flow in T53; earlier phases change code and tests only. `scripts/upgrade-vault` (D36) applies it.
 
 ### D44 — Hooks hold no credentials
 Hook scripts only work out the repo and print a context block; the agent calls `project_context` with its own sign-in. Per-harness wiring (Claude Code plugin `hooks/hooks.json`; omp extension module or Claude-hook compatibility; Codex plugin hooks) is fixed by the T42 spike. A hook always exits 0.
