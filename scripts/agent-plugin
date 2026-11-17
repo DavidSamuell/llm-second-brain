@@ -156,12 +156,13 @@ cat > "$plugin/mcp.json" <<EOF
 }
 EOF
 
-# Claude Code manifest and server.
+# Claude Code manifest and server. No `version`: Claude Code then versions the plugin by the
+# marketplace commit, so `claude plugin update` picks up every rebuild the admin pushes. A pinned
+# version would keep users on their cached copy until someone changed the string.
 cat > "$plugin/.claude-plugin/plugin.json" <<EOF
 {
   "name": "$name",
   "displayName": "Docs Vault",
-  "version": "0.1.0",
   "description": "$description",
   "author": { "name": "Docs Vault Kit" },
   "license": "MIT"

@@ -118,8 +118,10 @@ Notes:
   Claude Code). Remove the hand-made entry (`claude mcp remove vault -s user`) and ask your admin
   to revoke its token.
 - Updates: when the admin rebuilds and pushes the plugin, update it with
-  `claude plugin marketplace update docs-vault`, `codex plugin marketplace upgrade docs-vault` or
-  `omp plugin marketplace update docs-vault`.
+  `claude plugin marketplace update docs-vault && claude plugin update docs-vault@docs-vault`,
+  `codex plugin marketplace upgrade docs-vault` or
+  `omp plugin marketplace update docs-vault && omp plugin upgrade docs-vault@docs-vault`, then
+  start a new session. Refreshing the marketplace alone leaves the installed copy unchanged.
 
 ### Automatic capture in project repos
 
