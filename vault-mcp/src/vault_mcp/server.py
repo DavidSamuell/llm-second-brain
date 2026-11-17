@@ -186,21 +186,26 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         return audited("search", folder, lambda cred: searches.search(cred, query, folder, limit))
 
     @mcp.tool(name="write")
-    async def write(path: str, content: str, base_version: str | None) -> dict[str, Any]:
+    async def write(
+        path: str, content: str, base_version: str | None, summary: str | None = None
+    ) -> dict[str, Any]:
         """Create a file (base_version null) or replace it (base_version = the version you
-        read). Fails with `conflict` if the file changed since you read it."""
+        read). Fails with `conflict` if the file changed since you read it. `summary` (≤ 200
+        chars) says what changed and why; it is required on `maintainer: human` pages."""
         return await audited_write(
-            "write", path, lambda cred: writer.write(cred, path, content, base_version)
+            "write", path, lambda cred: writer.write(cred, path, content, base_version, summary)
         )
 
     @mcp.tool(name="append")
-    async def append(path: str, text: str) -> dict[str, Any]:
-        """Append text to an existing file, starting on a new line."""
-        return await audited_write("append", path, lambda cred: writer.append(cred, path, text))
+    async def append(path: str, text: str, summary: str | None = None) -> dict[str, Any]:
+        """Append text to an existing file, starting on a new line. `summary` as for write."""
+        return await audited_write(
+            "append", path, lambda cred: writer.append(cred, path, text, summary)
+        )
 
     @mcp.tool(name="replace_section")
     async def replace_section(
-        path: str, heading: str, content: str, base_version: str
+        path: str, heading: str, content: str, base_version: str, summary: str | None = None
     ) -> dict[str, Any]:
         """Replace the body under one heading (subsections included), keeping the heading
         line. `heading` is its text ("Usage") or full line ("## Usage"). Prefer this over
@@ -208,14 +213,20 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         return await audited_write(
             "replace_section",
             path,
-            lambda cred: writer.replace_section(cred, path, heading, content, base_version),
+            lambda cred: writer.replace_section(
+                cred, path, heading, content, base_version, summary
+            ),
         )
 
     @mcp.tool(name="insert_after")
-    async def insert_after(path: str, heading: str, content: str) -> dict[str, Any]:
+    async def insert_after(
+        path: str, heading: str, content: str, summary: str | None = None
+    ) -> dict[str, Any]:
         """Insert content directly below a heading, before the section's existing body."""
         return await audited_write(
-            "insert_after", path, lambda cred: writer.insert_after(cred, path, heading, content)
+            "insert_after",
+            path,
+            lambda cred: writer.insert_after(cred, path, heading, content, summary),
         )
 
     @mcp.tool(name="review_queue_add")
@@ -229,11 +240,13 @@ def build_server(settings: Settings, *, stdio_token: str | None = None) -> FastM
         )
 
     @mcp.tool(name="move")
-    async def move(path: str, new_path: str, base_version: str) -> dict[str, Any]:
+    async def move(
+        path: str, new_path: str, base_version: str, summary: str | None = None
+    ) -> dict[str, Any]:
         """Rename a page and update every link to it in one step. If any page you can't edit
         links to it, nothing is changed: propose the move with review_queue_add instead."""
         return await audited_write(
-            "move", path, lambda cred: writer.move(cred, path, new_path, base_version)
+            "move", path, lambda cred: writer.move(cred, path, new_path, base_version, summary)
         )
 
     @mcp.tool(name="submit_source")

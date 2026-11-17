@@ -10,6 +10,7 @@ SPEC_POLICY = """\
 write:
   allow: [wiki/, raw/, _system/]
   human_pages: read_only
+  human_edit_grace_s: 0             # v0.1 behaviour; grace is tested in test_write_policy.py
   delete: false
   max_file_mb: 1
 read:

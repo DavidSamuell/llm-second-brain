@@ -19,6 +19,7 @@ ErrorCode = Literal[
     "invalid",
     "ambiguous_heading",
     "history_pending",
+    "recently_edited",
 ]
 
 

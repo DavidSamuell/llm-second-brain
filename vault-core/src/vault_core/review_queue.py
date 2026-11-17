@@ -1,7 +1,8 @@
 """`_system/review-queue.md`: one Obsidian task per proposed change (SPEC §6.4, plan D15).
 
 `- [ ] <UTC time> [[page]] — issue — suggestion — by <name> (<owner>) #review ^rq-<id>`
-Humans resolve an item by ticking it; secret-scan items are tagged `#review/high`.
+Humans resolve an item by ticking it; secret-scan items are tagged `#review/high`, and notices
+that an agent edited a person-maintained page `#review/agent-edit` (SPEC-write-policy).
 """
 
 from __future__ import annotations
@@ -29,10 +30,12 @@ def format_item(
     owner: str,
     ts: datetime,
     item_id: str,
-    priority: Literal["normal", "high"] = "normal",
+    priority: Literal["normal", "high", "agent-edit"] = "normal",
 ) -> str:
     link = page[:-3] if page.endswith(".md") else page
-    tag = "#review/high" if priority == "high" else "#review"
+    tag = {"normal": "#review", "high": "#review/high", "agent-edit": "#review/agent-edit"}[
+        priority
+    ]
     when = ts.strftime("%Y-%m-%d %H:%MZ")
     return (
         f"- [ ] {when} [[{_clean(link)}]] — {_clean(issue)} — {_clean(suggestion)}"

@@ -21,7 +21,7 @@ from typing import Any, Final
 from vault_core import frontmatter, review_queue
 from vault_core.audit import AuditLog, new_id
 from vault_core.fsio import fsync_dir, replace_from_temp, version_of, write_temp_sibling
-from vault_core.history import HistoryStore, Spool
+from vault_core.history import HistoryStore, Spool, parse_ts
 from vault_core.lock import AsyncVaultLock
 from vault_core.paths import PathError, is_hidden, normalize, resolve_in_vault, through_symlink
 from vault_core.policy import Decision, Policy, check_read, check_write
@@ -29,11 +29,13 @@ from vault_core.secrets import scan_added_lines
 from vault_mcp import sections
 from vault_mcp.errors import VaultToolError
 from vault_mcp.links import VaultFiles, links_to, rebase_relative_links, rewrite_links
+from vault_mcp.notices import NoticeLog
 from vault_mcp.store import Credential
 
 ANY: Final = object()  # "no base_version check" (append-style tools)
 HEARTBEAT_STALE_S = 30.0
 APPEND_RETRIES = 3
+MAX_SUMMARY = 200
 
 _REFUSALS = {
     "hidden": "hidden paths are never written",
@@ -42,6 +44,8 @@ _REFUSALS = {
     "human_page": "this page has maintainer: human; propose the change with review_queue_add instead",
     "not_in_write_allow": "agents may only write under write.allow or to agent/shared pages; "
     "use review_queue_add to propose the change",
+    "protected": "this file holds the vault's rules and is never changed by agents; "
+    "propose the change with review_queue_add",
 }
 
 
@@ -50,6 +54,14 @@ class WriteResult:
     path: str
     version: str
     audit_id: str
+    human_page: bool = False
+
+
+def _check_summary(summary: str | None, path: str) -> None:
+    if summary is not None and len(summary) > MAX_SUMMARY:
+        raise VaultToolError(
+            "invalid", f"summary is longer than {MAX_SUMMARY} characters", path=path
+        )
 
 
 class VaultWriter:
@@ -71,19 +83,28 @@ class VaultWriter:
         self.history = HistoryStore(data_dir)
         self.heartbeat = data_dir / "vault-watcher" / "heartbeat"
         self.lock = lock or AsyncVaultLock(data_dir, "vault-mcp")
+        self.notices = NoticeLog(data_dir)
 
     # -- public tools ----------------------------------------------------------------------
 
     async def write(
-        self, cred: Credential, path: str, content: str, base_version: str | None
+        self,
+        cred: Credential,
+        path: str,
+        content: str,
+        base_version: str | None,
+        summary: str | None = None,
     ) -> dict[str, str]:
         """Create (base_version None) or replace (base_version = the version you read)."""
         result = await self.apply(
-            cred, "write", path, lambda _: content.encode(), base_version=base_version
-        )
+            cred, "write", path, lambda _: content.encode(), base_version=base_version,
+            summary=summary,
+        )  # fmt: skip
         return {"path": result.path, "version": result.version}
 
-    async def append(self, cred: Credential, path: str, text: str) -> dict[str, str]:
+    async def append(
+        self, cred: Credential, path: str, text: str, summary: str | None = None
+    ) -> dict[str, str]:
         """Append to an existing file, on a new line."""
 
         def build(current: bytes | None) -> bytes:
@@ -93,26 +114,35 @@ class VaultWriter:
             return current + boundary + text.encode()
 
         result = await self.apply(
-            cred, "append", path, build, base_version=ANY, retries=APPEND_RETRIES
+            cred, "append", path, build, base_version=ANY, retries=APPEND_RETRIES, summary=summary
         )
         return {"path": result.path, "version": result.version}
 
     async def replace_section(
-        self, cred: Credential, path: str, heading: str, content: str, base_version: str
+        self,
+        cred: Credential,
+        path: str,
+        heading: str,
+        content: str,
+        base_version: str,
+        summary: str | None = None,
     ) -> dict[str, str]:
         """Replace one section's body (D11), checked against the version you read."""
         build = _section_edit(path, lambda text: sections.replace_section(text, heading, content))
-        result = await self.apply(cred, "replace_section", path, build, base_version=base_version)
+        result = await self.apply(
+            cred, "replace_section", path, build, base_version=base_version, summary=summary
+        )
         return {"path": result.path, "version": result.version}
 
     async def insert_after(
-        self, cred: Credential, path: str, heading: str, content: str
+        self, cred: Credential, path: str, heading: str, content: str, summary: str | None = None
     ) -> dict[str, str]:
         """Insert directly below a heading (D11); like append, no base_version needed."""
         build = _section_edit(path, lambda text: sections.insert_after(text, heading, content))
         result = await self.apply(
-            cred, "insert_after", path, build, base_version=ANY, retries=APPEND_RETRIES
-        )
+            cred, "insert_after", path, build, base_version=ANY, retries=APPEND_RETRIES,
+            summary=summary,
+        )  # fmt: skip
         return {"path": result.path, "version": result.version}
 
     async def review_queue_add(
@@ -175,10 +205,12 @@ class VaultWriter:
         base_version: object = ANY,
         retries: int = 1,
         queue: bool = False,
+        summary: str | None = None,
     ) -> WriteResult:
         if not cred.allows("write"):
             raise VaultToolError("forbidden", "this credential is read-only", path=path)
         rel, target = self._target(path)
+        _check_summary(summary, rel)
         if not self._heartbeat_fresh():
             raise VaultToolError(
                 "history_pending", "vault-watcher is not running, so the write would have no history; nothing was changed",
@@ -189,7 +221,7 @@ class VaultWriter:
                 # Blocking file I/O and fsyncs run off the event loop; the async lock serialises writers.
                 outcome = await _finish_even_if_cancelled(
                     asyncio.to_thread(
-                        self._attempt, cred, tool, rel, target, build, base_version, queue
+                        self._attempt, cred, tool, rel, target, build, base_version, queue, summary
                     )
                 )
                 if outcome is not None:
@@ -203,7 +235,57 @@ class VaultWriter:
         assert outcome is not None  # noqa: S101 - loop above either breaks with a value or raises
         committed, result = outcome
         await self._await_ack(committed, result)
+        if result.human_page:
+            await self._agent_edit_notice(cred, result.path, summary or "")
         return result
+
+    def _web_saved_s_ago(self, rel: str) -> float | None:
+        """Seconds since the web editor's most recent recorded save of this file (D40), even
+        when later versions exist (a scan, or an agent write right after it). A save the watcher
+        hasn't recorded yet is still kept, as the pre-image of the agent's write."""
+        web = [v for v in self.history.versions(rel) if v.source == "web"]
+        if not web:
+            return None
+        latest = max(parse_ts(v.ts) for v in web)
+        return max(0.0, (datetime.now(UTC) - latest).total_seconds())
+
+    def _refuse(self, rel: str, decision: Decision, saved_ago: float | None) -> VaultToolError:
+        if decision.reason == "recently_edited":
+            wait = self.policy.write.human_edit_grace_s - (saved_ago or 0.0)
+            return VaultToolError(
+                "recently_edited", "someone saved this page in the editor moments ago; wait and "
+                "read it again before writing, so their edit isn't overwritten",
+                path=rel, retry_after_s=max(1, int(wait + 0.999)),
+            )  # fmt: skip
+        reason = decision.reason or "denied"
+        return VaultToolError("forbidden", _REFUSALS[reason], path=rel, reason=reason)
+
+    async def _agent_edit_notice(self, cred: Credential, rel: str, summary: str) -> None:
+        """One `#review/agent-edit` notice per person-maintained page per UTC day. The edit
+        itself is already done and audited; a failed notice is logged, never raised."""
+        day = datetime.now(UTC).strftime("%Y-%m-%d")
+        if not self.notices.claim(rel, day):
+            return
+        item = review_queue.format_item(
+            rel, "Agent updated a person-maintained page", summary, by=cred.name,
+            owner=cred.owner, ts=datetime.now(UTC), item_id=new_id(), priority="agent-edit",
+        )  # fmt: skip
+
+        def build(current: bytes | None) -> bytes:
+            text = current.decode("utf-8", "replace") if current is not None else None
+            return review_queue.add_item(text, item).encode()
+
+        try:
+            await self.apply(
+                cred, "review_queue_add", review_queue.QUEUE_PATH, build,
+                base_version=ANY, retries=APPEND_RETRIES, queue=True,
+            )  # fmt: skip
+        except VaultToolError as exc:
+            self.notices.release(rel, day)
+            self.audit.append(
+                service="vault-mcp", tool="agent_edit_notice", result=exc.code, path=rel,
+                credential_id=cred.id, credential_name=cred.name, owner=cred.owner,
+            )  # fmt: skip
 
     def _attempt(
         self,
@@ -214,6 +296,7 @@ class VaultWriter:
         build: Callable[[bytes | None], bytes],
         base_version: object,
         queue: bool = False,
+        summary: str | None = None,
     ) -> tuple[Path, WriteResult] | None:
         """One locked attempt. Returns None when the file changed under us and the tool may retry."""
         current = target.read_bytes() if target.is_file() else None
@@ -222,16 +305,26 @@ class VaultWriter:
             if current is not None
             else None
         )
+        saved_ago = None if queue or current is None else self._web_saved_s_ago(rel)
         decision = (
             Decision(True)  # the review queue is open to every write credential (D15)
             if queue
             else check_write(
-                rel, self.policy, cred.folders, exists=current is not None, maintainer=maintainer
+                rel,
+                self.policy,
+                cred.folders,
+                exists=current is not None,
+                maintainer=maintainer,
+                web_saved_s_ago=saved_ago,
             )
         )
         if not decision.allowed:
-            reason = decision.reason or "denied"
-            raise VaultToolError("forbidden", _REFUSALS[reason], path=rel, reason=reason)
+            raise self._refuse(rel, decision, saved_ago)
+        if decision.human_page and not summary:
+            raise VaultToolError(
+                "invalid", "this page has maintainer: human: pass `summary` saying what you "
+                "changed and why; the person is notified", path=rel,
+            )  # fmt: skip
         current_version = version_of(current) if current is not None else None
         if base_version is not ANY and base_version != current_version:
             raise VaultToolError(
@@ -285,13 +378,16 @@ class VaultWriter:
             self._discard(txn, tmp)
             raise
         new_version = version_of(new)
+        extra: dict[str, Any] = {"summary": summary} if summary else {}
+        if decision.human_page:
+            extra["human_page"] = True
         self.audit.append(
             id=audit_id, durable=True, service="vault-mcp", tool=tool, result="ok",
             credential_id=cred.id, credential_name=cred.name, owner=cred.owner, path=rel,
-            old_version=current_version, new_version=new_version,
+            old_version=current_version, new_version=new_version, **extra,
         )  # fmt: skip
         committed = self.spool.commit(txn)
-        return committed, WriteResult(rel, new_version, audit_id)
+        return committed, WriteResult(rel, new_version, audit_id, decision.human_page)
 
     def _discard(self, txn: Path, tmp: Path) -> None:
         self.spool.drop(txn)
@@ -329,13 +425,19 @@ class VaultWriter:
         return VaultFiles(targets), sorted(pages)
 
     async def move(
-        self, cred: Credential, path: str, new_path: str, base_version: str
+        self,
+        cred: Credential,
+        path: str,
+        new_path: str,
+        base_version: str,
+        summary: str | None = None,
     ) -> dict[str, Any]:
         """Rename a page and update every link to it, or change nothing."""
         if not cred.allows("write"):
             raise VaultToolError("forbidden", "this credential is read-only", path=path)
         rel, source = self._target(path)
         new_rel, dest = self._target(new_path)
+        _check_summary(summary, rel)
         if rel == new_rel:
             raise VaultToolError("invalid", "path and new_path are the same", path=rel)
         if not self._heartbeat_fresh():
@@ -346,11 +448,19 @@ class VaultWriter:
         async with self.lock.hold():
             committed, moved_version, updated = await _finish_even_if_cancelled(
                 asyncio.to_thread(
-                    self._attempt_move, cred, rel, source, new_rel, dest, base_version
+                    self._attempt_move, cred, rel, source, new_rel, dest, base_version, summary
                 )
             )
         for txn, result in committed:
             await self._await_ack(txn, result)
+        for _txn, result in committed:
+            if result.human_page:
+                note = (
+                    summary
+                    if result.path == new_rel
+                    else f"Updated links after moving {rel} to {new_rel}"
+                )
+                await self._agent_edit_notice(cred, result.path, note or "")
         return {
             "path": new_rel,
             "from_path": rel,
@@ -358,26 +468,48 @@ class VaultWriter:
             "updated_links_in": updated,
         }
 
-    def _check_writable(self, cred: Credential, rel: str, current: bytes | None) -> None:
+    def _write_decision(self, cred: Credential, rel: str, current: bytes | None) -> Decision:
         maintainer = (
             frontmatter.maintainer_of(current.decode("utf-8", "replace"))
             if current is not None
             else None
         )
+        saved_ago = self._web_saved_s_ago(rel) if current is not None else None
         decision = check_write(
-            rel, self.policy, cred.folders, exists=current is not None, maintainer=maintainer
-        )
+            rel, self.policy, cred.folders, exists=current is not None,
+            maintainer=maintainer, web_saved_s_ago=saved_ago,
+        )  # fmt: skip
+        if decision.reason == "recently_edited":
+            raise self._refuse(rel, decision, saved_ago)
+        return decision
+
+    def _check_writable(self, cred: Credential, rel: str, current: bytes | None) -> Decision:
+        decision = self._write_decision(cred, rel, current)
         if not decision.allowed:
-            reason = decision.reason or "denied"
-            raise VaultToolError("forbidden", _REFUSALS[reason], path=rel, reason=reason)
+            raise self._refuse(rel, decision, None)
+        return decision
 
     def _attempt_move(
-        self, cred: Credential, rel: str, source: Path, new_rel: str, dest: Path, base_version: str
+        self,
+        cred: Credential,
+        rel: str,
+        source: Path,
+        new_rel: str,
+        dest: Path,
+        base_version: str,
+        summary: str | None = None,
     ) -> tuple[list[tuple[Path, WriteResult]], str, list[str]]:
         if not source.is_file():
             raise VaultToolError("not_found", "no such file", path=rel)
         current = source.read_bytes()
-        self._check_writable(cred, rel, current)
+        human_pages: set[str] = set()
+        if self._check_writable(cred, rel, current).human_page:
+            if not summary:
+                raise VaultToolError(
+                    "invalid", "this page has maintainer: human: pass `summary` saying why it "
+                    "moves; the person is notified", path=rel,
+                )  # fmt: skip
+            human_pages.add(rel)
         self._check_writable(cred, new_rel, None)
         if os.path.lexists(dest):
             raise VaultToolError("conflict", "new_path already exists", path=rel, new_path=new_rel)
@@ -398,11 +530,11 @@ class VaultWriter:
             data = (self.vault_dir / other).read_bytes()
             if not links_to(data.decode("utf-8", "replace"), other, rel, files):
                 continue
-            maintainer = frontmatter.maintainer_of(data.decode("utf-8", "replace"))
-            if check_write(
-                other, self.policy, cred.folders, exists=True, maintainer=maintainer
-            ).allowed:
+            decision = self._write_decision(cred, other, data)
+            if decision.allowed:
                 linkers[other] = data
+                if decision.human_page:
+                    human_pages.add(other)
             elif check_read(other, self.policy, cred.folders).allowed:
                 visible_blockers.append(other)
             else:
@@ -497,9 +629,16 @@ class VaultWriter:
                 credential_id=cred.id, credential_name=cred.name, owner=cred.owner, path=s.rel,
                 new_path=s.moved_to, old_version=version_of(s.before), new_version=version_of(s.after),
                 detail=None if s.moved_to else f"link update for move of {rel}", group_id=group_id,
+                **({"human_page": True} if s.rel in human_pages else {}),
+                **({"summary": summary} if summary and s.moved_to else {}),
             )  # fmt: skip
             results.append(
-                (s.txn, WriteResult(s.moved_to or s.rel, version_of(s.after), s.audit_id))
+                (
+                    s.txn,
+                    WriteResult(
+                        s.moved_to or s.rel, version_of(s.after), s.audit_id, s.rel in human_pages
+                    ),
+                )
             )
         committed = [(self.spool.commit(txn), result) for txn, result in results]
         return committed, version_of(plan[-1][3]), sorted(linkers)
