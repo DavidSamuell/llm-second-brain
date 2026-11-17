@@ -74,8 +74,15 @@ uv run ruff check . && uv run ruff format --check . && uv run mypy
 Follow the existing pure decision functions: a reason literal per refusal, no I/O inside policy.
 
 ```python
-def check_write(path: str, policy: Policy, folders: list[str] | None, *, exists: bool,
-                maintainer: str | None, web_saved_s_ago: float | None) -> Decision:
+def check_write(
+    path: str,
+    policy: Policy,
+    folders: list[str] | None,
+    *,
+    exists: bool,
+    maintainer: str | None,
+    web_saved_s_ago: float | None,
+) -> Decision:
     """v0.2: protected paths never; a fresh web save waits; human pages per `human_pages`."""
     readable = check_read(path, policy, folders)
     if not readable.allowed:

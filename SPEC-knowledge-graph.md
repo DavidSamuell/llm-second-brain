@@ -90,13 +90,16 @@ class Edge:
     subject: str
     predicate: str
     object: str
-    page: str                 # page that declared it (for permission checks)
+    page: str  # page that declared it (for permission checks)
     source: str | None = None
     evidence: str | None = None
     confidence: Literal["high", "medium", "low"] = "low"
     status: str = "current"
 
-def extract(page_path: str, frontmatter: dict[str, Any], body: str, onto: Ontology) -> PageGraph: ...
+
+def extract(
+    page_path: str, frontmatter: dict[str, Any], body: str, onto: Ontology
+) -> PageGraph: ...
 def validate(page_graph: PageGraph, onto: Ontology) -> list[GraphError]: ...
 ```
 
