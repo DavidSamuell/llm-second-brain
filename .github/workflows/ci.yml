@@ -46,6 +46,10 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-packages
       - run: uv run pytest
+        env:
+          RUN_GRAPH_PERFORMANCE: "1"
+      - name: Graph rebuild budget (5,000 pages / 50,000 edges)
+        run: uv run python vault-watcher/tests/graph_rebuild_performance.py
 
   e2e:
     runs-on: ubuntu-24.04

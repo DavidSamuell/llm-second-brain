@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Opt-in agent editing of human-maintained pages with required change summaries, audit attribution and one review-queue notice per page per UTC day. The example policy now includes `projects/`, `specs/`, `pipelines/` and `runbooks/`; existing policies retain `read_only` unless changed.
 - Protected rule paths (`write.protected`) and a 90-second grace after recorded web-editor saves (`human_edit_grace_s`), including move/link-update checks. Protected writes return `forbidden` with reason `protected`; recent saves return `recently_edited` with a retry delay. Stale-base writes still return `conflict`.
+- Derived typed knowledge graph in `DATA_PATH/graph.sqlite`, incrementally maintained by vault-watcher and rebuilt by reindex/restore; admin ontology with last-valid reload and alerting.
+- Read-scope MCP tools `graph_neighbors`, `graph_edges`, `graph_path`, `backlinks` and `graph_lint`, with endpoint/declaring-page permissions, evidence redaction, and ambiguity-safe references. MCP writes reject invalid typed metadata; browser edits remain editable and are reported by lint.
+- Graph-aware moves preserve explicit ids and rewrite derived-id, source and project references without changing evidence quotations.
 
 ## [0.1.0] - 2026-11-17
 

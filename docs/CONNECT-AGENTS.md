@@ -331,6 +331,11 @@ returns the vault's rulebook (`AGENTS.md`).
 | `read(path)` | Reads a file. Returns `content` (or `content_base64` for binary files) and its `version` (sha256); pass that version as `base_version` when you write. |
 | `list(folder="")` | Lists one folder (`""` is the vault root), with a frontmatter summary per Markdown page. |
 | `search(query, folder=None, limit=20)` | Full-text search over title, headings, path, frontmatter and body. Words are matched literally and all must appear; `folder` narrows the search. |
+| `graph_neighbors(node, predicate=None, direction="both", depth=1, limit=50)` | Nodes and edges within one or two hops. `node` accepts a node id, unambiguous alias or page path; direction is `in`, `out` or `both`. |
+| `graph_edges(subject=None, predicate=None, object=None, status=None, limit=100)` | Matching typed and implicit edges. `explicit` distinguishes declared claims from navigation links. |
+| `graph_path(from_node, to_node, max_depth=4)` | One deterministic shortest directed path through readable nodes; maximum depth is 4. |
+| `backlinks(path)` | Readable pages referring to a page through links or graph metadata. |
+| `graph_lint(folder=None)` | Read-only diagnostics: invalid metadata, missing evidence, dangling references, orphan nodes, duplicate ids/aliases and contradictions. |
 | `write(path, content, base_version)` | Creates a file (`base_version` null) or replaces it (`base_version` = the version you read). |
 | `append(path, text)` | Appends text to an existing file, starting on a new line. |
 | `replace_section(path, heading, content, base_version)` | Replaces the body under one heading, subsections included, keeping the heading line. `heading` is the text (`Usage`) or the full line (`## Usage`). |
@@ -342,7 +347,7 @@ returns the vault's rulebook (`AGENTS.md`).
 | `complete_source(path, summary_page)` | Finishes a claimed source: moves it to `raw/_processed/` and releases the lease. |
 | `release_source(path)` | Gives a claimed source back, for example after a failed ingest: returns it to `raw/`. |
 
-There is no delete tool. A read token can use `get_schema`, `read`, `list` and `search` only.
+There is no delete tool. Read tokens may use the read/search tools and all five graph tools.
 
 What a write token may change is set by the admin's `vault-mcp.yaml`. The v0.2 example allows writes
 in `wiki/`, `raw/`, `_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`, plus any page
@@ -357,6 +362,46 @@ The write tools (`write`, `append`, `replace_section`, `insert_after`, `move`) t
 
 Default limits per credential: 120 requests a minute, 30 writes a minute, 2000 writes a day, and
 10 MB per file.
+
+### Declaring graph relationships
+
+Markdown remains canonical; the watcher compiles relationships into `DATA_PATH/graph.sqlite`.
+Every page becomes a node. Without an explicit id its id uses its node type and full vault-relative
+path without `.md`, for example `component:wiki/components/search`. Set `graph.node_id` for an id
+that survives moves. Duplicate ids or aliases are ambiguous, not silently merged.
+
+```yaml
+type: pipeline
+graph:
+  node_id: pipeline:training
+  relationships:
+    - predicate: produces
+      object: component:model
+      source: wiki/sources/training-readme
+      evidence: "The pipeline writes the trained model to the registry."
+      confidence: high
+      status: current
+```
+
+Create the referenced source-summary page first (`type: source-summary` or `source`).
+Typed relationships need a registered predicate, valid endpoint types, a source-summary reference,
+evidence, confidence (`high`, `medium`, `low`) and status (`current`, `historical`, `proposed`,
+`disputed`, `superseded`). Missing target pages are permitted while authoring; lint reports them.
+The server checks metadata structure and provenance type, not whether the quotation is true.
+
+Body wikilinks produce low-confidence `mentions` edges; `sources:`, `raw:`, `project:` and a
+project's `repo:` list produce navigation edges. Code-fenced and inline-code links are ignored.
+Agents cannot edit `_system/graph/ontology.yaml`; admins may extend it. Invalid ontology updates
+raise an alert and keep the last valid vocabulary. Schema-1 vaults without the file use the
+built-in starter until upgrade.
+
+Every graph tool filters declaring pages, endpoints and traversal intermediates by read policy
+and credential folders before applying limits. Unreadable source pages cause both source and
+evidence to be redacted. Unknown and unreadable node lookups both return empty results.
+`move` preserves explicit ids and rewrites derived-id and frontmatter references as well as
+body links, with the same all-or-nothing permission preflight. Expand YAML anchors used in
+affected references before moving; such moves are refused rather than changing unrelated values.
+These code changes do not widen an existing deployment's write policy or install session hooks.
 
 ## Errors agents see
 

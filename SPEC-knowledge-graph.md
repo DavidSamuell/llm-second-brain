@@ -1,6 +1,6 @@
 # Spec: knowledge-graph
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Draft · **Depends on:** —
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; awaiting Checkpoint J review · **Depends on:** —
 
 ## Objective
 
@@ -18,7 +18,7 @@ Give agents a typed graph of how everything in the vault connects (projects, spe
 
 ```yaml
 graph:
-  node_id: pipeline:asr-training        # optional; default <node_type>:<slug>
+  node_id: pipeline:asr-training        # optional; default <node_type>:<full-vault-relative-path-without-.md>
   aliases: [ASR training, train-asr]
   relationships:
     - predicate: produces
@@ -59,11 +59,21 @@ graph:
 |---|---|
 | `graph_neighbors(node, predicate?, direction?, depth=1..2, limit=50)` | Nodes and edges around a node id or page path |
 | `graph_edges(subject?, predicate?, object?, status?, limit=100)` | Matching typed edges with source, evidence, confidence and status |
-| `graph_path(from, to, max_depth=4)` | The shortest path(s) between two nodes |
+| `graph_path(from_node, to_node, max_depth=4)` | One deterministic shortest directed path between two readable nodes; max_depth 1–4 |
 | `backlinks(path)` | Pages that link to a page, through wikilinks or typed edges |
 | `graph_lint(folder?)` | Ontology violations, missing evidence, dangling objects, orphan nodes, `contradicts` pairs |
 
 **Permission rule:** an edge is returned only when both endpoint pages are readable by the credential (`read.deny` and `--folders`). `evidence` is returned only when its source page is readable too. Explicit-only nodes without a page (e.g. a `repo:` node) count as readable when their subject page is readable.
+
+Declaring pages and every intermediate node must also be readable. Evidence source and quote are
+redacted together when provenance is unreadable. Exact qualified paths never fall back to a
+same-named page elsewhere; duplicate ids/aliases are ambiguous. Virtual raw nodes require
+permission to their raw path; virtual repository nodes require a readable declaring page.
+
+Existing template page types `source-summary` and `adr` map to graph node types `source` and
+`decision`. A source is validated by its actual frontmatter `type: source|source-summary`,
+not a spoofable `graph.node_type` override. Quote truth is an agent responsibility; server
+validation checks required evidence and provenance type, not semantic entailment.
 
 ## Commands
 

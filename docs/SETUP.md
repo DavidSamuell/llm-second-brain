@@ -434,10 +434,23 @@ docker compose restart vault-mcp vault-watcher      # apply vault-mcp.yaml chang
 scripts/history list wiki/index.md                  # versions of a file
 scripts/history restore wiki/index.md --at <timestamp>
 scripts/history restore-deleted wiki/               # bring back deleted files in a folder
-scripts/reindex                                     # rebuild the search index
+scripts/reindex                                     # rebuild search and the derived graph
 ```
 
 Upgrades: see [UPGRADING.md](UPGRADING.md).
+
+### Graph index and ontology
+
+`DATA_PATH/graph.sqlite` is derived from Markdown, never served by Ignis or committed by
+git-sync. The watcher updates it alongside search on page edits, moves and deletes; reindex
+rebuilds both indexes. Restore rebuilds them too. Keep canonical relationships in page
+frontmatter, not in SQLite. Backups snapshot SQLite consistently, but the graph can always
+be regenerated from the vault.
+
+Admins extend `_system/graph/ontology.yaml` (protected from MCP writes). Changes are reloaded
+and trigger graph recompilation; an invalid update alerts and retains the last valid ontology.
+Vaults without that file use the built-in starter until the schema-2 template upgrade.
+The MCP graph tools and metadata format are documented in [CONNECT-AGENTS.md](CONNECT-AGENTS.md#declaring-graph-relationships).
 
 ## 14. Troubleshooting
 

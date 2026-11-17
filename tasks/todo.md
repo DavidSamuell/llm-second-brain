@@ -449,36 +449,41 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - **Status:** `e2e/test_write_policy.py`: 10 passed across local/none profiles (including actual 90 s grace expiry and legacy `read_only` refusal); focused ruff and format checks passed. Retained full non-nightly e2e: 81 passed, 2 host-firewall skips, 2 nightly deselected; vault-mcp 238 passed; ruff and mypy passed before resume. SECURITY, UPGRADING, CONNECT-AGENTS, USER-GUIDE and changelog updated. D40/SPEC-write-policy clarify latest-web lookup and stale-base conflict precedence. Live deployment unchanged.
 
 ### Checkpoint I — after T43–T45
-- [ ] SPEC-write-policy success criteria 1–6 pass; lint, unit and e2e green; human review of the decision order.
-  - Automated acceptance complete; **human review pending**. Review D40's stale-base `conflict` precedence and the recorded-save/unsaved-typing limits in `tasks/impl-notes.md`. Do not start Phase 11 until approved.
+- [x] SPEC-write-policy success criteria 1–6 pass; lint, unit and e2e green; human review of the decision order.
+  - Approved by the user after reviewing Checkpoint I. Phase 11 may proceed; live rollout still requires T58 approval.
 
 ## Phase 11 — knowledge-graph
 
-- [ ] **T46 — Graph model: ontology, extraction, validation** [knowledge-graph] · Decisions: D41, D42 · **watch**
+- [x] **T46 — Graph model: ontology, extraction, validation** [knowledge-graph] · Decisions: D41, D42 · **watch**
   - `vault_core.graph`: ontology model and loader; `extract()` (typed, mentions, sourced_from, summarizes_raw, belongs_to_project, has_repo); `validate()`; starter `vault-template/_system/graph/ontology.yaml`.
   - Acceptance: fixtures produce the expected nodes and edges; each validation error kind is reported with its field.
   - Verify: `uv run pytest vault-core -k graph`.
   - Deps: none · Files: `vault-core/src/vault_core/graph.py`, `vault-core/tests/test_graph.py`, `vault-template/_system/graph/ontology.yaml` · Scope: M
+  - **Status:** pure dataclass model, validated ontology loader/starter, explicit and implicit extraction, source-summary/ADR compatibility, original relationship field indexes. Core graph tests pass as part of the 599-test regression run; schema-2 managed-template registration remains T52.
 
-- [ ] **T47 — Graph store in vault-watcher** [knowledge-graph] · Decisions: D41, D42 · **watch**
+- [x] **T47 — Graph store in vault-watcher** [knowledge-graph] · Decisions: D41, D42 · **watch**
   - `graph.sqlite` schema; per-page update in the index pass (edit, rename, delete); `reindex` rebuilds it; ontology reload with alert on an invalid file.
   - Acceptance: incremental result equals a full rebuild; `read.deny` pages never compiled; 5,000 pages / 50,000 edges rebuild < 60 s.
   - Verify: `uv run pytest vault-watcher -k graph`.
   - Deps: T46 · Files: `vault-watcher/src/vault_watcher/graph_store.py`, `vault-watcher/src/vault_watcher/{recorder,cli}.py`, tests · Scope: M
+  - **Status:** transactional SQLite rebuild and incremental updates wired to recorder, startup, reindex, history restore and backup restore. Actual source-summary metadata is revalidated for dependent pages; ontology reload retains the persisted last good vocabulary and alerts without quoting invalid content. Rebuild proof: 5,000 nodes/50,000 edges in 0.956 s on this host. CI now runs the same <60 s gate.
 
-- [ ] **T48 — Graph tools and write-time validation** [knowledge-graph] · Decisions: D41 · **watch**
+- [x] **T48 — Graph tools and write-time validation** [knowledge-graph] · Decisions: D41 · **watch**
   - `graph_neighbors`, `graph_edges`, `graph_path`, `backlinks`, `graph_lint` with permission filtering; agent writes with an invalid `graph:` block → `invalid` + `graph_errors`.
   - Acceptance: SPEC-knowledge-graph criteria 2–4 in unit tests, including a folder-scoped credential and a `read.deny` endpoint; depth-2 neighbours < 200 ms on the 50k-edge fixture.
   - Verify: `uv run pytest vault-mcp -k graph`.
   - Deps: T47 · Files: `vault-mcp/src/vault_mcp/tools_graph.py`, `vault-mcp/src/vault_mcp/{server,writer}.py`, tests · Scope: M
+  - **Status:** all five read-scope tools registered; declaring-page/endpoints/intermediates filtered before limits, source/evidence redacted together, ambiguous ids/aliases not chosen. Writer validation uses current readable source metadata; moves rewrite graph/frontmatter references as well as body links. 599 unit tests pass, including cold/warm 5k/50k query checks below 200 ms; ruff/format/mypy (45 files) pass. CI runs the query budget too.
 
-- [ ] **T49 — knowledge-graph e2e and docs** [knowledge-graph] · **delegate**
+- [x] **T49 — knowledge-graph e2e and docs** [knowledge-graph] · **delegate**
   - e2e for criteria 1–6 (including backup → restore → reindex graph counts); CONNECT-AGENTS tools table; SETUP reindex note.
   - Verify: `uv run pytest e2e -k graph -m "(profile_local or profile_none) and not nightly"`.
   - Deps: T48 · Files: `e2e/test_graph.py`, `docs/CONNECT-AGENTS.md`, `docs/SETUP.md` · Scope: S
+  - **Status:** all four profile scenarios passed: local write/query/permission/move/lint on the first run, then both corrected restore fixtures and the none-profile browser-debounce wait on the focused retry (3 passed, 1 unchanged scenario deselected). All six graph success criteria covered. CONNECT-AGENTS, SETUP, changelog and graph spec updated; no live deployment.
 
 ### Checkpoint J — after T46–T49
 - [ ] SPEC-knowledge-graph criteria 1–6 pass; lint, unit and e2e green.
+  - Automated acceptance complete; **human review pending** before Phase 12. Review full-path derived ids versus stable explicit ids, source provenance versus quote truth, and schema-1/default-ontology compatibility. Local checks passed; GitHub CI performance gates are configured, not yet observed on the runner.
 
 ## Phase 12 — doc-authoring
 
