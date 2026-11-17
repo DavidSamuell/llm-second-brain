@@ -1,6 +1,6 @@
 # Spec: doc-authoring
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; Checkpoint K ready for review (criteria 1–4 verified, live criterion 5 at T59) · **Depends on:** write-policy, knowledge-graph
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Released in v0.2.0; all criteria verified (criterion 5 live in Claude Code and omp, T59) · **Depends on:** write-policy, knowledge-graph
 
 ## Objective
 
@@ -157,7 +157,7 @@ Skill text: imperative steps, tool names without harness prefixes, as in the exi
 1. The e2e scenario above passes.
 2. `project_context(repo="git@github.com:bookbot-hive/foo.git")` returns the project whose `repo:` lists `github.com/bookbot-hive/foo`, within 4,000 characters.
 3. `docs-lint` reports a human doc whose cited source has been superseded.
-4. An existing vault upgraded with `scripts/upgrade-vault` gets schema 2 rules, templates and skills, without touching custom blocks.
+4. An existing vault upgraded with `scripts/upgrade-vault` gets the current schema's rules, templates and skills, without touching custom blocks.
 5. `/docs-vault:document`, `ingest`, `ask` and `lint` work in Claude Code and omp and finish within the session; nothing they produce is left in `raw/` for the nightly run.
 
 ## Open questions

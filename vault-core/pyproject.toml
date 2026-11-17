@@ -1,6 +1,6 @@
 [project]
 name = "vault-core"
-version = "0.1.0"
+version = "0.2.0"
 description = "Shared library for vault-mcp and vault-watcher: paths, policy, lock, history, secrets, audit."
 requires-python = ">=3.13,<3.14"
 license = "MIT"

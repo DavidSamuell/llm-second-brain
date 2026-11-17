@@ -1,6 +1,6 @@
 # Docs Vault Kit — Specification
 
-**Status:** v0.1 released (2026-11-17) · **v0.2 draft:** second brain, §18 · **Date:** 2026-11-17
+**Status:** v0.2 released (2026-11-17), including the second brain (§18); v0.1 released 2026-11-17 · **Date:** 2026-11-17
 
 ## 1. Goal
 

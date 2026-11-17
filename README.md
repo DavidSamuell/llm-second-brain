@@ -8,7 +8,7 @@ An open-source, self-hostable kit for running a shared Obsidian documentation va
 
 The kit contains no documentation content, only what is needed to deploy, secure, and operate a vault. A deployer brings (or creates) the vault, picks how to publish it, edits `.env`, and runs `docker compose up`.
 
-> **Status:** v0.1.0. Everything in [`SPEC.md`](SPEC.md) is built and tested; the `cloudflare` profile, Google sign-in and the agent plugin (Claude Code, Codex, omp) are verified on a live deployment. The `caddy` profile is built and config-validated but not yet deployed on a public host; remaining manual checks are under Deferred in [`tasks/todo.md`](tasks/todo.md). The build plan is in [`tasks/plan.md`](tasks/plan.md).
+> **Status:** v0.2.0. Everything in [`SPEC.md`](SPEC.md), including the v0.2 second-brain modules (§18), is built and tested. The `cloudflare` profile, Google sign-in, the agent plugin with session hooks (Claude Code and omp; Codex without automatic capture) and nightly maintenance are verified on a live deployment. The `caddy` profile is built and config-validated but not yet deployed on a public host; remaining manual checks are under Deferred in [`tasks/todo.md`](tasks/todo.md). The build plan is in [`tasks/plan.md`](tasks/plan.md).
 
 ## Quick start
 

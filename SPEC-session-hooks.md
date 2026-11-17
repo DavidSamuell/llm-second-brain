@@ -1,6 +1,6 @@
 # Spec: session-hooks
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; Checkpoint L ready for review (automated criteria 4–5 verified, live Claude Code/omp checks remain T59) · **Depends on:** doc-authoring (and through it write-policy, knowledge-graph)
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Released in v0.2.0; all criteria verified (1–3 live in Claude Code and omp, T59) · **Depends on:** doc-authoring (and through it write-policy, knowledge-graph)
 
 ## Objective
 

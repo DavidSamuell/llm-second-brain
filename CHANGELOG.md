@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
+The second brain (SPEC.md §18): agents keep the human docs and a typed knowledge graph current, team members' agents use and feed the vault while they work, and a nightly agent maintains it. Verified on the live Bookbot deployment. **Vault template schema 1 → 4**, and **breaking for vault layout** (schema 4, below): run `scripts/upgrade-vault` and update `write.allow` in `vault-mcp.yaml`.
+
 ### Added
 
 - Opt-in agent editing of human-maintained pages with required change summaries, audit attribution and one review-queue notice per page per UTC day. The example policy now includes the human-doc folders (`domains/`, `shared/`); existing policies retain `read_only` unless changed.

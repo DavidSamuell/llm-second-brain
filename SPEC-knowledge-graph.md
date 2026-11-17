@@ -1,6 +1,6 @@
 # Spec: knowledge-graph
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; awaiting Checkpoint J review · **Depends on:** —
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Released in v0.2.0; live on Bookbot (T58) · **Depends on:** —
 
 ## Objective
 

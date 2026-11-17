@@ -1,6 +1,6 @@
 # Spec: scheduled-maintenance
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; Checkpoint L ready for review (automated criteria 3–4 verified, live schedule/ingest/Slack checks remain T60) · **Depends on:** doc-authoring, knowledge-graph
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Released in v0.2.0; live on Bookbot (T60). Criteria 3–4 verified; 1 (first scheduled 00:00 run), 2 (a real `raw/` source ingested overnight) and 5 (a month within budget) await live observation · **Depends on:** doc-authoring, knowledge-graph
 
 ## Objective
 
