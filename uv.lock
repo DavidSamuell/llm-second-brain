@@ -271,7 +271,7 @@ wheels = [
 
 [[package]]
 name = "docs-vault-kit"
-version = "0.0.0"
+version = "0.1.0"
 source = { virtual = "." }
 
 [package.dev-dependencies]
@@ -1197,7 +1197,7 @@ wheels = [
 
 [[package]]
 name = "vault-core"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "vault-core" }
 dependencies = [
     { name = "pydantic" },
@@ -1214,7 +1214,7 @@ requires-dist = [
 
 [[package]]
 name = "vault-mcp"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "vault-mcp" }
 dependencies = [
     { name = "fastmcp" },
@@ -1233,7 +1233,7 @@ requires-dist = [
 
 [[package]]
 name = "vault-watcher"
-version = "0.0.0"
+version = "0.1.0"
 source = { editable = "vault-watcher" }
 dependencies = [
     { name = "vault-core" },

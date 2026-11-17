@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-17
+
+First release. Verified on a live Cloudflare deployment; the `caddy` profile is built and config-validated but not yet deployed on a public host (see `tasks/todo.md`, Deferred).
+
 ### Added
 
 - `scripts/agent-plugin`: builds this deployment's `docs-vault` agent plugin as a marketplace that Claude Code, Codex and omp install from. The plugin carries the vault's MCP address (signed in through the browser with OAuth, no token to copy), the three kit skills, and a `connect` command. Publish the output as a git repository your team can read.

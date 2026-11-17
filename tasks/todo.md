@@ -312,7 +312,7 @@ Commands used in verification:
   - [ ] **External check (listed for the user):** a manual review of each recipe against §5.1, and a run of at least one recipe on a real host.
 
 ### Checkpoint F — after T30–T33
-- [ ] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts — **external (listed for the user):** cloudflare §16.1 and §16.4 done on bookbotkids.com (T30); cloudflare §16.3 confirmed by hand; caddy (needs a public VM) remains. Done locally: §16.4 e2e (pass and fail cases) and config validation of both profiles.
+- [x] §16.1 (cloudflare, caddy), §16.3, §16.4 verified on real hosts — cloudflare §16.1, §16.3 and §16.4 done on bookbotkids.com (T30). **Caddy deferred by the user (2026-11-17, no urgency):** moved to Deferred below. Done locally: §16.4 e2e (pass and fail cases) and config validation of both profiles.
 
 ## Phase 7 — Optional services and lifecycle
 
@@ -399,3 +399,13 @@ Commands used in verification:
 ### Checkpoint H — complete
 - [ ] All 22 §16 acceptance tests pass (CI e2e + nightly + documented manual runs) — **CI (PR #1, run 42767114630):** lint, unit, and e2e 76 passed / 1 skipped (the nightly browser test, which runs in nightly.yml). **Local:** unit 520+, e2e 74 passed / 2 skipped (host firewall) in both profiles, nightly browser test passes locally. Automated locally: §16.2, 4, 5, 7–11, 13–22 and the §16.1 local deploy (§16.12 via the nightly test). **External, listed per task:** §16.1 cloudflare/caddy and a timed clean-VM run, §16.3 on real hosts, §16.6 via the agent plugin (approval-code mode done), manual client connections, a real Claude Code agent-runner run, the nightly and release workflows on GitHub.
 - [ ] CHANGELOG updated; v0.1.0 tag published — CHANGELOG is up to date (Unreleased). Tagging v0.1.0 publishes images to GHCR, so it waits for the user's go-ahead.
+
+## Deferred (no urgency; the user chose to release without them, 2026-11-17)
+
+- [ ] **Caddy profile on a public host** (T31, §16.1 caddy, §16.3): a cloud VM (e.g. Hetzner CX23, ~€0.01/hour) or 80/443 forwarded to Bookbot-GPU1. Bookbot-GPU1 is not reachable on 80/443 today (tested with check-host.net). Steps: docs/ingress/caddy.md, then scripts/check-exposure and the allowed/denied login check.
+- [ ] Timed fresh install on a clean machine (§16.1 local, < 30 min; T29).
+- [ ] A dry run of SETUP.md by someone other than the author (T39).
+- [ ] A read-scope OAuth sign-in, to confirm read access can't write (§16.6).
+- [ ] Cursor and ChatGPT clients (optional; T40).
+- [ ] Manual review of the ingress recipes against §5.1 (T33).
+
