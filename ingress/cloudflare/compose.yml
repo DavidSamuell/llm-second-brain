@@ -4,7 +4,7 @@
 #   MCP_HOST   -> http://vault-mcp:8082   (Access "Bypass": vault-mcp authenticates every request)
 services:
   cloudflared:
-    image: cloudflare/cloudflared@sha256:1b1d34d0a9c0bfca9de72db8460d328db3f19edd2b96169114e3e893a97bbe53  # 2026.10.5
+    image: cloudflare/cloudflared@sha256:b94b96edf2c9c4360f8879c8580cfaa99077f19c849ec595ca2f711b27d4f344  # 2026.10.5
     command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
     environment:
       TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:?set CF_TUNNEL_TOKEN in .env}
