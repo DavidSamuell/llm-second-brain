@@ -427,11 +427,12 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
 
 ## Phase 10 — write-policy
 
-- [ ] **T43 — Policy model and decision order** [write-policy] · Decisions: D40 · **watch**
+- [x] **T43 — Policy model and decision order** [write-policy] · Decisions: D40 · **watch**
   - `WritePolicy`: `protected`, `human_pages: read_only|edit_with_notice`, `human_edit_grace_s`; `check_write` order per SPEC-write-policy; new reasons `protected`, `recently_edited`.
   - Acceptance: a table test covers every row of the decision order in both modes; `protected` matches files and folders; v0.1 default config still loads.
   - Verify: `uv run pytest vault-core -k policy`.
   - Deps: none · Files: `vault-core/src/vault_core/policy.py`, `vault-core/tests/test_policy.py`, `vault-mcp.example.yaml` · Scope: S
+  - **Status:** `WritePolicy` gains `human_pages: edit_with_notice`, `protected` (files or `folder/` prefixes; defaults to the rule files, so v0.1 policy files get the protection too) and `human_edit_grace_s` (default 90). `check_write(…, web_saved_s_ago=)` follows the D40 order and returns `Decision.human_page=True` for allowed human-page edits. 21 new test cases (decision table, v0.1 file loading, field validation). The example policy is now the v0.2 one, so the e2e harness runs with it (the §16.10 refusal test moves to `read_only` mode in T45).
 
 - [ ] **T44 — Writer: grace, summary, human-page notice** [write-policy] · Decisions: D40 · **watch**
   - Head-of-history lookup before the policy check; `summary` on all write tools (required on human pages); `human_page: true` in audit; daily notice deduplicated in `state.db`; `move` checks `protected` on both paths.

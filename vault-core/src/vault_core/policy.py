@@ -1,7 +1,8 @@
-"""`vault-mcp.yaml` policy model and the read/write rules (plan D8, D9, D27).
+"""`vault-mcp.yaml` policy model and the read/write rules (plan D8, D9, D27, D40).
 
-The rules are pure functions. The caller supplies whether the file exists and its
-current `maintainer` (from the file on disk, never from incoming content).
+The rules are pure functions. The caller supplies whether the file exists, its current
+`maintainer` (from the file on disk, never from incoming content), and how long ago the web
+editor last saved it (from history).
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    NonNegativeFloat,
     PositiveFloat,
     PositiveInt,
     ValidationError,
@@ -43,13 +45,36 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+# Rule files agents must never rewrite, whatever their frontmatter says (SPEC-write-policy).
+DEFAULT_PROTECTED = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "skills/",
+    "_system/templates/",
+    "_system/graph/ontology.yaml",
+]
+
+
+def validate_paths_or_prefixes(entries: list[str]) -> list[str]:
+    """Folder prefixes end with '/'; anything else names one file."""
+    for entry in entries:
+        try:
+            normalize(entry[:-1] if entry.endswith("/") else entry)
+        except PathError as exc:
+            raise ValueError(f"invalid path {entry!r}: {exc}") from None
+    return entries
+
+
 class WritePolicy(_Strict):
     allow: list[str]
-    human_pages: Literal["read_only"] = "read_only"
+    human_pages: Literal["read_only", "edit_with_notice"] = "read_only"
+    protected: list[str] = Field(default_factory=lambda: list(DEFAULT_PROTECTED))
+    human_edit_grace_s: NonNegativeFloat = 90
     delete: Literal[False] = Field(False, description="No delete tool exists in v1 (D9).")
     max_file_mb: PositiveFloat = 10
 
     _check_allow = field_validator("allow")(validate_prefixes)
+    _check_protected = field_validator("protected")(validate_paths_or_prefixes)
 
 
 class ReadPolicy(_Strict):
@@ -92,13 +117,17 @@ def load_policy(path: Path) -> Policy:
 
 
 ReadReason = Literal["hidden", "denied", "out_of_scope"]
-WriteReason = ReadReason | Literal["human_page", "not_in_write_allow"]
+WriteReason = (
+    ReadReason | Literal["human_page", "not_in_write_allow", "protected", "recently_edited"]
+)
 
 
 @dataclass(frozen=True)
 class Decision:
     allowed: bool
     reason: WriteReason | None = None
+    # Allowed write to a `maintainer: human` page (edit_with_notice): audit it and raise a notice.
+    human_page: bool = False
 
 
 ALLOW = Decision(True)
@@ -106,6 +135,10 @@ ALLOW = Decision(True)
 
 def under(path: str, prefixes: list[str]) -> bool:
     return any(path.startswith(prefix) for prefix in prefixes)
+
+
+def protected(path: str, entries: list[str]) -> bool:
+    return any(path.startswith(e) if e.endswith("/") else path == e for e in entries)
 
 
 def check_read(path: str, policy: Policy, folders: list[str] | None) -> Decision:
@@ -126,16 +159,24 @@ def check_write(
     *,
     exists: bool,
     maintainer: str | None,
+    web_saved_s_ago: float | None = None,
 ) -> Decision:
-    """D9: agent/shared pages are writable anywhere readable; human pages never; the rest only
-    under `write.allow`. A new file has no maintainer, so only `write.allow` applies."""
+    """D9/D40, in order: readable; never a protected rule file; never within the grace period
+    after a web-editor save; agent/shared pages anywhere readable; human pages per
+    `human_pages`; the rest only under `write.allow`. A new file has no maintainer."""
     readable = check_read(path, policy, folders)
     if not readable.allowed:
         return readable
+    if protected(path, policy.write.protected):
+        return Decision(False, "protected")
+    if web_saved_s_ago is not None and web_saved_s_ago < policy.write.human_edit_grace_s:
+        return Decision(False, "recently_edited")
     current = maintainer if exists else None
     if current in ("agent", "shared"):
         return ALLOW
     if current == "human":
+        if policy.write.human_pages == "edit_with_notice":
+            return Decision(True, human_page=True)
         return Decision(False, "human_page")
     if under(path, policy.write.allow):
         return ALLOW
