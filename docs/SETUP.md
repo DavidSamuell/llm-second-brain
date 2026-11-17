@@ -345,6 +345,8 @@ On a conflict, git-sync keeps your local copy as `<file>.conflict-<timestamp>.md
 
 ## 10. Optional: server-side agent (agent-runner)
 
+For scheduled lint and ingest on a host where Claude Code is installed and logged in (a Claude subscription or an API key), use [nightly maintenance](#nightly-maintenance-after-the-backup) instead: it runs after the backup, has no web tool, and alerts on failure. agent-runner remains the option for container-only deployments with no Claude Code on the host; if you use nightly maintenance, don't also run agent-runner's lint job on the same vault.
+
 `agent-runner` runs the kit's ingest and lint jobs on a schedule, through vault-mcp with its own token. It has no direct write access to the vault. The default Claude Code runner may use only the vault-mcp tools and Claude Code's `WebFetch` tool, which it uses to fetch sources that were submitted as a URL only. Fetched pages are treated as data, never as instructions, but they are still untrusted input reaching a model with write access to the vault; see [SECURITY.md](SECURITY.md). Turn it on with either:
 
 - `ANTHROPIC_API_KEY=...`: runs Claude Code headless (the default), billed per use, or
@@ -423,6 +425,70 @@ scripts/setup --non-interactive      # updates PUID/PGID for this server, starts
 ```
 
 Change `VAULT_PATH` and `DATA_PATH` in `.env` first if the new server uses other folders.
+
+### Nightly maintenance (after the backup)
+
+`scripts/maintenance` runs an agent on the host once a night, after the backup. It:
+
+1. ingests the sources waiting directly in `raw/`, oldest first, up to `--max-sources` (default 30); sources it can't process (for example a URL it can't fetch: it has no web tool) are released with a review item;
+2. runs the structural and semantic checks of the `docs-lint` skill on the whole vault;
+3. fixes what agents may fix and files review items for the rest;
+4. archives ticked review items, rewrites `_system/lint-report.md` and adds a `_system/log.md` line.
+
+All changes go through vault-mcp with the `maintenance` token, so they get the policy checks, the secret check, history and the audit log. Security details: [SECURITY.md](SECURITY.md#nightly-maintenance-scriptsmaintenance).
+
+**Requirements on the host:** a user other than root that owns `DATA_PATH` (normally the `PUID` user), Claude Code 2.1.259 or later on that user's `PATH` and logged in (`claude auth login`, with a Claude subscription or a Console account) or `ANTHROPIC_API_KEY` in the cron environment, plus `jq`, `curl`, `flock` and `timeout`. `--setup` also needs Docker (it uses `scripts/token`).
+
+**Setup**, once, with the stack running:
+
+```bash
+scripts/maintenance --setup --owner admin@example.com
+```
+
+It creates two tokens with `scripts/token`: `maintenance` (scope `write`) in `DATA_PATH/maintenance/token` and `maintenance-preview` (scope `read`, for `--dry-run`) in `DATA_PATH/maintenance/preview-token`, both mode `0600` and never expiring. Running it again keeps existing tokens. If a token file is lost, setup revokes only that credential and creates a new one; other tokens and OAuth grants are never touched. `--owner` defaults to `maintenance@<DOMAIN>`.
+
+**Preview first:**
+
+```bash
+scripts/maintenance --dry-run
+```
+
+The agent reads the vault with the read-only preview token and writes what it would do to `DATA_PATH/maintenance/<date>-preview-<run>.md`. vault-mcp refuses any write, so nothing in the vault changes: no ingest, no fixes, no report, no log line. A failed preview exits 1 and sends the same failure alert as a scheduled run.
+
+**Cron** (host crontab of the same user): run maintenance after the backup, also when the backup failed, because maintenance doesn't depend on that night's archive:
+
+```bash
+# crontab -e
+0 0 * * * cd /path/to/docs-vault-kit && { if scripts/backup --out /mnt/backups; then scripts/maintenance; else scripts/maintenance --after-backup-failure; fi; } >> /var/log/docs-vault-nightly.log 2>&1
+```
+
+`--after-backup-failure` asks the agent to note the failed backup in the report. The backup failure itself is reported by your backup job, not by maintenance.
+Use this instead of the backup-only cron entry, not in addition to it. Cron uses the host's
+timezone; report dates and log filenames use UTC.
+
+| Option or setting | Meaning |
+|---|---|
+| `--max-budget-usd N` | Claude Code's `--max-budget-usd` (default `5`). It is Claude Code's own cost estimate, checked between requests, so a run can end slightly above it; it is not a billing cap. |
+| `--timeout D` / `MAINTENANCE_TIMEOUT` | Agent wall-clock limit (default `45m`; `30s`, `2h` and plain seconds work), then up to 30 seconds kill grace. Each MCP probe has its own 30-second limit. |
+| `--max-sources N` | Requested source limit for the agent workflow (default `30`), not a server-side claim quota; remaining sources wait for the next night. |
+| `MAINTENANCE_MODEL` | Model passed to Claude Code; empty = its default. |
+| `MAINTENANCE_MAX_TURNS` | Claude Code's `--max-turns` (default `300`). |
+| `MAINTENANCE_MCP_URL` | vault-mcp endpoint (default `http://<BIND_ADDR>:<MCP_PORT>/mcp`, with `127.0.0.1` for `0.0.0.0`). |
+| `DATA_PATH`, `MCP_PORT`, `BIND_ADDR`, `ALERT_WEBHOOK`, `DOMAIN` | Taken from the environment, else read as plain `KEY=value` lines from `.env` (or `ENV_FILE`). `.env` is never executed. |
+
+**Outcome.** The script decides it itself, from Claude Code's result JSON and from `_system/lint-report.md` read back through vault-mcp:
+
+| Outcome | Condition | Alert |
+|---|---|---|
+| ok | the agent exits 0 with a successful result, and the report is a new version with this run's `maintenance_run:` id and `errors: 0` | none |
+| unresolved | ok, but the report lists findings it couldn't fix (`unresolved:` count or `- unresolved:` lines) | none: they are in the review queue |
+| failed | non-zero exit, timeout, budget or turn limit reached, no result JSON, vault-mcp unreachable, token rejected, no new report from this run, or any `- error:` line | one `maintenance_failed` (high) with the reason and the log path |
+
+Coverage is bounded: a large vault or a long `raw/` queue may not fit in the budget or the time limit. Such a run fails with an alert; the fixes it made stay (with history), and the next run starts again. Raise the budget only after reading a few reports.
+
+**Logs:** `DATA_PATH/maintenance/<UTC date>.log` (mode `0600`) has one line per step, the reported cost (or "cost unavailable"), the agent's final text, and on failure the end of its error output, with tokens redacted. Runs never overlap: a run that starts while another is going logs "skipped" and exits 0.
+
+**Custom agent:** `MAINTENANCE_AGENT_COMMAND` replaces Claude Code (the e2e tests use it). It runs with `bash -c` in the working folder and gets `MAINTENANCE_MCP_CONFIG` (path of the `0600` MCP config holding the token), `MAINTENANCE_PROMPT_FILE`, `MAINTENANCE_RUN_ID`, `MAINTENANCE_DRY_RUN`, `MAINTENANCE_MAX_SOURCES`, `MAINTENANCE_MAX_BUDGET_USD` and `MAINTENANCE_AFTER_BACKUP_FAILURE`. It must print a Claude Code style result object (`{"type": "result", "subtype": "success", "is_error": false, "total_cost_usd": …, "result": "…"}`). It is trusted configuration: it has whatever tools it gives itself.
 
 ## 13. Everyday commands
 
