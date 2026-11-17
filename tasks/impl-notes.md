@@ -233,3 +233,14 @@ Decisions:
 - Hook integration regressions: malformed bracketed URL userinfo produced an identity while the server rejected it; added a parity regression and reject that input. omp SDK docs explicitly discard/replay `before_agent_start` context after source-base changes; an initial boolean flag lost startup context on replay. Added a behavioral discard/publish test and now acknowledge delivery only when the `context` event contains the candidate custom message. Normal reminder cadence is tested; SDK re-preparations can advance its best-effort prompt counter.
 - Final hook correction proof: 43 passed, 23 deselected in 2.72 s, including normalizer parity, both omp lifecycle tests and discarded-startup replay. Final ruff check/format (185 files) and shellcheck passed. No further audits or unchanged broad suites run.
 - Checkpoint L ready for human review. No Bookbot service, vault, grant, installed plugin, production webhook or cron changed. Real user-grant sessions and actual Slack/schedule verification remain the approved live steps T58–T60.
+
+## T58 — Bookbot-GPU1 deployment
+
+- Checkpoint L approved; the user approved all six T58 live steps and the v0.2 policy in one form.
+- The live compose project runs from this checkout, so `docker compose up -d --build --wait` deploys HEAD. The rebuild reused images that e2e runs had built from the same tree two hours earlier (cache hit, 8 s); only vault-mcp, vault-watcher and ignis-init were recreated.
+- `upgrade-vault` was previewed (`echo n`) before `--yes`. `vault-mcp.yaml.*` is now git-ignored so the kept v0.1 policy cannot be committed.
+- `.env.example` had no new settings, so `scripts/setup --non-interactive` was not needed.
+- A read-scope token's `tools/list` shows all 20 tools; writes are refused at call time (`Credential.allows`). Pre-existing behaviour, unchanged here.
+- Claude Code grant check via `claude -p` (Sonnet, one `get_schema` call) reported $0.2667214.
+- Risk: e2e compose runs build the same `docs-vault-kit/*:local` tags the live stack uses. Any later live `up`/recreate picks up whatever tree the last e2e run built, including uncommitted work. Deploy only from a clean checkout and rebuild with `--build`.
+- Live: no plugin, hook, maintenance credential or cron change yet (T59, T60).

@@ -547,15 +547,16 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - **Status:** full ingest/structural/semantic/fix/report prompt, midnight host-cron example after backup even on failure, source-limit/budget/timeout semantics, read-only preview and token privacy/rotation documented. Container agent-runner remains an alternative. SIGKILL cleanup and model-compliance limits are explicit.
 
 ### Checkpoint L — after T54–T57
-- [ ] SPEC-session-hooks criteria 4–5 and SPEC-scheduled-maintenance criteria 3–4 pass in automated tests; lint, unit and e2e green.
-  - **Ready for human review:** automated criteria covered; final ruff/format and shellcheck passed, mypy 47 source files passed. Application source is unchanged: the 656-test unit baseline is retained, not rerun. Real hook+maintenance+preview smoke reported total model cost $0.2853438. Live deployment, plugin install, actual Slack delivery and cron checks remain T58–T60.
+- [x] SPEC-session-hooks criteria 4–5 and SPEC-scheduled-maintenance criteria 3–4 pass in automated tests; lint, unit and e2e green.
+  - Approved by the user. Phase 14 may proceed; each live step still needs its own approval.
 
 ## Phase 14 — Bookbot rollout and v0.2.0
 
-- [ ] **T58 — Deploy v0.2 to Bookbot-GPU1** · Decisions: D46 · **watch** (ask before each live step)
+- [x] **T58 — Deploy v0.2 to Bookbot-GPU1** · Decisions: D46 · **watch** (ask before each live step)
   - Backup; pull/build images; `upgrade-vault` to schema 2; new policy (old kept as `vault-mcp.yaml.v1`); reindex; check-exposure; smoke test through MCP (graph tools, `project_context`).
   - Acceptance: services healthy; check-exposure passes; existing grants still work.
   - Deps: Checkpoint K · Scope: S
+  - **Status:** deployed `32278bd` on 2026-11-17 with user approval of each step. Config backup `vault-backup-20261117T072941Z.tar.gz` (NAS, 0600); vault-mcp/vault-watcher rebuilt; `upgrade-vault` applied 16 updates + 2 adds, no SKIP, schema 1 → 2; v0.2 `write:` block adopted, v0.1 kept as git-ignored `vault-mcp.yaml.v1`; reindex 23 documents/graph. Health, Obsidian 1.14.4 and every `check-exposure` line passed. Live MCP smoke (temporary read token, revoked): 20 tools, schema 2, `read`, `list`, `graph_neighbors`, `backlinks`, `project_context` (null: no project pages yet). Existing OAuth grants: omp and Claude Code plugin returned schema 2 and appear in the audit log; the Codex grant was not exercised. The v0.1 bearer tokens were already revoked before T58.
 
 - [ ] **T59 — Plugin with hooks, live** [session-hooks] · **watch**
   - `scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbot-kids/*'`; push to `bookbot-hive/bookbot-doc-vault`; update Claude Code, omp (and Codex if supported).
