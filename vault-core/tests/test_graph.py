@@ -45,6 +45,18 @@ def test_graph_extracts_typed_and_implicit_edges_without_code_links() -> None:
     assert validate(page, onto, source_types={"wiki/sources/readme": "source-summary"}) == []
 
 
+def test_links_in_inline_code_wrapped_over_lines_are_not_mentions() -> None:
+    body = (
+        'Run `append(log, "- ingest [[wiki/sources/<name>]] — one\nline")` then\n[[wiki/real]].\n'
+    )
+    body += "\nA lone ` tick, then a new paragraph\n\nwith [[wiki/after]] and ` another.\n"
+    page = extract("skills/x.md", {}, body, default_ontology())
+    assert {e.object for e in page.edges if e.predicate == "mentions"} == {
+        "page:wiki/real",
+        "page:wiki/after",
+    }
+
+
 def test_graph_source_and_project_frontmatter_edges() -> None:
     onto = default_ontology()
     source = extract(

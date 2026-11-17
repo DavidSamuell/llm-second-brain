@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Fixed
 
 - The generated Claude Code plugin no longer pins `version`, so `claude plugin update` installs each rebuild the admin pushes (Claude Code versions it by commit). Update instructions now include the plugin update step for Claude Code and omp.
+- Wikilinks inside an inline code span that wraps onto the next line no longer become graph `mentions` (a false `dangling_object` on the shipped `docs-ingest` skill).
 
 ## [0.1.0] - 2026-11-17
 

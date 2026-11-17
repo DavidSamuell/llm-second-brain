@@ -17,7 +17,10 @@ CONFIDENCES = frozenset({"high", "medium", "low"})
 STATUSES = frozenset({"current", "historical", "proposed", "disputed", "superseded"})
 _ID = re.compile(r"^[a-z][a-z0-9-]*:[^\s:]+$")
 _LINK = re.compile(r"!?\[\[([^\]\n]+)\]\]")
-_CODE = re.compile(r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1\s*$|`+[^`\n]*`+")
+# Fenced blocks, and inline code spans, which may wrap onto following lines of the same paragraph.
+_CODE = re.compile(
+    r"(?ms)^\s*(`{3,}|~{3,})[^\n]*\n.*?^\s*\1\s*$|(`+)(?:[^`\n]|\n(?![ \t]*\n))*?\2(?!`)"
+)
 
 
 class NodeType(BaseModel):
