@@ -2,9 +2,12 @@
 # Build the docs-vault agent plugin for this deployment (SPEC §10.1).
 #
 #   scripts/agent-plugin [--url https://docs-mcp.example.com/mcp] [--out DIR] [--name NAME]
+#                        [--capture-repos 'github.com/your-org/*,git.example.com/group/app']
 #
 # Writes a plugin marketplace that Claude Code, Codex and omp can install from. The vault's MCP
 # address is written into the plugin, so team members only install it and sign in (OAuth).
+# --capture-repos turns on the session hooks (SPEC-session-hooks) in those repos: comma-separated
+# host/path or host/path/* by origin remote. Empty by default: hooks do nothing.
 # Defaults: --url https://$MCP_HOST/mcp from .env, --out ./agent-plugin-dist, --name docs-vault.
 # Publish DIR as a git repository your team can read (see docs/CONNECT-AGENTS.md).
 set -euo pipefail
@@ -13,13 +16,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 die() { echo "agent-plugin: $*" >&2; exit 1; }
 
-url="" out="agent-plugin-dist" name="docs-vault"
+url="" out="agent-plugin-dist" name="docs-vault" capture_repos=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --url) [ $# -ge 2 ] || die "--url needs a value"; url="$2"; shift 2 ;;
     --out) [ $# -ge 2 ] || die "--out needs a value"; out="$2"; shift 2 ;;
     --name) [ $# -ge 2 ] || die "--name needs a value"; name="$2"; shift 2 ;;
-    -h|--help) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --capture-repos) [ $# -ge 2 ] || die "--capture-repos needs a value"; capture_repos="$2"; shift 2 ;;
+    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -39,6 +43,26 @@ loopback_re='^http://(127\.0\.0\.1|localhost)(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?$'
   || die "--url must be https://host[:port]/path (or http on 127.0.0.1/localhost): $url"
 [[ "$name" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "--name must be kebab-case: $name"
 
+# Capture allowlist, one entry per line in the plugin's hooks/capture-repos. Hosts are matched
+# lower-case; GitHub paths too (as vault-core normalises them), other paths keep their case.
+export LC_ALL=C
+# shellcheck source=agent-plugin/hooks/lib.sh
+. agent-plugin/hooks/lib.sh
+case "$capture_repos" in *[[:cntrl:]]*) die "--capture-repos must be one line" ;; esac
+capture_list=""
+IFS=, read -r -a capture_entries <<<"$capture_repos" || true
+for entry in ${capture_entries[@]+"${capture_entries[@]}"}; do
+  entry="$(printf '%s' "$entry" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  [ -n "$entry" ] || continue
+  host="$(printf '%s' "${entry%%/*}" | tr '[:upper:]' '[:lower:]')"
+  pattern="$host"
+  [[ "$entry" != */* ]] || pattern="$host/${entry#*/}"
+  [ "$host" != github.com ] || pattern="$(printf '%s' "$pattern" | tr '[:upper:]' '[:lower:]')"
+  dv_valid_pattern "$pattern" \
+    || die "--capture-repos entries must be host/path or host/path/* (github.com/owner/name or github.com/owner/*): $entry"
+  capture_list="$capture_list$pattern"$'\n'
+done
+
 [ ! -e "$out" ] || [ -z "$(ls -A "$out")" ] || [ -f "$out/.claude-plugin/marketplace.json" ] \
   || die "$out exists and is not an agent-plugin output; choose another --out"
 
@@ -47,6 +71,65 @@ rm -rf "$plugin" "$out/.claude-plugin" "$out/.agents"
 mkdir -p "$plugin/.claude-plugin" "$out/.claude-plugin" "$out/.agents/plugins"
 cp -R vault-template/skills "$plugin/skills"
 cp -R agent-plugin/commands "$plugin/commands"
+cp -R agent-plugin/hooks "$plugin/hooks"
+chmod 755 "$plugin/hooks/session-start.sh" "$plugin/hooks/prompt-nudge.sh"
+printf '%s' "$capture_list" > "$plugin/hooks/capture-repos"
+
+if [ -n "$capture_list" ]; then
+  capture_doc="Session capture runs only in repos whose \`origin\` remote matches one of:
+
+\`\`\`text
+${capture_list}\`\`\`"
+else
+  capture_doc="No repos are allowlisted in this build, so the session hooks do nothing. The admin
+turns them on with \`scripts/agent-plugin --capture-repos 'github.com/your-org/*'\`."
+fi
+cat > "$plugin/README.md" <<EOF
+# $name: docs vault agent plugin
+
+Connects your agent to the team docs vault at \`$url\` (you sign in through the browser; no
+token to copy) and adds the docs-ingest, docs-query, docs-lint and docs-capture skills and the
+document, ingest, ask and lint commands. Install and sign-in steps are in
+\`docs/CONNECT-AGENTS.md\` of the Docs Vault Kit.
+
+## Session capture (Claude Code and omp)
+
+$capture_doc
+
+An entry is \`host/path\` (one repo) or \`host/path/*\` (every repo directly under that path), matched
+against the remote's normalised form, e.g. \`github.com/org/app\` for
+\`git@github.com:Org/App.git\`. The allowlist only decides where the reminders appear, by the text of
+\`origin\`; it is not proof that a repo belongs to the team. What you can read or change in the
+vault is decided by your own sign-in and the vault's policy.
+
+In such a repo:
+
+- At session start, and again after compaction or \`/clear\`, the hook adds a short block (at most
+  1,500 characters) with the repo id and branch, asking the agent to call the vault's
+  \`project_context\` tool and to follow the \`docs-capture\` skill: durable findings are ingested
+  into the vault as they are settled.
+- Every 10th prompt adds a one-line reminder to capture anything durable so far.
+
+The hooks are small bash scripts (\`hooks/session-start.sh\`, \`hooks/prompt-nudge.sh\`). They read
+the repo's git top-level, \`origin\` and branch, make no network or model calls, and never hold or
+read vault credentials: the agent calls the vault itself, with your sign-in. They need \`bash\`,
+\`git\` and \`jq\`; when something is missing or fails, they add nothing and the session carries on.
+The prompt count is kept per session in a private folder under \`\$TMPDIR\`.
+
+Opting out, checked on every prompt:
+
+- one repo: create \`.docs-vault-ignore\` at the repo root;
+- one session: start the agent with \`DOCS_VAULT_CAPTURE=off\`;
+- or tell the agent not to capture in this session.
+
+Claude Code runs the hooks from \`hooks/hooks.json\`; omp from \`hooks/pre/docs-vault.ts\`, which
+calls the same scripts.
+
+**Codex:** automatic session capture is not supported (Codex CLI ignores plugin hooks; other Codex
+apps are untested). The MCP server and skills work: ask the agent to use the docs-capture skill.
+
+This plugin is generated by \`scripts/agent-plugin\` in the Docs Vault Kit; edit there, not here.
+EOF
 
 description="Connects your agent to the team docs vault at $url (browser sign-in) and adds the docs-ingest, docs-query, docs-lint and docs-capture skills and the document, ingest, ask and lint commands."
 
@@ -118,4 +201,9 @@ cat > "$out/.agents/plugins/marketplace.json" <<EOF
 EOF
 
 echo "wrote $out (plugin $name@$name, MCP address $url)"
+if [ -n "$capture_list" ]; then
+  echo "session capture in: $(printf '%s' "$capture_list" | paste -sd, -)"
+else
+  echo "session capture: off (no --capture-repos)"
+fi
 echo "next: publish $out as a git repository your team can read; install steps are in docs/CONNECT-AGENTS.md"

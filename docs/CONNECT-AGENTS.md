@@ -47,19 +47,23 @@ The examples below use `https://docs-mcp.example.com/mcp`; replace it with your 
 ## The Docs Vault plugin (main way)
 
 Your admin builds a plugin for your vault and publishes it as a git repository. It contains the
-vault's MCP address, the kit's three skills and a `connect` command, and works in Claude Code,
-Codex and omp. You install it and sign in through the browser; there is no token to copy.
+vault's MCP address, the kit's skills, the `connect`, `document`, `ingest`, `ask` and `lint`
+commands and session hooks (see [Automatic capture in project repos](#automatic-capture-in-project-repos)),
+and works in Claude Code, Codex and omp. You install it and sign in through the browser; there is
+no token to copy.
 
-**Admin**, once per deployment (and again when `MCP_HOST` changes):
+**Admin**, once per deployment (and again when `MCP_HOST` or the capture allowlist changes):
 
 ```bash
-scripts/agent-plugin                 # address from MCP_HOST in .env; or --url https://…/mcp
+scripts/agent-plugin --capture-repos 'github.com/your-org/*'   # address from MCP_HOST in .env; or --url https://…/mcp
 cd agent-plugin-dist && git init && git add -A && git commit -m "docs-vault plugin"
 git remote add origin git@github.com:your-org/docs-vault-plugin.git && git push -u origin HEAD
 ```
 
 Make the repository readable by the team (private is fine). OAuth must be on (see above). Below,
-`your-org/docs-vault-plugin` stands for that repository.
+`your-org/docs-vault-plugin` stands for that repository. Leave out `--capture-repos` to ship the
+plugin with session capture off; each build writes the allowlist anew, so pass it on every
+rebuild.
 
 **You**, in your agent:
 
@@ -116,6 +120,48 @@ Notes:
 - Updates: when the admin rebuilds and pushes the plugin, update it with
   `claude plugin marketplace update docs-vault`, `codex plugin marketplace upgrade docs-vault` or
   `omp plugin marketplace update docs-vault`.
+
+### Automatic capture in project repos
+
+In **Claude Code and omp**, the plugin's hooks make the agent work with the vault on its own in
+the repos the admin listed with `--capture-repos`:
+
+- At session start, and again after compaction or `/clear`, a short block (at most 1,500
+  characters) gives the agent the repo id and branch and asks it to call `project_context` first
+  and to follow the `docs-capture` skill: each durable finding (a decision, an architecture or
+  interface, a pipeline or runbook step, an incident root cause) is ingested into the vault as soon
+  as it is settled, under your own sign-in. If the vault has no project for the repo, the agent
+  offers once to create one.
+- Every 10th prompt adds a one-line reminder to capture anything durable so far. Nothing is
+  blocked and nothing runs after the session closes; the nightly maintenance run picks up anything
+  left unfinished.
+
+Which repos: an entry is `host/path` (one repo) or `host/path/*` (any repo directly under that
+path), matched against the `origin` remote of the git top-level in its normalised form
+(`git@github.com:Org/App.git` is `github.com/org/app`; GitHub is case-insensitive, other hosts
+keep their path's case). An empty allowlist, the default, turns capture off. The allowlist is a
+trigger based on the text of `origin`, not proof that a repo belongs to your team: what the agent
+may read or change is still decided by your sign-in and the vault's policy.
+
+Opting out, checked on every prompt (reminders stop at once):
+
+- one repo: a `.docs-vault-ignore` file at the repo root (commit it to opt out for everyone);
+- one session: start the agent with `DOCS_VAULT_CAPTURE=off`;
+- or ask the agent not to capture in this session.
+
+The hooks are small bash scripts that need `bash`, `git` and `jq`. They read only the repo's
+git top-level, `origin` and branch, make no network or model calls, and never hold or read vault
+credentials. If anything is missing or fails, they add nothing and the session carries on. The
+prompt count is kept per session in a private folder under `$TMPDIR`
+(`docs-vault-hooks-<uid>`). Claude Code runs them from the plugin's `hooks/hooks.json`; omp
+from `hooks/pre/docs-vault.ts`, which calls the same scripts.
+
+omp subagents have independent session ids and may receive these instructions too; the capture
+skill deduplicates findings before writing. Hooks are fail-open guidance, not an authorization
+boundary or a guarantee that the model obeys them.
+
+**Codex** doesn't run plugin hooks (Codex CLI 0.167–0.169 ignores them), so automatic capture is
+not supported there. The vault tools and skills still work; ask the agent to use `docs-capture`.
 
 ## Step 1 (local tools): get a token from your admin
 
@@ -409,7 +455,9 @@ evidence to be redacted. Unknown and unreadable node lookups both return empty r
 `move` preserves explicit ids and rewrites derived-id and frontmatter references as well as
 body links, with the same all-or-nothing permission preflight. Expand YAML anchors used in
 affected references before moving; such moves are refused rather than changing unrelated values.
-These code changes do not widen an existing deployment's write policy or install session hooks.
+
+Graph support alone does not widen an existing deployment's write policy. Automatic session
+capture requires the generated plugin and a non-empty repo allowlist as described above.
 
 ## Errors agents see
 

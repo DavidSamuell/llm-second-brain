@@ -112,6 +112,27 @@ def test_unsafe_addresses_are_refused(tmp_path: Path, url: str) -> None:
     assert not out.exists()
 
 
+@pytest.mark.parametrize(
+    "repos",
+    [
+        "*",
+        "github.com/*",  # a whole host
+        "github.com/org/*/x",
+        "github.com/org/app/extra",  # GitHub ids are owner/name
+        "github.com/org/$(id)",
+        "https://github.com/org/*",
+        "github.com/org/../app",
+        "github.com/org/app\ngit.example/x/*",
+        "git.example/group/*;touch x",
+    ],
+)
+def test_unsafe_capture_allowlists_are_refused(tmp_path: Path, repos: str) -> None:
+    out = tmp_path / "market"
+    result = build("--url", URL, "--out", str(out), "--capture-repos", repos)
+    assert result.returncode != 0
+    assert not out.exists()
+
+
 def test_refuses_to_overwrite_an_unrelated_folder(tmp_path: Path) -> None:
     out = tmp_path / "notes"
     out.mkdir()
