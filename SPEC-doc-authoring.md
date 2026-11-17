@@ -8,10 +8,12 @@ Agents write and maintain the documentation people read, and keep the wiki as th
 
 | Folder | Audience | Content | Kept by |
 |---|---|---|---|
-| `projects/` | people | One overview per project: goal, status, team, repos, key decisions, links to its specs, pipelines and runbooks | agents (people may edit) |
-| `specs/` | people | Product specs and architecture docs, per project | agents |
-| `pipelines/` | people | Data, training and build pipelines: inputs, steps, outputs, where they run | agents |
-| `runbooks/` | people | How to operate and fix things | agents |
+| `domains/<domain>/README.md` | people | One overview per domain (a product area such as `asr`): what it covers and its projects | people (agents only with the person's agreement) |
+| `domains/<domain>/<project>/README.md` | people | One overview per project: goal, status, team, repos, key decisions, links to its specs, pipelines and runbooks | agents (people may edit) |
+| `domains/<domain>/<project>/specs/`, `decisions/` | people | Product specs, architecture docs and ADRs for the project | agents |
+| `domains/<domain>/<project>/pipelines/` | people | Data, training and build pipelines: inputs, steps, outputs, where they run | agents |
+| `domains/<domain>/<project>/runbooks/` | people | How to operate and fix things | agents |
+| `domains/<domain>/shared/…`, `shared/…` | people | The same four kinds of doc when they serve a whole domain, or several domains | agents |
 | `wiki/` | agents | Atomic reference pages (components, concepts, glossary, teams, source summaries) with typed edges; links to the human docs instead of repeating them | agents |
 
 When new information arrives, agents update the affected human docs directly (history keeps every version) and record what changed.
@@ -20,14 +22,36 @@ When new information arrives, agents update the affected human docs directly (hi
 
 ## Behaviour
 
-### Where things go (AGENTS.md, schema_version 2)
+### Where things go (AGENTS.md, schema_version 4)
 
-- `projects/<project>.md`, from `project-overview`:
+Schema 2 and 3 kept human docs in flat `projects/ specs/ pipelines/ runbooks/` folders. Schema 4 groups them by domain, then project:
+
+```
+domains/<domain>/README.md                              type: domain   (domain template)
+domains/<domain>/<project>/README.md                    type: project  (project-overview template)
+domains/<domain>/<project>/specs/<name>.md              product-spec, architecture
+domains/<domain>/<project>/decisions/NNNN-<title>.md    adr
+domains/<domain>/<project>/pipelines/<name>.md          pipeline
+domains/<domain>/<project>/runbooks/<name>.md           runbook, guide
+domains/<domain>/shared/{specs,decisions,pipelines,runbooks}/   docs for the whole domain
+shared/{specs,decisions,pipelines,runbooks}/            docs spanning several domains
+```
+
+- Domain and project folder names are lowercase kebab-case. `shared` is reserved and is never a project name.
+- The project overview (`domains/asr/parakeet/README.md`, from `project-overview`):
   - frontmatter: `type: project`, `maintainer: shared`, `repo: [github.com/org/name, …]`, `status`, `owners`, `graph`;
   - body sections: Summary, Status, Team, Repositories, Specs, Pipelines, Runbooks, Decisions, Change log.
-- `specs/<project>/<name>.md` (`product-spec` or `architecture`) and `specs/<project>/decisions/NNNN-<title>.md` (`adr`).
-- `pipelines/<name>.md` (`pipeline`) and `runbooks/<name>.md` (`runbook`). Each has `project:` frontmatter, so one pipeline can serve several projects.
-- Every human doc has a `graph` node. The matching wiki page carries `documented_in` to it, and the human doc carries `belongs_to_project`.
+- Overview files are always `README.md`, so links to them use the full path: `[[domains/asr/parakeet/README]]`. Node ids follow the usual rule, `<node type>:<path without .md>`: `project:domains/asr/parakeet/README`, `domain:domains/asr/README`.
+- Every other doc has `project:` frontmatter listing the projects it belongs to, as full-path wikilinks: `project: ["[[domains/asr/parakeet/README]]"]`. A shared doc lists every project it serves, or `[]` when it serves a whole domain.
+- The `project:` list decides the folder: one project → `domains/<d>/<project>/<subfolder>/`; several projects of one domain (or `[]`) → `domains/<d>/shared/<subfolder>/`; projects in several domains → `shared/<subfolder>/`. A project is added only when a source or the person shows it uses the whole doc; the agent then `move`s the doc to match in the same session. Partial overlap: the doc stays and the other project's `README.md` links the section. `docs-lint` reports misplaced docs and moves them (review item if the move is refused).
+- Every human doc has a `graph` node. The matching wiki page carries `documented_in` to it (a domain overview may also be the target), and the human doc carries `belongs_to_project`.
+
+### Domains
+
+- People create domains. An agent creates `domains/<new>/README.md` only after the person in the session agrees.
+- When a new project fits no existing domain:
+  - in a session, the agent asks the person to pick an existing domain or approve a new one;
+  - unattended (nightly maintenance, no person), the agent still writes the source summary, wiki pages and graph edges, skips the project's human docs, adds one review item "Project <x> needs a domain: suggest <y>", and completes the source.
 
 ### Writing rules
 
@@ -56,7 +80,7 @@ Plain requests ("create pipeline docs for this project and put them in the vault
 
 | Command | Does |
 |---|---|
-| `/docs-vault:document <what>` | Writes or updates a human doc from the current repo and conversation (e.g. `pipeline docs for this project`, `runbook for the nightly backup`). It picks the folder and template, reads the relevant repo files, cites `repo@commit:path`, links the doc from the project page (creating the project page if missing), adds the wiki entry and `documented_in` edge, and logs it. The repo reading is submitted and ingested as a source in the same step. |
+| `/docs-vault:document <what>` | Writes or updates a human doc from the current repo and conversation (e.g. `pipeline docs for this project`, `runbook for the nightly backup`). It picks the folder and template, reads the relevant repo files, cites `repo@commit:path`, links the doc from the project page (creating the project page if missing, in a domain the person picks or approves), adds the wiki entry and `documented_in` edge, and logs it. The repo reading is submitted and ingested as a source in the same step. |
 | `/docs-vault:ingest <file, URL or text>` | Submits the source and ingests it now (claim → summary → human docs and wiki → complete). For a URL, the agent fetches it with its own tools first. |
 | `/docs-vault:ask <question>` | Answers from the vault only (`project_context`, graph, search), citing pages, and says what the vault doesn't cover. |
 | `/docs-vault:lint [folder]` | Runs the structural and semantic checks on demand and fixes what it may, like the nightly run but scoped. |
@@ -76,6 +100,8 @@ Plain requests ("create pipeline docs for this project and put them in the vault
 
   It stays within 4,000 characters and is permission-filtered. `repo` is a normalised git remote (`github.com/org/name`, from https or ssh forms). Unknown repo → `{project: null}`.
 
+  Projects are found only at `domains/*/*/README.md` with `type: project` (exactly two levels under `domains/`). `project` matches the path, the path without `.md`, the project folder name (`parakeet`), the title, the node id (`project:domains/asr/parakeet/README`) and graph aliases. The file stem `README` is never a selector.
+
   Context is a bounded preview, not an exhaustive project export: long text is shortened,
   at most three readable open review items are included, and only whole graph records that fit
   are returned. Use `read` and the graph tools for complete detail. If both selectors are given,
@@ -86,8 +112,10 @@ Plain requests ("create pipeline docs for this project and put them in the vault
 ```bash
 uv run pytest vault-mcp -q -k "project_context or repo"
 uv run pytest e2e -k "doc_authoring" -m "profile_local or profile_none"
-scripts/upgrade-vault            # brings an existing vault's AGENTS.md, templates and skills to schema 2
+scripts/upgrade-vault            # brings an existing vault's AGENTS.md, templates and skills to the current schema
 ```
+
+Schema 4 changes the layout, but `scripts/upgrade-vault` only updates the managed rule files. A vault with pages in the old flat folders must move them by hand with the `move` tool; `scripts/history` keeps their earlier versions under the old paths.
 
 ## Project structure
 
@@ -108,20 +136,20 @@ Skill text: imperative steps, tool names without harness prefixes, as in the exi
 ## Testing strategy
 
 - **Unit:** remote normalisation (ssh, https, `.git` suffix, case, trailing slash, non-GitHub hosts); `project_context` size cap, permission filtering, and an unknown repo.
-- **e2e (scripted agent, as the agent-runner tests do):** a source describing a new pipeline for project `alpha` is ingested. Expected:
-  - `pipelines/<name>.md` is created from the template, with a citation;
-  - `projects/alpha.md` links it;
+- **e2e (scripted agent, as the agent-runner tests do):** a source describing a new pipeline for project `parakeet` in domain `asr` is ingested. Expected:
+  - `domains/asr/parakeet/pipelines/<name>.md` is created from the template, with a citation;
+  - `domains/asr/parakeet/README.md` links it;
   - the wiki page has `documented_in`.
 
   A second source changing one step updates that section only and adds one change-log line, and history shows both versions.
 - **Generator:** the plugin contains the four new commands, and `claude plugin validate` passes.
-- **e2e (scripted agent):** `document` in a sample repo creates `pipelines/<name>.md` with repo citations, a project link and a wiki `documented_in` edge; `ingest` of pasted text leaves the source in `raw/_processed/` with its summary, in the same run.
+- **e2e (scripted agent):** `document` in a sample repo creates `domains/<domain>/<project>/pipelines/<name>.md` with repo citations, a project link and a wiki `documented_in` edge; `ingest` of pasted text leaves the source in `raw/_processed/` with its summary, in the same run.
 - **Manual (live):** in Claude Code and omp, `/docs-vault:document pipeline docs for this project` in a Bookbot repo, reviewed by a person for readability; one plain-language request for the same thing.
 
 ## Boundaries
 
 - **Always:** cite every fact; keep human docs readable without the wiki; one change-log line per update.
-- **Ask first:** new top-level folders, or changing a folder's purpose.
+- **Ask first:** new domains, new top-level folders, or changing a folder's purpose.
 - **Never:** paste secrets or large code; delete pages (retire them with `status: archived`); put agent working notes in human docs.
 
 ## Success criteria

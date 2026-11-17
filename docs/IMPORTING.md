@@ -9,10 +9,11 @@ There are two kinds of import:
 - **As sources.** The document goes through `raw/` while an agent writes a source summary,
   current human-facing docs, and atomic wiki references with typed links. The original stays in
   `raw/_processed/` for provenance. Explicit ingest/document requests finish in the current session.
-- **As existing human docs.** Files go straight into `projects/`, `specs/`, `pipelines/` or
-  `runbooks/`. With the v0.2 example policy agents may maintain them too. A manual edit or
-  `maintainer: human` label is not a permanent lock: permitted human-page edits need a summary
-  and create a review notice. Admins can retain `human_pages: read_only`.
+- **As existing human docs.** Files go straight into a project folder such as
+  `domains/asr/parakeet/specs/`, or into `domains/<domain>/shared/` or `shared/` when they serve
+  a whole domain or several domains. With the v0.2 example policy agents may maintain them too.
+  A manual edit or `maintainer: human` label is not a permanent lock: permitted human-page edits
+  need a summary and create a review notice. Admins can retain `human_pages: read_only`.
 
 ## How sources get in
 
@@ -58,8 +59,12 @@ indexed, logged and completed before the command returns.
 
 `project_context(repo=...)` recognizes equivalent SSH/HTTPS remotes and loads readable project
 summary/status, one-hop relationships, open review items and recent changes within 4,000
-serialized characters. Unknown or ambiguous projects return `project: null`; a document request
-may create the missing project from cited repo facts.
+serialized characters. It finds projects only at `domains/<domain>/<project>/README.md`.
+Unknown or ambiguous projects return `project: null`; a document request may create the missing
+project from cited repo facts. The agent asks you which domain it belongs in; people create
+domains, and an agent adds a new one only when you agree. An unattended run (the nightly job)
+doesn't guess: it writes the source summary and wiki/graph, holds back the project's docs, and
+adds one review item, "Project <x> needs a domain".
 
 `docs-capture` uses the same lifecycle whenever a finding becomes durable during a session.
 It is not an end-of-session dump. Session-hook installation is separate from the manual commands;
@@ -119,16 +124,21 @@ Setup copies in the kit's files that don't exist yet (`AGENTS.md`, `Home.md`, th
 `_system/`, templates, skills) and never overwrites an existing file. Without `--adopt`,
 interactive setup asks first; non-interactive setup leaves a vault that has no `AGENTS.md`
 unchanged and warns that agents will lack the rules. After adopting, move your notes into the
-kit's folders where they fit. Which pages an agent may maintain is controlled by the existing
+kit's folders where they fit (`domains/<domain>/<project>/…`, `domains/<domain>/shared/…` or
+`shared/…`). Which pages an agent may maintain is controlled by the existing
 `vault-mcp.yaml`; adoption does not widen that policy automatically.
 
 ### As people's pages
 
 ```bash
-mkdir -p /srv/vault/specs/legacy
-cp -r ~/old-docs/. /srv/vault/specs/legacy/
-chown -R 1000:1000 /srv/vault/specs/legacy
+mkdir -p /srv/vault/domains/asr/parakeet/specs/legacy
+cp -r ~/old-docs/. /srv/vault/domains/asr/parakeet/specs/legacy/
+chown -R 1000:1000 /srv/vault/domains/asr/parakeet/specs/legacy
 ```
+
+Pick the domain and project the docs belong to; create `domains/asr/README.md` and
+`domains/asr/parakeet/README.md` from the `domain` and `project-overview` templates if they
+don't exist yet. Docs that span several domains go under `shared/` instead.
 
 Under the v0.2 example policy, agents may maintain these folders even without a `maintainer`
 field. Prefer `maintainer: shared` for collaboratively maintained docs. `maintainer: human`
@@ -200,11 +210,15 @@ This is what an ingesting agent does for each source. It is defined in the vault
    agent calls `release_source` and adds a review item.
 4. Write the summary `wiki/sources/<same name as the raw file>` from the `source-summary`
    template: what it is, key facts, decisions, people and systems, open questions, and the origin.
-5. Update or create cited atomic wiki references and the affected human docs in `projects/`,
-   `specs/`, `pipelines/` and `runbooks/`. Link each doc from its project; wiki pages use
+5. Update or create cited atomic wiki references and the affected human docs under
+   `domains/<domain>/<project>/` (or the domain's `shared/` folder, or top-level `shared/`).
+   Link each doc from its project's `README.md`; wiki pages use
    `documented_in` rather than duplicate narrative. Edit only affected sections and add one dated
    change-log line. Supported newer claims replace obsolete text; unresolved contradictions
    become review items. Human-page edits follow the configured policy and summary requirement.
+   A new project that fits no existing domain is not filed anywhere without a person: the agent
+   asks, or, when unattended, skips the project's docs and adds a "Project <x> needs a domain"
+   review item.
 6. Add new pages to `_system/index.md`.
 7. Append one line to `_system/log.md`.
 8. `complete_source(path, summary_page="wiki/sources/<name>.md")`. The source moves to
@@ -243,7 +257,7 @@ What you can do:
 
 - Give agents that only answer questions a `--scope read` token.
 - Give ingest agents a write token limited to the folders they need, e.g.
-  `scripts/token create --name ingest-bot --owner you@example.com --scope write --folders wiki/,raw/,_system/,projects/,specs/,pipelines/,runbooks/`.
+  `scripts/token create --name ingest-bot --owner you@example.com --scope write --folders wiki/,raw/,_system/,domains/,shared/`.
   (`review_queue_add` still works with folder-limited tokens.)
 - Don't ingest sources with the same assistant session that has access to your email, chat or
   other write-capable tools; an injected instruction could reach those tools.

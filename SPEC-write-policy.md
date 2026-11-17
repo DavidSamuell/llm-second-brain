@@ -6,7 +6,7 @@
 
 Agents keep the whole team documentation current, not only `wiki/`. Today `vault-mcp` lets agents write only in `wiki/`, `raw/`, `_system/` and on pages marked `maintainer: agent|shared`; a `maintainer: human` page is locked for good. In v0.2:
 
-- Agents may create and edit pages in `projects/`, `specs/`, `pipelines/` and `runbooks/` (the human-facing folders).
+- Agents may create and edit the human-facing pages: `domains/` (domain and project folders) and `shared/`. Schema 2 and 3 used flat `projects/`, `specs/`, `pipelines/` and `runbooks/` folders instead.
 - People usually edit through an agent. When a person edits a page by hand, the page stays editable by agents, so obsolete information can still be corrected later.
 - A short list of files that define the rules stays locked against agents, whatever their frontmatter says.
 - Once the watcher records a web save, agents wait through the configured grace period. This reduces concurrent-edit risk; it cannot protect unsaved keystrokes or saves the watcher has not recorded yet.
@@ -19,7 +19,7 @@ Agents keep the whole team documentation current, not only `wiki/`. Today `vault
 
 ```yaml
 write:
-  allow: [wiki/, raw/, _system/, projects/, specs/, pipelines/, runbooks/]
+  allow: [wiki/, raw/, _system/, domains/, shared/]
   human_pages: edit_with_notice    # new-deployment example; omitted field keeps v0.1 read_only
   protected: [AGENTS.md, CLAUDE.md, skills/, _system/templates/, _system/graph/ontology.yaml]
   human_edit_grace_s: 90           # refuse agent writes this soon after a web-editor save
@@ -53,7 +53,8 @@ For version-checked writes, the writer validates permissions and the required su
 ### Upgrades
 
 - Kit default for new deployments: the policy above.
-- Existing deployments keep their `vault-mcp.yaml` (setup never overwrites it). UPGRADING.md gives the new block. `scripts/upgrade-vault` brings AGENTS.md to schema_version 2.
+- Existing deployments keep their `vault-mcp.yaml` (setup never overwrites it). UPGRADING.md gives the new block. `scripts/upgrade-vault` brings AGENTS.md to the current schema_version.
+- Schema 4 changes the layout to `domains/` and `shared/`. An existing policy that lists the old folders needs `domains/` and `shared/` added to `write.allow`, and pages in the old folders must be moved by hand with the `move` tool.
 - Bookbot: apply the new policy in this module's rollout.
 
 ## Commands
@@ -111,7 +112,7 @@ def check_write(
 
 ## Success criteria
 
-1. A write token creates `projects/alpha.md` (no maintainer) and `pipelines/etl.md`; both succeed, with history and audit.
+1. A write token creates `domains/asr/parakeet/README.md` (no maintainer) and `domains/asr/parakeet/pipelines/etl.md`; both succeed, with history and audit.
 2. In `edit_with_notice` mode an agent edit of a `maintainer: human` page with a `summary` succeeds. The audit line has `human_page: true`, and exactly one `#review/agent-edit` notice appears even after three edits that day. Without `summary` → `invalid`.
 3. In `read_only` mode the same edit is refused `human_page` (v0.1 behaviour kept).
 4. `write` to `AGENTS.md` and `move` of a page onto `skills/x.md` are refused `protected`.

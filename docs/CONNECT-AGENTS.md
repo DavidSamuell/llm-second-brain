@@ -380,7 +380,7 @@ returns the vault's rulebook (`AGENTS.md`).
 | `read(path)` | Reads a file. Returns `content` (or `content_base64` for binary files) and its `version` (sha256); pass that version as `base_version` when you write. |
 | `list(folder="")` | Lists one folder (`""` is the vault root), with a frontmatter summary per Markdown page. |
 | `search(query, folder=None, limit=20)` | Full-text search over title, headings, path, frontmatter and body. Words are matched literally and all must appear; `folder` narrows the search. |
-| `project_context(repo=None, project=None)` | Readable project summary/status, one-hop graph, open review items and five recent change-log lines, within 4,000 serialized characters. Accepts canonical, SSH or HTTPS repo forms. Unknown, ambiguous or unreadable projects return `project: null`. |
+| `project_context(repo=None, project=None)` | Readable project summary/status, one-hop graph, open review items and five recent change-log lines, within 4,000 serialized characters. Projects are the `type: project` pages at `domains/<domain>/<project>/README.md`. Accepts canonical, SSH or HTTPS repo forms; `project` may be the path (with or without `.md`), the folder name (`parakeet`), the title, the node id or an alias, but not `README`. Unknown, ambiguous or unreadable projects return `project: null`. |
 | `graph_neighbors(node, predicate=None, direction="both", depth=1, limit=50)` | Nodes and edges within one or two hops. `node` accepts a node id, unambiguous alias or page path; direction is `in`, `out` or `both`. |
 | `graph_edges(subject=None, predicate=None, object=None, status=None, limit=100)` | Matching typed and implicit edges. `explicit` distinguishes declared claims from navigation links. |
 | `graph_path(from_node, to_node, max_depth=4)` | One deterministic shortest directed path through readable nodes; maximum depth is 4. |
@@ -405,8 +405,8 @@ they must identify the same project. Manual plugin commands are covered in
 [the user guide](USER-GUIDE.md); they finish ingestion in the same session,
 not at the nightly maintenance run.
 
-What a write token may change is set by the admin's `vault-mcp.yaml`. The v0.2 example allows writes
-in `wiki/`, `raw/`, `_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`, plus any page
+What a write token may change is set by the admin's `vault-mcp.yaml`. The example policy allows writes
+in `wiki/`, `raw/`, `_system/`, `domains/` and `shared/`, plus any page
 marked `maintainer: agent` or `shared`. A `maintainer: human` page can be updated too, with a
 `summary` argument saying what changed and why (the person gets a review-queue notice); the admin
 can keep the previous restriction (`human_pages: read_only`). Existing policy files are not widened automatically. The rule files (`AGENTS.md`, `CLAUDE.md`, `skills/`,
@@ -423,8 +423,10 @@ Default limits per credential: 120 requests a minute, 30 writes a minute, 2000 w
 
 Markdown remains canonical; the watcher compiles relationships into `DATA_PATH/graph.sqlite`.
 Every page becomes a node. Without an explicit id its id uses its node type and full vault-relative
-path without `.md`, for example `component:wiki/components/search`. Set `graph.node_id` for an id
-that survives moves. Duplicate ids or aliases are ambiguous, not silently merged.
+path without `.md`, for example `component:wiki/components/search` or, for a project overview,
+`project:domains/asr/parakeet/README`. Link overviews by full path too
+(`[[domains/asr/parakeet/README]]`), since every one of them is called `README.md`. Set
+`graph.node_id` for an id that survives moves. Duplicate ids or aliases are ambiguous, not silently merged.
 
 ```yaml
 type: pipeline

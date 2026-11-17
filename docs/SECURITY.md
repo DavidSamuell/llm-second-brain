@@ -201,9 +201,9 @@ These came out of the 2026-11-10 OAuth review and were documented rather than ch
 
 ## What agents may change
 
-`vault-mcp.yaml` decides which pages agents may write (SPEC-write-policy). With the v0.2 example policy, subject to the credential's scope and `read.deny`:
+`vault-mcp.yaml` decides which pages agents may write (SPEC-write-policy). With the example policy, subject to the credential's scope and `read.deny`:
 
-- **Agents keep the team's docs current.** They may create and edit pages in `wiki/`, `raw/`, `_system/`, `projects/`, `specs/`, `pipelines/` and `runbooks/`, and any page marked `maintainer: agent` or `shared`.
+- **Agents keep the team's docs current.** They may create and edit pages in `wiki/`, `raw/`, `_system/`, `domains/` and `shared/`, and any page marked `maintainer: agent` or `shared`. That an agent creates a new domain only with a person's agreement is a rule in `AGENTS.md`; the server does not enforce it.
 - **Pages people marked `maintainer: human`** (`human_pages: edit_with_notice`): agents may still update them when information is out of date, but every such edit:
   - needs a `summary` of what changed and why;
   - is audited with `human_page: true`;

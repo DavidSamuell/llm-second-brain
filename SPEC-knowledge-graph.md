@@ -31,14 +31,14 @@ graph:
 
 ### Ontology (`_system/graph/ontology.yaml`, shipped in the vault template, editable by admins only)
 
-- **Node types:** `project`, `product-spec`, `architecture`, `decision` (ADR pages), `pipeline`, `runbook`, `guide`, `component`, `concept`, `glossary-term`, `team`, `person`, `source`, `repo`. Each maps from the page's `type`.
+- **Node types:** `domain`, `project`, `product-spec`, `architecture`, `decision` (ADR pages), `pipeline`, `runbook`, `guide`, `component`, `concept`, `glossary-term`, `team`, `person`, `source`, `repo`. Each maps from the page's `type`. Domain and project overviews are all named `README.md`, so their ids carry the full path: `domain:domains/asr/README`, `project:domains/asr/parakeet/README`, and `project:` frontmatter links them the same way (`[[domains/asr/parakeet/README]]`).
 - **Implicit edges** made by the compiler:
   - `mentions`: from body wikilinks;
   - `sourced_from`: from `sources:`;
   - `summarizes_raw`: from a source summary's raw path;
   - `belongs_to_project`: from `project:` frontmatter;
   - `has_repo`: from a project's `repo:` list.
-- **Starter typed predicates:** `part_of`, `depends_on`, `produces`, `consumes`, `runs_on`, `implements`, `owned_by`, `decided_in`, `documented_in`, `supersedes`, `contradicts`. Each has subject and object types and `requires_evidence: true`.
+- **Starter typed predicates:** `part_of`, `depends_on`, `produces`, `consumes`, `runs_on`, `implements`, `owned_by`, `decided_in`, `documented_in`, `supersedes`, `contradicts`. Each has subject and object types and `requires_evidence: true`. `documented_in` may also point at a `domain`.
 
 ### Compilation (vault-watcher)
 
@@ -134,7 +134,7 @@ def validate(page_graph: PageGraph, onto: Ontology) -> list[GraphError]: ...
 
 1. A page with a valid `produces` edge appears in `graph_edges(predicate="produces")` within 5 s of the write, and so does its `mentions` edge to a linked page.
 2. A write with an unknown predicate, or without `evidence`, is refused `invalid` with `graph_errors`; the same content saved through the web is accepted and reported by `graph_lint`.
-3. A credential scoped to `wiki/` gets no edges whose other end is in `projects/`, and nobody gets edges into `private/`.
+3. A credential scoped to `wiki/` gets no edges whose other end is in `domains/`, and nobody gets edges into `private/`.
 4. `graph_path` from a project to a runbook returns the expected chain; `backlinks` lists linking pages.
 5. Renaming a page with `move` keeps its edges, because node ids follow the new path or the explicit `node_id`.
 6. Backup and restore followed by reindex reproduces the same graph (node and edge counts equal).
