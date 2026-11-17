@@ -1,0 +1,22 @@
+# Test-only additions for the e2e suite (never part of a deployment).
+services:
+  webhook-stub:
+    image: python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+    user: "${PUID:-1000}:${PGID:-1000}"
+    command: ["python", "/stub/webhook.py"]
+    volumes:
+      - ./e2e/stub:/stub:ro
+      - ${E2E_ALERTS_DIR:?}:/out
+
+  # Serves fake GitHub release files for the plugin allowlist test (§16.17).
+  plugin-stub:
+    image: python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+    user: "${PUID:-1000}:${PGID:-1000}"
+    command: ["python", "-m", "http.server", "8000", "-d", "/srv"]
+    volumes:
+      - ${E2E_PLUGIN_RELEASES:?}:/srv:ro
+
+  ignis-init:
+    depends_on:
+      plugin-stub:
+        condition: service_started

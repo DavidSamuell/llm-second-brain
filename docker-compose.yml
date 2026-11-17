@@ -1,0 +1,183 @@
+# Docs Vault Kit base stack (SPEC §4). Ingress overrides live in ingress/<name>/compose.yml and
+# are selected through COMPOSE_FILE in .env (plan D5). Required: VAULT_PATH and DATA_PATH.
+name: docs-vault
+
+x-run-as: &run-as
+  user: "${PUID:-1000}:${PGID:-1000}"
+
+services:
+  # One-shot, before Ignis (plan D28): plugin allowlist, managed .obsidian settings, mount points.
+  ignis-init:
+    <<: *run-as
+    image: ${VAULT_WATCHER_IMAGE:-docs-vault-kit/vault-watcher:local}
+    build:
+      context: .
+      dockerfile: vault-watcher/Dockerfile
+    command: ["harden-ignis"]
+    environment:
+      IGNIS_PLUGIN_BASE_URL: ${IGNIS_PLUGIN_BASE_URL:-https://github.com}
+      IGNIS_PLUGIN_DATA_MOUNTS: ${IGNIS_PLUGIN_DATA_MOUNTS:-}
+      IGNIS_SERVER_PLUGINS: ${IGNIS_SERVER_PLUGINS:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+      - ${IGNIS_PLUGINS_FILE:-./ignis/ignis-plugins.yaml}:/kit/ignis-plugins.yaml:ro
+      - ./vault-template:/kit/vault-template:ro
+    restart: "no"
+
+  ignis:
+    image: ${IGNIS_IMAGE:-nobbe/ignis@sha256:2049be7dfbbee5ee9fa5c0ae56efd8555ec57f2ac3275448b1c4318b8af49bb5}
+    environment:
+      PUID: ${PUID:-1000}
+      PGID: ${PGID:-1000}
+      OBSIDIAN_VERSION: ${OBSIDIAN_VERSION:-1.14.4}
+      # Exact-match Origin allowlist for the editor's WebSocket (plan D4).
+      WS_ORIGINS: https://${IGNIS_HOST:-localhost}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vaults/${VAULT_NAME:-Docs}
+      - ${DATA_PATH:?set DATA_PATH in .env}/ignis:/app/data
+      # Allowlisted plugins only, read-only: the UI can't install plugins (D28, §16.17).
+      - ${DATA_PATH:?set DATA_PATH in .env}/ignis-plugins:/vaults/${VAULT_NAME:-Docs}/.obsidian/plugins:ro
+      - obsidian-app:/app/obsidian-app
+    depends_on:
+      ignis-init:
+        condition: service_completed_successfully
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:${IGNIS_PORT:-8081}:8080
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s  # first start downloads Obsidian
+    restart: unless-stopped
+
+  vault-mcp:
+    <<: *run-as
+    image: ${VAULT_MCP_IMAGE:-docs-vault-kit/vault-mcp:local}
+    build:
+      context: .
+      dockerfile: vault-mcp/Dockerfile
+    environment:
+      BIND_ADDR: ${BIND_ADDR:-127.0.0.1}
+      HISTORY_ACK_TIMEOUT: ${HISTORY_ACK_TIMEOUT:-5}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+      MCP_OAUTH_ENABLED: ${MCP_OAUTH_ENABLED:-true}
+      MCP_OAUTH_ISSUER: ${MCP_OAUTH_ISSUER:-}
+      OAUTH_UPSTREAM_PROVIDER: ${OAUTH_UPSTREAM_PROVIDER:-none}
+      OAUTH_UPSTREAM_CLIENT_ID: ${OAUTH_UPSTREAM_CLIENT_ID:-}
+      OAUTH_UPSTREAM_CLIENT_SECRET: ${OAUTH_UPSTREAM_CLIENT_SECRET:-}
+      OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS: ${OAUTH_UPSTREAM_ALLOWED_EMAIL_DOMAINS:-}
+      OAUTH_UPSTREAM_ISSUER: ${OAUTH_UPSTREAM_ISSUER:-}
+      OAUTH_UPSTREAM_TENANT: ${OAUTH_UPSTREAM_TENANT:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+      - ${MCP_POLICY_FILE:-./vault-mcp.yaml}:/config/vault-mcp.yaml:ro
+    ports:
+      - ${BIND_ADDR:-127.0.0.1}:${MCP_PORT:-8082}:8082
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8082/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  vault-watcher:
+    <<: *run-as
+    image: ${VAULT_WATCHER_IMAGE:-docs-vault-kit/vault-watcher:local}
+    build:
+      context: .
+      dockerfile: vault-watcher/Dockerfile
+    environment:
+      BIND_ADDR: ${BIND_ADDR:-127.0.0.1}
+      HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
+      HISTORY_MIN_VERSIONS: ${HISTORY_MIN_VERSIONS:-10}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+      MONITOR_INTERVAL_S: ${MONITOR_INTERVAL_S:-60}
+      COMPOSE_PROFILES: ${COMPOSE_PROFILES:-}
+      IGNIS_SERVER_PLUGINS: ${IGNIS_SERVER_PLUGINS:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+      - ${MCP_POLICY_FILE:-./vault-mcp.yaml}:/config/vault-mcp.yaml:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8083/health', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Optional (COMPOSE_PROFILES=git; plan D32): back the vault up to GIT_REMOTE.
+  git-sync:
+    <<: *run-as
+    profiles: [git]
+    image: ${GIT_SYNC_IMAGE:-docs-vault-kit/git-sync:local}
+    build:
+      context: .
+      dockerfile: git-sync/Dockerfile
+    environment:
+      GIT_REMOTE: ${GIT_REMOTE:-}
+      GIT_BRANCH: ${GIT_BRANCH:-main}
+      GIT_LFS: ${GIT_LFS:-false}
+      GIT_ADOPT_REMOTE: ${GIT_ADOPT_REMOTE:-false}
+      SYNC_INTERVAL: ${SYNC_INTERVAL:-120}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+    volumes:
+      - ${VAULT_PATH:?set VAULT_PATH in .env}:/vault
+      - ${DATA_PATH:?set DATA_PATH in .env}:/data
+    healthcheck:
+      test: ["CMD-SHELL", "find /data/git-sync/heartbeat -mmin -3 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # Optional (COMPOSE_PROFILES=agent; plan D30): scheduled ingest and lint through vault-mcp.
+  agent-runner:
+    <<: *run-as
+    profiles: [agent]
+    image: ${AGENT_RUNNER_IMAGE:-docs-vault-kit/agent-runner:local}
+    build:
+      context: .
+      dockerfile: agent-runner/Dockerfile
+    environment:
+      VAULT_MCP_URL: http://vault-mcp:8082/mcp
+      VAULT_MCP_TOKEN: ${AGENT_RUNNER_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      AGENT_MODEL: ${AGENT_MODEL:-}
+      AGENT_MONTHLY_BUDGET: ${AGENT_MONTHLY_BUDGET:-}
+      AGENT_COMMAND: ${AGENT_COMMAND:-}
+      INGEST_CRON: ${INGEST_CRON:-0 * * * *}
+      LINT_CRON: ${LINT_CRON:-0 2 * * *}
+      INGEST_MAX_SOURCES: ${INGEST_MAX_SOURCES:-10}
+      AGENT_MAX_TURNS: ${AGENT_MAX_TURNS:-200}
+      GIT_REMOTE: ${GIT_REMOTE:-}
+      ALERT_WEBHOOK: ${ALERT_WEBHOOK:-}
+    volumes:
+      # Only its own state and the git-sync request folder; no vault write access (D30).
+      - ${DATA_PATH:?set DATA_PATH in .env}/agent-runner:/data/agent-runner
+      - ${DATA_PATH:?set DATA_PATH in .env}/git-sync/requests:/data/git-sync/requests
+      - type: bind
+        source: ${VAULT_PATH:?set VAULT_PATH in .env}/skills
+        target: /vault-skills
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      vault-mcp:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "find /data/agent-runner/heartbeat -mmin -3 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  obsidian-app:

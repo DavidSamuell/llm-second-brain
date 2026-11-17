@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "versions": {
+    "1": {
+      ".gitignore": "d25188db96f1d8612ac49ab65b03cba2635e7dba713724c3f162c39e88d1fcf4",
+      ".obsidian/app.json": "b94e3dd4d37a8b1893bdbea0a546ddce598b030a46605dafd15f3c8989773916",
+      ".obsidian/templates.json": "b43ca442635fe99e907be81f12704f6ed0b4f9530140db96bbd4918c86685d59",
+      "AGENTS.md": "423b1044bb635301bda0a60939e97eb04cd8516ad6c36f0b251c9c75e00dc063",
+      "CLAUDE.md": "336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49",
+      "_system/templates/adr.md": "f1a27827b5418ba66bd899e6eb0849547aab554f2c45e683834a182460758741",
+      "_system/templates/architecture.md": "81fbe402aa4223d19278ec8e56f0e98e523654086debce57b71a174c6f445c21",
+      "_system/templates/glossary-term.md": "31154394660cf6e6dc3447765c1a2fcc471f14aa943873855f0c113b26c0f462",
+      "_system/templates/guide.md": "04655b287358f70a8e120030ec471b55b2425001abeeaa233147826052356221",
+      "_system/templates/pipeline.md": "b98a86cd58bb8ecdfff29245fd8b531e4fa9ad0dfea2aff2fba95ec248b29f38",
+      "_system/templates/product-spec.md": "2adb4dbc14f3c4d9bb1a7d1d33c1df001f63ccd34b5d5f9141e5b85eade5822a",
+      "_system/templates/project-overview.md": "8ccdac80f135378e7d830e4dcffa1f582a80fe5d5aade27ca5c8861377ce695e",
+      "_system/templates/runbook.md": "d7f3e13cd665fec7ba457a4a18ccfb32ebfc283542f80d7ed05a74909168c700",
+      "_system/templates/source-summary.md": "bf5c156994870ca328004f254cc772f78bd31a1bc681045e5a9fa7b2bfe22e54",
+      "_system/templates/wiki-component.md": "d101fc8758996b25fe3baa575512e40a92bba3cb7a79d914a527735f904de5ef",
+      "_system/templates/wiki-concept.md": "4875096e4b33febb37b21378ab785f865cd3474d34e28c04da287ec7d08e103b",
+      "_system/templates/wiki-team.md": "971d7923e36c8ccd16a52e5a12c8c17368389f95e3b07ced622ae89982821dd5",
+      "skills/docs-ingest/SKILL.md": "4e6979a01003de4d77868d7ddf71695efdffcd82cd17acb5c251b6a8e53c9f85",
+      "skills/docs-lint/SKILL.md": "847f20c0e90e2f0aa467ce148fbec1a786b5944460da00b48107bcce7a10b61d",
+      "skills/docs-query/SKILL.md": "f7d9ba9a874940079b7d74a38ab403d7640a2b6c811125606b19a2fcd3978b40"
+    }
+  }
+}

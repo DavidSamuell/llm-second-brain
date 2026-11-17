@@ -1,0 +1,26 @@
+# Nightly: the full end-to-end suite plus browser checks against the pinned Ignis image
+# (SPEC §16.12, 17, 18; plan D38). Also runs by hand from the Actions tab.
+name: Nightly
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ignis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: uv sync --locked --all-packages --group nightly
+      - run: uv run playwright install --with-deps chromium
+      - name: End-to-end suite including browser tests (INGRESS=local and none)
+        run: uv run pytest e2e -m "profile_local or profile_none" -rs

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Version history (SPEC §7.1):
+#   scripts/history list <path>
+#   scripts/history restore <path> [--at <timestamp>]
+#   scripts/history restore-deleted <folder>
+#
+# Runs inside the vault-watcher container, so the host needs only docker.
+set -euo pipefail
+
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+if [ -n "$(docker compose ps --status running --quiet vault-watcher 2>/dev/null)" ]; then
+  exec docker compose exec -T vault-watcher vault-watcher history "$@"
+else
+  exec docker compose run --rm --no-deps -T vault-watcher vault-watcher history "$@"
+fi
