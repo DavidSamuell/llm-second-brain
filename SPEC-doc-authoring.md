@@ -47,11 +47,24 @@ When new information arrives, agents update the affected human docs directly (hi
 
 - `docs-ingest`: after the wiki step, update or create the affected human docs, then the index and log.
 - `docs-query`: start from the project's graph neighbourhood (knowledge-graph tools), then read the human docs and wiki pages; cite pages.
-- `docs-capture` (new): record durable findings from the current work at the moment they happen:
-  - decisions, architecture, interfaces, pipeline or runbook steps, incidents, conventions;
-  - submitted as sources tagged with the project, plus direct updates to the project's human docs when the finding is clear-cut.
-  - It does not record transient debugging, guesses, personal data or secrets.
+- `docs-capture` (new): ingest durable findings from the current work at the moment they happen, completely (submit, claim, summary, human docs, wiki, graph, complete). That covers decisions, architecture, interfaces, pipeline or runbook steps, incidents and conventions. It never records transient debugging, guesses, personal data or secrets.
 - `docs-lint`: adds checks that human docs match the wiki, plus graph lint.
+
+### Commands (in the agent plugin)
+
+Plain requests ("create pipeline docs for this project and put them in the vault") trigger the same skills. The commands are a reliable shortcut. Each acts **immediately** in the session; nothing waits for the nightly run.
+
+| Command | Does |
+|---|---|
+| `/docs-vault:document <what>` | Writes or updates a human doc from the current repo and conversation (e.g. `pipeline docs for this project`, `runbook for the nightly backup`). It picks the folder and template, reads the relevant repo files, cites `repo@commit:path`, links the doc from the project page (creating the project page if missing), adds the wiki entry and `documented_in` edge, and logs it. The repo reading is submitted and ingested as a source in the same step. |
+| `/docs-vault:ingest <file, URL or text>` | Submits the source and ingests it now (claim → summary → human docs and wiki → complete). For a URL, the agent fetches it with its own tools first. |
+| `/docs-vault:ask <question>` | Answers from the vault only (`project_context`, graph, search), citing pages, and says what the vault doesn't cover. |
+| `/docs-vault:lint [folder]` | Runs the structural and semantic checks on demand and fixes what it may, like the nightly run but scoped. |
+| `/docs-vault:connect` | Checks the connection and sign-in (exists). |
+
+- **Claude Code:** from the plugin's `commands/` folder, as `/docs-vault:<name>`.
+- **omp:** loads Claude plugin commands under the same names.
+- **Codex:** plugins carry skills only, so the commands aren't available; invoke the skills (`$docs-ingest` …) or ask in plain words.
 
 ### MCP tool
 
@@ -96,7 +109,9 @@ Skill text: imperative steps, tool names without harness prefixes, as in the exi
   - the wiki page has `documented_in`.
 
   A second source changing one step updates that section only and adds one change-log line, and history shows both versions.
-- **Manual (live):** one real Claude Code ingest of a repo README into a new project page on Bookbot, reviewed by a person for readability.
+- **Generator:** the plugin contains the four new commands, and `claude plugin validate` passes.
+- **e2e (scripted agent):** `document` in a sample repo creates `pipelines/<name>.md` with repo citations, a project link and a wiki `documented_in` edge; `ingest` of pasted text leaves the source in `raw/_processed/` with its summary, in the same run.
+- **Manual (live):** in Claude Code and omp, `/docs-vault:document pipeline docs for this project` in a Bookbot repo, reviewed by a person for readability; one plain-language request for the same thing.
 
 ## Boundaries
 
@@ -110,6 +125,7 @@ Skill text: imperative steps, tool names without harness prefixes, as in the exi
 2. `project_context(repo="git@github.com:bookbot-hive/foo.git")` returns the project whose `repo:` lists `github.com/bookbot-hive/foo`, within 4,000 characters.
 3. `docs-lint` reports a human doc whose cited source has been superseded.
 4. An existing vault upgraded with `scripts/upgrade-vault` gets schema 2 rules, templates and skills, without touching custom blocks.
+5. `/docs-vault:document`, `ingest`, `ask` and `lint` work in Claude Code and omp and finish within the session; nothing they produce is left in `raw/` for the nightly run.
 
 ## Open questions
 

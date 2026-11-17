@@ -410,7 +410,8 @@ Decisions taken with the user (2026-11-17):
 |---|---|
 | Person-edited pages | Stay editable by agents when information becomes obsolete; edit applied directly with a review notice |
 | Project identity | Normalised git remote in the project page's `repo:` frontmatter |
-| Capture | Durable findings go to the human-facing folders (via sources and direct updates), throughout the session; agents may read repo code and README and summarise them |
+| Capture | Durable findings are fully ingested during the session (as in llm-wiki-database), into the human-facing folders and the wiki; agents may read repo code and README and summarise them; nightly maintenance is only a safety net |
+| Manual commands | `/docs-vault:document`, `ingest`, `ask`, `lint` (+ `connect`), acting immediately; plain requests trigger the same skills |
 | Harnesses | Claude Code and omp; Codex if its CLI plugin hooks work |
 | Nightly lint | Host cron agent, allowed to fix; Slack alert on failure, same channel as backups |
 | Graph | Full typed graph |

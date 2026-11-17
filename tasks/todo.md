@@ -484,10 +484,10 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - Deps: T48 · Files: `vault-core/src/vault_core/repos.py`, `vault-mcp/src/vault_mcp/tools_project.py`, `vault-mcp/src/vault_mcp/server.py`, tests · Scope: M
 
 - [ ] **T51 — Skills: ingest, query, lint, capture** [doc-authoring] · **watch**
-  - Update `docs-ingest` (human docs after the wiki step), `docs-query` (graph first), `docs-lint` (human-doc drift, graph lint); new `docs-capture`.
-  - Acceptance: each skill names tools without prefixes and follows SPEC-doc-authoring's writing rules; `scripts/agent-plugin` copies the new skill.
+  - Update `docs-ingest` (human docs after the wiki step), `docs-query` (graph first), `docs-lint` (human-doc drift, graph lint); new `docs-capture` (full in-session ingest per finding). Plugin commands `document`, `ingest`, `ask`, `lint` in `agent-plugin/commands/`, each a thin wrapper over the skills, acting immediately.
+  - Acceptance: each skill names tools without prefixes and follows SPEC-doc-authoring's writing rules; `scripts/agent-plugin` copies the new skill and the four commands; generated plugin validates.
   - Verify: `uv run pytest e2e/test_agent_plugin.py`; `claude plugin validate` on the generated plugin.
-  - Deps: T50 · Files: `vault-template/skills/*/SKILL.md` · Scope: M
+  - Deps: T50 · Files: `vault-template/skills/*/SKILL.md`, `agent-plugin/commands/{document,ingest,ask,lint}.md`, `e2e/test_agent_plugin.py` · Scope: M
 
 - [ ] **T52 — Template schema 2** [doc-authoring, write-policy, knowledge-graph] · Decisions: D43, D36 · **watch**
   - AGENTS.md v2 (layout, `maintainer` meanings, writing rules, typed edges, capture); templates with `repo:`, `project:`, `graph`, `## Change log`; `.kit-manifest.json`; `upgrade-vault` from 1 to 2 keeps `<!-- custom -->` blocks.
@@ -496,7 +496,7 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - Deps: T51 · Files: `vault-template/AGENTS.md`, `vault-template/_system/templates/*`, `vault-template/.kit-manifest.json`, upgrade tests · Scope: M
 
 - [ ] **T53 — doc-authoring e2e and user docs** [doc-authoring] · **delegate**
-  - Scripted-agent e2e: new pipeline source → `pipelines/<name>.md`, project link, `documented_in` edge; second source updates one section + one change-log line. USER-GUIDE (where things live now, agent edits, notices), IMPORTING (repo summaries).
+  - Scripted-agent e2e: new pipeline source → `pipelines/<name>.md`, project link, `documented_in` edge; second source updates one section + one change-log line; the `document` and `ingest` flows finish in the same run with nothing left in `raw/`. USER-GUIDE (where things live now, agent edits, notices), IMPORTING (repo summaries).
   - Verify: `uv run pytest e2e -k doc_authoring -m "(profile_local or profile_none) and not nightly"`.
   - Deps: T52 · Files: `e2e/test_doc_authoring.py`, `docs/USER-GUIDE.md`, `docs/IMPORTING.md` · Scope: M
 
@@ -539,7 +539,7 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
 
 - [ ] **T59 — Plugin with hooks, live** [session-hooks] · **watch**
   - `scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbot-kids/*'`; push to `bookbot-hive/bookbot-doc-vault`; update Claude Code, omp (and Codex if supported).
-  - Acceptance: SPEC-session-hooks criteria 1–3 and 6 in real sessions; audit shows the user's grant.
+  - Acceptance: SPEC-session-hooks criteria 1–3 and 6 in real sessions (a mid-session finding fully ingested before the next answer); SPEC-doc-authoring criterion 5 (`/docs-vault:document`, `ingest`, `ask`, `lint` in Claude Code and omp); audit shows the user's grant.
   - Deps: T55, T58 · Scope: S
 
 - [ ] **T60 — Nightly maintenance, live** [scheduled-maintenance] · **watch**
