@@ -1,6 +1,6 @@
 # Spec: session-hooks
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Draft · **Depends on:** doc-authoring (and through it write-policy, knowledge-graph)
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; Checkpoint L ready for review (automated criteria 4–5 verified, live Claude Code/omp checks remain T59) · **Depends on:** doc-authoring (and through it write-policy, knowledge-graph)
 
 ## Objective
 
@@ -52,7 +52,7 @@ It works like llm-wiki-database's always-on behaviour, but against the shared va
 
 ### Before compaction and at session end
 
-- After compaction the context block is injected again (Claude Code fires `SessionStart` with `source: compact`; omp re-injects after `session.compacting`/`session_clear`), with a reminder to capture anything outstanding. Nothing runs after a session closes (no model step is possible then); the prompt nudges are the safety net.
+- After compaction the context block is injected again (Claude Code fires `SessionStart` with `source: compact`; omp re-injects after `session_compact`/`session_clear`), with a reminder to capture anything outstanding. Nothing runs after a session closes (no model step is possible then); the prompt nudges are the safety net.
 - The nightly maintenance run is only a safety net. It ingests sources nobody finished: files dropped in through the editor, released sources, and sessions that ended mid-ingest (scheduled-maintenance).
 
 ### Cost

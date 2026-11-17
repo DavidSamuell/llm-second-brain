@@ -16,6 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Read-scope `project_context(repo?, project?)` with SSH/HTTPS repo normalization, permission-filtered project summary/status, one-hop graph, review items and five recent changes within 4,000 serialized characters.
 - Immediate `document`, `ingest`, `ask` and `lint` plugin commands plus `docs-capture`; durable findings are fully ingested during the session, with source provenance, human docs and atomic wiki references.
 - Vault schema 2: shared human-doc templates, project/repo/graph metadata, change logs and managed ontology; upgrades preserve released schema-1 hashes and custom blocks.
+- Opt-in, credential-free session hooks for Claude Code and omp: repo allowlist, per-repo/session opt-outs, startup/compaction context and every-tenth-prompt capture reminders. Codex CLI automatic capture remains unsupported.
+- Host `scripts/maintenance` for post-backup ingestion, structural/semantic lint and direct fixes through MCP, with estimated-spend/time limits, private logs, fresh-report checks, read-only preview and one Slack-compatible failure alert per run.
 
 ## [0.1.0] - 2026-11-17
 

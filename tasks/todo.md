@@ -515,35 +515,40 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - **Status:** authoring e2e passed both profiles: same-run source completion, pipeline/project/typed edge, second-source section update, one change-log line and history. Real generated-plugin command proof also detected/fixed superseded human-doc citations. User guide, importing and agent connection docs updated. Final regression: 656 unit tests passed with graph performance enabled; ruff/format/mypy passed. No live rollout.
 
 ### Checkpoint K — after T50–T53
-- [ ] SPEC-doc-authoring criteria 1–4 pass; lint, unit and e2e green.
-  - **Ready for human review:** criteria 1–4 covered by automated acceptance and the isolated real-agent smoke. Criterion 5 remains the explicitly planned live Claude Code/omp verification in T59. Phase 13 not started.
+- [x] SPEC-doc-authoring criteria 1–4 pass; lint, unit and e2e green.
+  - Approved by the user. Phase 13 may proceed; live criterion 5 remains T59 and deployment stays individually gated on T58–T60.
 
 ## Phase 13 — session-hooks and scheduled-maintenance (parallel)
 
-- [ ] **T54 — Hook scripts** [session-hooks] · Decisions: D44 · **watch**
+- [x] **T54 — Hook scripts** [session-hooks] · Decisions: D44 · **watch**
   - `agent-plugin/hooks/session-start.sh`, `prompt-nudge.sh` (every 10th prompt), re-injection after compaction; repo detection, allowlist, opt-outs, 1,500-char cap, per-harness output from T42.
   - Acceptance: fixture tests for allowed/not-allowed, ssh/https, no remote, `.docs-vault-ignore`, `DOCS_VAULT_CAPTURE=off`, nudge cadence, missing `jq`/git (exit 0, no output); omp module `hooks/pre/docs-vault.ts` injects once per session.
   - Verify: `uv run pytest e2e/test_hooks.py`; shellcheck.
   - Deps: T42, T50 · Files: `agent-plugin/hooks/*.sh`, `e2e/test_hooks.py` · Scope: M
+  - **Status:** credential-free shell hooks, empty-by-default normalized repo allowlist, live opt-outs, private hashed session counters and ≤1,500-char context. omp acknowledges published context rather than losing it on SDK preparation replay. Initial hook/generator suite: 78 passed, 2 fixture failures; corrected Node-shim isolation then focused 4 passed. Two later regressions (malformed userinfo and discarded SDK context) fixed; final affected hooks/normalization/omp suite: 43 passed, 23 deselected. Actual Claude generated-hook delivery also passed.
 
-- [ ] **T55 — Plugin generator: hooks and allowlist** [session-hooks] · Decisions: D44 · **watch**
+- [x] **T55 — Plugin generator: hooks and allowlist** [session-hooks] · Decisions: D44 · **watch**
   - `scripts/agent-plugin --capture-repos`; per-harness wiring per T42; plugin README; CONNECT-AGENTS section on automatic behaviour, opt-out and Codex hook trust.
   - Acceptance: generated output validates (`claude plugin validate`), contains each harness's hook wiring and the baked allowlist; existing generator tests pass.
   - Verify: `uv run pytest e2e/test_agent_plugin.py`.
   - Deps: T54 · Files: `scripts/agent-plugin`, `e2e/test_agent_plugin.py`, `docs/CONNECT-AGENTS.md` · Scope: M
+  - **Status:** `--capture-repos`, generated per-plugin README and per-harness wiring; default output remains disabled for capture. Claude validation and generator acceptance passed; Codex CLI automatic behavior remains explicitly unsupported. CI provisions Node 22.23.2 for executable omp-module tests. Live plugin not replaced.
 
-- [ ] **T56 — `scripts/maintenance`** [scheduled-maintenance] · Decisions: D45 · **watch**
+- [x] **T56 — `scripts/maintenance`** [scheduled-maintenance] · Decisions: D45 · **watch**
   - `--setup` (token), run (MCP config, `claude -p` with `mcp__vault__*` only, budget, timeout, outcome check, alert), `--dry-run`, `MAINTENANCE_AGENT_COMMAND`.
   - Acceptance: stub-agent e2e for ok, failing agent, no report, unreachable vault-mcp, dry-run; exactly one `maintenance_failed` alert on the webhook stub per failure.
   - Verify: `uv run pytest e2e -k maintenance -m "(profile_local or profile_none) and not nightly"`; shellcheck.
   - Deps: T51 · Files: `scripts/maintenance`, `e2e/test_maintenance.py` · Scope: M
+  - **Status:** explicit setup for private write/preview credentials; bounded restricted Claude/MCP execution; nonce+version report verification; cost logging and one alert per failure (including preview failure). Initial both-profile acceptance: 28 passed. After adding malformed-result and integer-overflow regressions, focused outcome verification: 12 passed, 20 deselected. Real isolated Claude run fixed a supported link/index, noted failed backup and reported two unresolved findings; real preview left all vault Markdown unchanged. No production setup or cron change.
 
-- [ ] **T57 — Maintenance prompt and docs** [scheduled-maintenance] · **delegate**
+- [x] **T57 — Maintenance prompt and docs** [scheduled-maintenance] · **delegate**
   - The run prompt (ingest, structural, semantic, fix, report) aligned with `docs-lint`/`docs-ingest`; SETUP "Nightly maintenance" (host cron after backup; agent-runner as the container alternative); SECURITY (maintenance token).
   - Deps: T56 · Files: `scripts/maintenance` (prompt block), `docs/SETUP.md`, `docs/SECURITY.md` · Scope: S
+  - **Status:** full ingest/structural/semantic/fix/report prompt, midnight host-cron example after backup even on failure, source-limit/budget/timeout semantics, read-only preview and token privacy/rotation documented. Container agent-runner remains an alternative. SIGKILL cleanup and model-compliance limits are explicit.
 
 ### Checkpoint L — after T54–T57
 - [ ] SPEC-session-hooks criteria 4–5 and SPEC-scheduled-maintenance criteria 3–4 pass in automated tests; lint, unit and e2e green.
+  - **Ready for human review:** automated criteria covered; final ruff/format and shellcheck passed, mypy 47 source files passed. Application source is unchanged: the 656-test unit baseline is retained, not rerun. Real hook+maintenance+preview smoke reported total model cost $0.2853438. Live deployment, plugin install, actual Slack delivery and cron checks remain T58–T60.
 
 ## Phase 14 — Bookbot rollout and v0.2.0
 

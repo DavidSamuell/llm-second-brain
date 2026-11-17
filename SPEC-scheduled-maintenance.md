@@ -1,6 +1,6 @@
 # Spec: scheduled-maintenance
 
-**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Draft · **Depends on:** doc-authoring, knowledge-graph
+**Module of:** [SPEC.md §18](SPEC.md#18-v02-second-brain-capability-map) · **Status:** Implemented; Checkpoint L ready for review (automated criteria 3–4 verified, live schedule/ingest/Slack checks remain T60) · **Depends on:** doc-authoring, knowledge-graph
 
 ## Objective
 
@@ -22,12 +22,12 @@ It replaces "agent-runner `LINT_CRON`" as the recommended path for deployments t
 - **Kit:** `scripts/maintenance` runs on the host from cron. It starts Claude Code headless (`claude -p`, the host user's login or `ANTHROPIC_API_KEY`) in a temporary working folder, with an MCP config pointing at the deployment's vault-mcp and a dedicated bearer token `maintenance`:
   - scope: write;
   - created by `scripts/maintenance --setup`;
-  - stored at `DATA_PATH/maintenance/token`, mode 600.
+  - stored at `DATA_PATH/maintenance/token`, mode 600; setup also creates a read-scope preview credential for dry-run, so no-write preview is enforced by the server rather than only the prompt.
 
   All changes go through MCP, so they get policy checks, history, audit and the secret scan.
 - **Bookbot:** called at the end of the nightly job, after a successful or recovered backup, so the vault never changes before it is backed up. It also runs if the backup failed (`--after-backup-failure` notes it in the report), because maintenance doesn't depend on that night's archive.
-- **Tools:** the vault MCP tools only (`mcp__vault__*`), plus `Read` of its working folder. No shell, web or file edits.
-- **Limits:** `--max-budget-usd` (default 5) and a wall-clock timeout (default 45 min). The maintenance token's normal rate limits apply.
+- **Tools:** the vault MCP tools only (`mcp__vault__*`), plus `Read` confined to the temporary working folder using Claude Code restricted mode. Credential configuration is outside that folder.
+- **Limits:** `--max-budget-usd` (default 5) and a wall-clock timeout (default 45 min). The cost stop uses the CLI's client-side estimate and can overshoot by an in-flight request; it is not a hard billing cap. The maintenance token's normal rate limits apply.
 
 ### The job (prompt plus the `docs-lint` and `docs-ingest` skills)
 
@@ -56,11 +56,14 @@ The script decides the outcome itself; it doesn't trust the agent's word:
 
 | Outcome | Condition | Alert (kit `scripts/lib/alert.sh`, `ALERT_WEBHOOK`) |
 |---|---|---|
-| ok | agent exit 0, `lint-report.md` rewritten this run, no `error` lines in the report | none |
-| failed | non-zero exit, timeout, budget exhausted, vault-mcp unreachable, token rejected, or no fresh report | `maintenance_failed` high, with the reason and the log path |
+| ok | agent exit 0 with a typed successful result, report rewritten this run with its exact `maintenance_run:` nonce, zero declared errors and no `- error:` lines | none |
+| failed | non-zero exit, timeout, budget/turn exhaustion, malformed result, unreachable MCP, rejected token, missing/stale report or nonce, missing counts, nonzero error count or `- error:` line | `maintenance_failed` high, with the reason and the log path |
 | unresolved | ok, but the report lists findings it could not fix | none (they're in the review queue); a weekly summary is out of scope |
 
-Logs go to `DATA_PATH/maintenance/<date>.log`, and the agent's final text to the report.
+A successful dry-run instead requires a successful agent result and an unchanged report
+version, and keeps its preview locally. Failed previews send the same failure alert.
+
+Logs and the agent's final output stay under `DATA_PATH/maintenance/`. The vault report is written only through MCP. Dry-run uses the read-scope credential and produces a local preview, without changing any vault page, report, log or review archive.
 
 ## Commands
 
