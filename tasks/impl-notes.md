@@ -244,3 +244,12 @@ Decisions:
 - Claude Code grant check via `claude -p` (Sonnet, one `get_schema` call) reported $0.2667214.
 - Risk: e2e compose runs build the same `docs-vault-kit/*:local` tags the live stack uses. Any later live `up`/recreate picks up whatever tree the last e2e run built, including uncommitted work. Deploy only from a clean checkout and rebuild with `--build`.
 - Live: no plugin, hook, maintenance credential or cron change yet (T59, T60).
+
+## T59 — Live plugin with hooks
+
+- User said "go ahead" without naming a test repo. Chose disposable local repos whose `origin` text is in the allowlist (hooks read only the remote text), so no real project's docs got invented facts; all resulting pages archived afterwards.
+- Claude Code computes a plugin's version from the manifest first; the generator pinned `"version": "0.1.0"`, so `claude plugin update` said "already at the latest version" after the push. Dropped `version` from the Claude manifest only (Claude then uses the marketplace commit SHA; `claude plugin validate` warns but passes). omp's `plugin upgrade` reinstalls at the same version, so the portable `plugin.json` keeps its version. Source: https://code.claude.com/docs/en/plugins/loading ("Versions and updates").
+- CONNECT-AGENTS update instructions were wrong: a marketplace refresh alone leaves the installed copy unchanged. Now documents `plugin update`/`plugin upgrade` too.
+- Criterion 2 gap is model compliance with `docs-capture` step 5 (wiki pages with typed edges) on a small decision; both Sonnet runs judged a component page unnecessary. Not fixed: changing skill wording is a template change (schema bump, `upgrade-vault`, plugin rebuild). Decision pending with the user.
+- omp agent once wrote a stray `_system/index.md` into the fixture repo via a local file tool, then removed it itself. Claude Code's first project-page edit failed because the deferred MCP tool schema was not loaded; it retried correctly. Neither left vault damage.
+- Concurrency note: Claude `ingest` and omp `document` ran at the same time against the live vault; no conflicts reported.

@@ -562,6 +562,14 @@ Source: `SPEC.md` §18 + `SPEC-<module>.md`. Decisions D40–D46 in `tasks/plan.
   - `scripts/agent-plugin --capture-repos 'github.com/bookbot-hive/*,github.com/bookbot-kids/*'`; push to `bookbot-hive/bookbot-doc-vault`; update Claude Code, omp (and Codex if supported).
   - Acceptance: SPEC-session-hooks criteria 1–3 and 6 in real sessions (a mid-session finding fully ingested before the next answer); SPEC-doc-authoring criterion 5 (`/docs-vault:document`, `ingest`, `ask`, `lint` in Claude Code and omp); audit shows the user's grant.
   - Deps: T55, T58 · Scope: S
+  - **Status (2026-11-17, open on one gap):** plugin `3d3c366`/`6a4c2f8` pushed to `bookbot-hive/bookbot-doc-vault` with the two-org allowlist; Claude Code updated to commit-versioned `6a4c2f8bef2f` (a pinned `0.1.0` blocked `claude plugin update`; fixed in the generator), omp reinstalled via `omp plugin upgrade`. Real Sonnet sessions in two disposable fixture repos (`github.com/bookbot-hive/docs-vault-t59-{claude,omp}` origins, local only):
+    - Criterion 1 passed in both: `project_context` before the first answer, under `oauth:Claude-Code-plugin-…` and `oauth:oh-my-pi-…` in the audit log.
+    - Criterion 3 passed in both: the agent offered once, then created the project page and repo summary after "yes".
+    - Criterion 2 **partial** in both: an unprompted mid-session decision was submitted, claimed, summarised, written as an ADR, linked from the project page with a change-log line, indexed, logged and completed before the answer finished (source in `raw/_processed/`; implicit `belongs_to_project`/`sourced_from`/`mentions` edges). Neither agent created or updated an atomic wiki page or wrote a typed edge for the decision. The later `document` runs did create wiki components with `documented_in` edges.
+    - Doc-authoring criterion 5 passed in both: `document`, `ingest`, `ask`, `lint` finished in-session; `raw/` and `raw/_processing/` empty afterwards; both `ask` runs made only read calls (audit by credential).
+    - Criterion 6: already documented (CONNECT-AGENTS, plugin README).
+    - Reported cost: Claude Code $3.2858638 (7 runs), omp $1.4982161 (5 sessions).
+    - All 16 fixture pages set `status: archived` through MCP with a 1 h write token (revoked); fixture repos deleted. Lint archived one pre-existing ticked review item into the new `_system/review-archive.md`, as AGENTS.md prescribes.
 
 - [ ] **T60 — Nightly maintenance, live** [scheduled-maintenance] · **watch**
   - `scripts/maintenance --setup`; one `--dry-run` reviewed with the user; one real run reviewed; wire into `~/docs-vault-ops/nightly-backup.sh` after the backup; one deliberately failed run to check the Slack alert.
