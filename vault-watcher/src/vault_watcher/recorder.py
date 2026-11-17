@@ -13,6 +13,7 @@ from vault_core.fsio import is_temp_name, version_of
 from vault_core.history import HistoryStore, Outcome, Source, Spool, SpoolEntry, classify
 from vault_core.paths import through_symlink
 from vault_core.search_index import SearchIndex
+from vault_watcher.graph_store import GraphStore
 from vault_watcher.secret_scan import SecretScanner
 
 log = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class Recorder:
     audit: AuditLog
     alerts: AlertSink
     index: SearchIndex | None = None
+    graph: GraphStore | None = None
     history: HistoryStore = field(init=False)
     spool: Spool = field(init=False)
     _scan_cache: dict[str, tuple[int, int]] = field(default_factory=dict, init=False)
@@ -185,12 +187,16 @@ class Recorder:
         return outcome
 
     def _reindex(self, rel: str) -> None:
-        """Bring the search index in line with the file on disk (D23)."""
-        if self.index is None:
+        """Bring derived search and graph state in line with the file on disk."""
+        if self.index is None and self.graph is None:
             return
         path = self.vault_dir / rel
-        inside = path.is_file() and not through_symlink(self.vault_dir, rel)
-        self.index.update(rel, path.read_bytes() if inside else None)
+        inside = not through_symlink(self.vault_dir, rel) and path.is_file()
+        data = path.read_bytes() if inside else None
+        if self.index is not None:
+            self.index.update(rel, data)
+        if self.graph is not None:
+            self.graph.update(rel, data)
 
     # -- vault changes -----------------------------------------------------------------------
 
@@ -199,18 +205,21 @@ class Recorder:
         if not is_tracked(rel):
             return False
         path = self.vault_dir / rel
-        if path.exists() and through_symlink(self.vault_dir, rel):
-            # Symlinks are never followed: no outside files, no policy-bypassing aliases.
+        if through_symlink(self.vault_dir, rel):
+            # Remove stale derived rows if a formerly readable file became a symlink.
+            self._reindex(rel)
             return False
         head = self.history.head(rel)
         if not path.is_file():
+            self._reindex(rel)
             if head is not None and head.sha256 is not None:
                 self.history.record(rel, None, event="delete", source=source)
                 self._scan_cache.pop(rel, None)
-                self._reindex(rel)
                 return True
             return False
         data = path.read_bytes()
+        if self.graph is not None:
+            self.graph.update(rel, data)
         if head is not None and head.sha256 == version_of(data):
             return False
         self.history.record(

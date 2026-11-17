@@ -20,6 +20,7 @@ from vault_core.lock import vault_lock
 from vault_core.paths import PathError, normalize
 from vault_core.policy import Policy, PolicyError, load_policy
 from vault_core.search_index import SearchIndex
+from vault_watcher.graph_store import GraphStore
 from vault_watcher.monitor import (
     Monitor,
     default_checks,
@@ -146,6 +147,14 @@ def _write_restored(settings: WatcherSettings, rel: str, content: bytes) -> None
             rel, content, event="modify" if existed else "create", source="unknown", kind="restore"
         )
         SearchIndex(settings.data_dir / "index.db", _policy_or_none(settings)).update(rel, content)
+        policy = _policy_or_none(settings)
+        if policy is not None:
+            GraphStore(
+                settings.vault_dir,
+                settings.data_dir,
+                policy,
+                AlertSender(settings.alert_webhook, service="vault-watcher"),
+            ).update(rel, content)
 
 
 def _policy_or_none(settings: WatcherSettings) -> Policy | None:
@@ -212,10 +221,17 @@ def _cmd_restore_deleted(settings: WatcherSettings, args: argparse.Namespace) ->
 
 
 def _cmd_reindex(settings: WatcherSettings, _: argparse.Namespace) -> int:
-    index = SearchIndex(settings.data_dir / "index.db", load_policy(settings.policy_file))
+    policy = load_policy(settings.policy_file)
+    index = SearchIndex(settings.data_dir / "index.db", policy)
     with vault_lock(settings.data_dir, "reindex"):
         count = index.rebuild(settings.vault_dir)
-    print(f"indexed {count} documents")
+        graphed = GraphStore(
+            settings.vault_dir,
+            settings.data_dir,
+            policy,
+            AlertSender(settings.alert_webhook, service="vault-watcher"),
+        ).rebuild()
+    print(f"indexed {count} documents; rebuilt graph ({graphed} pages)")
     return 0
 
 
@@ -289,11 +305,17 @@ def _cmd_restore_backup(settings: WatcherSettings, args: argparse.Namespace) -> 
         )
     except backup.BackupError as exc:
         raise CliError(str(exc)) from None
-    count = SearchIndex(settings.data_dir / "index.db", load_policy(settings.policy_file)).rebuild(
-        settings.vault_dir
-    )
+    policy = load_policy(settings.policy_file)
+    with vault_lock(settings.data_dir, "reindex"):
+        count = SearchIndex(settings.data_dir / "index.db", policy).rebuild(settings.vault_dir)
+        graphed = GraphStore(
+            settings.vault_dir,
+            settings.data_dir,
+            policy,
+            AlertSender(settings.alert_webhook, service="vault-watcher"),
+        ).rebuild()
     print(
-        f"restored {len(manifest['files'])} files from {manifest['created_at']}; search index rebuilt ({count} documents)"
+        f"restored {len(manifest['files'])} files from {manifest['created_at']}; search index rebuilt ({count} documents); graph rebuilt ({graphed} pages)"
     )
     return 0
 

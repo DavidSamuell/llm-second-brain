@@ -25,6 +25,7 @@ from vault_core.history import Source
 from vault_core.lock import lock_path, read_owner, vault_lock
 from vault_core.policy import Policy
 from vault_core.search_index import SearchIndex
+from vault_watcher.graph_store import GraphStore
 from vault_watcher.recorder import AlertSink, Recorder, is_tracked
 
 log = logging.getLogger(__name__)
@@ -102,6 +103,12 @@ class Watcher:
             AuditLog(config.data_dir / "audit.log"),
             alerts,
             index=SearchIndex(config.data_dir / "index.db", config.policy),
+            graph=GraphStore(
+                config.vault_dir,
+                config.data_dir,
+                config.policy or Policy.model_validate({"write": {"allow": []}}),
+                alerts,
+            ),
         )
         self.heartbeat = config.data_dir / "vault-watcher" / "heartbeat"
         self._pending = _Pending(config.debounce_quiet_s, config.debounce_cap_s)
@@ -146,11 +153,13 @@ class Watcher:
             indexed = (
                 self.recorder.index.rebuild(self.config.vault_dir) if self.recorder.index else 0
             )
+            graphed = self.recorder.graph.rebuild() if self.recorder.graph else 0
         log.info(
-            "startup: %d spool entries resolved, %d files recorded, %d indexed",
+            "startup: %d spool entries resolved, %d files recorded, %d indexed, %d graphed",
             drained,
             changed,
             indexed,
+            graphed,
         )
         self.heartbeat.touch()
         if self.config.health_port is not None:
