@@ -12,7 +12,7 @@ don't edit files.
 
 1. In a repo, start with `project_context(repo=<git remote get-url origin>)`.
 2. Follow the graph and search, read the best pages, and answer briefly, citing every claim with
-   its page (`[[pipelines/asr-training]]`).
+   its page (`[[domains/asr/parakeet/pipelines/training]]`).
 3. Say what the vault doesn't cover; don't fill gaps from general knowledge as vault facts.
 4. If the answer is worth keeping, say so and suggest `/docs-vault:ingest` or
    `/docs-vault:document`; don't save it yourself.

@@ -61,21 +61,22 @@ async def test_16_10_agent_edit_of_a_human_page_needs_a_summary_and_notifies(
     """v0.2 (SPEC-write-policy): person-maintained pages stay editable by agents, with a
     summary and a review notice. `read_only` mode (the v0.1 refusal) is unit-tested."""
     token = _writer(stack, "human-page-agent")
-    page = stack.root / "vault" / "projects" / "alpha.md"
+    rel = "domains/asr/alpha/README.md"
+    page = stack.root / "vault" / rel
     before = page.read_text()
     with pytest.raises(ToolError) as exc:
-        await _call(stack, token, "append", {"path": "projects/alpha.md", "text": "agent note\n"})
+        await _call(stack, token, "append", {"path": rel, "text": "agent note\n"})
     assert _code(exc) == "invalid"
     assert page.read_text() == before
     await _call(
         stack, token, "append",
-        {"path": "projects/alpha.md", "text": "agent note\n", "summary": "Added the kickoff date"},
+        {"path": rel, "text": "agent note\n", "summary": "Added the kickoff date"},
     )  # fmt: skip
     assert page.read_text().endswith("agent note\n")
     queue = (stack.root / "vault" / "_system" / "review-queue.md").read_text()
     assert (
-        "[[projects/alpha]] — Agent updated a person-maintained page — Added the kickoff date"
-        in queue
+        "[[domains/asr/alpha/README]] — Agent updated a person-maintained page"
+        " — Added the kickoff date" in queue
     )
 
 
@@ -134,11 +135,11 @@ async def test_16_10_review_queue_add_works(stack: Stack) -> None:
         stack,
         token,
         "review_queue_add",
-        {"page": "projects/alpha.md", "issue": "Outdated", "suggestion": "Mention v2"},
+        {"page": "domains/asr/alpha/README.md", "issue": "Outdated", "suggestion": "Mention v2"},
     )
     queue = (stack.root / "vault" / "_system" / "review-queue.md").read_text()
     assert f"^{out['item_id']}" in queue
-    assert "[[projects/alpha]] — Outdated — Mention v2" in queue
+    assert "[[domains/asr/alpha/README]] — Outdated — Mention v2" in queue
 
 
 async def test_16_13_secret_saved_outside_mcp_alerts_once_masked(stack: Stack) -> None:

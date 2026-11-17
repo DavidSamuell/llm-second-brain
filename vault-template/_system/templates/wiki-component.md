@@ -11,7 +11,7 @@ graph: {}
 # graph:
 #   relationships:
 #     - predicate: documented_in
-#       object: pipeline:pipelines/<name>
+#       object: pipeline:domains/<domain>/<project>/pipelines/<name>
 #       source: wiki/sources/<name>
 #       evidence: "<quote from the source>"
 #       confidence: high

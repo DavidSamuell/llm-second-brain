@@ -1,5 +1,8 @@
 # Admin-managed graph vocabulary. Markdown remains canonical.
 node_types:
+  domain:
+    maps_from:
+      type: domain
   project:
     maps_from:
       type: project
@@ -137,6 +140,7 @@ predicates:
     subject_types:
     - '*'
     object_types:
+    - domain
     - project
     - decision
     - pipeline

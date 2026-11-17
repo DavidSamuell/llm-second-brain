@@ -1,5 +1,5 @@
 ---
-schema_version: 3
+schema_version: 4
 title: Rules for agents
 maintainer: human
 ---
@@ -40,11 +40,14 @@ you which rules you have.
 | Folder | Who writes | What goes there |
 |---|---|---|
 | `Home.md` | people | Start page |
-| `projects/<project>.md` | people and agents | One overview per project (`project-overview` template) |
-| `specs/<project>/<name>.md` | people and agents | Product specs and architecture docs (`product-spec`, `architecture`) |
-| `specs/<project>/decisions/NNNN-<title>.md` | people and agents | Decisions (`adr`) |
-| `pipelines/<name>.md` | people and agents | Data, training and build pipelines (`pipeline`) |
-| `runbooks/<name>.md` | people and agents | How to operate and fix things (`runbook`, `guide`) |
+| `domains/<domain>/README.md` | people | One overview per domain, e.g. `asr` (`domain` template) |
+| `domains/<domain>/<project>/README.md` | people and agents | One overview per project (`project-overview` template) |
+| `domains/<domain>/<project>/specs/<name>.md` | people and agents | Product specs and architecture docs (`product-spec`, `architecture`) |
+| `domains/<domain>/<project>/decisions/NNNN-<title>.md` | people and agents | Decisions (`adr`) |
+| `domains/<domain>/<project>/pipelines/<name>.md` | people and agents | Data, training and build pipelines (`pipeline`) |
+| `domains/<domain>/<project>/runbooks/<name>.md` | people and agents | How to operate and fix things (`runbook`, `guide`) |
+| `domains/<domain>/shared/{specs,decisions,pipelines,runbooks}/` | people and agents | Docs for several projects of one domain |
+| `shared/{specs,decisions,pipelines,runbooks}/` | people and agents | Docs spanning several domains |
 | `attachments/` | people | Images and files linked from pages |
 | `wiki/components/` | agents | One page per system component |
 | `wiki/concepts/` | agents | One page per idea or term that needs more than a sentence |
@@ -57,22 +60,42 @@ you which rules you have.
 | `_system/` | agents | `index.md`, `log.md`, `review-queue.md`, `lint-report.md` |
 | `_system/templates/`, `_system/graph/` | admins | Page templates and the graph ontology (protected) |
 
-- `projects/`, `specs/`, `pipelines/` and `runbooks/` hold the **human docs**: what people read.
-  They must make sense without the wiki.
+- `domains/` and `shared/` hold the **human docs**: what people read. They must make sense
+  without the wiki.
 - `wiki/` is the **connected reference** behind them: small atomic pages with facts, citations,
   typed edges and links. A wiki page links to the human doc that explains its topic
-  (`documented_in`, section 5) instead of repeating that doc's narrative.
-- File names are lowercase kebab-case: `wiki/concepts/search-ranking.md`. New pages start from
-  the matching template in `_system/templates/`. Pipelines and runbooks can serve several
-  projects; list them all in `project:`.
-- Don't create new top-level folders or change a folder's purpose; ask a person first.
+  (`documented_in`, section 5) instead of repeating that doc's narrative. The wiki is shared by
+  all domains; don't split it per domain.
+- Folder and file names are lowercase kebab-case: `wiki/concepts/search-ranking.md`. New pages
+  start from the matching template in `_system/templates/`. Overview files are always
+  `README.md`; link to them with the full path (`[[domains/asr/parakeet/README]]`), never
+  `[[README]]`. `shared` is never a project name.
+- **Where a doc goes follows its `project:` list** (overview `README.md` files excepted):
+
+  | `project:` lists | The doc lives in |
+  |---|---|
+  | one project | `domains/<domain>/<project>/<subfolder>/` |
+  | several projects of one domain, or `[]` for the whole domain | `domains/<domain>/shared/<subfolder>/` |
+  | projects in different domains | `shared/<subfolder>/` |
+
+  Add a project to `project:` only when a source or the person shows that it uses the whole doc.
+  When the list changes, `move` the doc to its new place in the same session (links and graph
+  references follow) and say so. A doc of which only a part applies to another project stays
+  where it is; link that section from the other project's `README.md` instead.
+- **Domains are created by people.** Create `domains/<new>/README.md` only after the person you
+  are working with agrees. A new project that fits no existing domain:
+  - in a session: ask the person to pick an existing domain or approve a new one;
+  - unattended (no person to ask): still write the source summary, wiki pages and graph edges,
+    skip the project's human docs, and add one review item "Project <name> needs a domain:
+    suggest <domain>". Don't guess a domain.
+- Don't create other top-level folders or change a folder's purpose; ask a person first.
 
 ## 3. Who may edit what (`maintainer`)
 
 Every page has `maintainer` in its frontmatter:
 
-- `shared`: the default for human docs (`projects/`, `specs/`, `pipelines/`, `runbooks/`). People
-  and agents both edit; agents keep it current with small, section-level changes.
+- `shared`: the default for human docs (`domains/`, `shared/`). People and agents both edit;
+  agents keep it current with small, section-level changes.
 - `agent`: agent-generated reference (`wiki/`). People may still edit; their edits win.
 - `human`: written by a person. Depending on the vault's policy, agents either may not edit it
   (`forbidden`; propose the change with `review_queue_add`) or may update it only where it is
@@ -121,10 +144,10 @@ Frontmatter on every page:
 
 ```yaml
 title: ASR training
-type: pipeline         # project | product-spec | architecture | adr | pipeline | runbook | guide |
-                       # component | concept | glossary-term | team | source-summary
+type: pipeline         # domain | project | product-spec | architecture | adr | pipeline | runbook |
+                       # guide | component | concept | glossary-term | team | source-summary
 maintainer: shared     # shared | agent | human (section 3)
-project: ["[[projects/alpha]]"]   # projects this page belongs to; [] until known
+project: ["[[domains/asr/parakeet/README]]"]   # projects this page belongs to; [] until known
 tags: [asr]
 sources: ["[[wiki/sources/2026-11-17-asr-repo-readme]]"]
 updated: 2026-11-17
@@ -146,7 +169,7 @@ graph: {}              # typed edges, below
 - Every update adds one dated line under `## Change log`, newest last:
   `- 2026-11-17: Training now runs on GPU2 (was GPU1) — [[wiki/sources/2026-11-17-asr-repo-readme]]`
 - Link each spec, decision, pipeline and runbook from its project page (create the project page
-  from `project-overview` if it is missing).
+  from `project-overview` if it is missing), and each project from its domain's `README.md`.
 
 ### Typed edges (`graph:`)
 
@@ -159,16 +182,17 @@ yourself. Typed relationships go under `graph.relationships`:
 graph:
   relationships:
     - predicate: documented_in
-      object: pipeline:pipelines/asr-training
+      object: pipeline:domains/asr/parakeet/pipelines/training
       source: wiki/sources/2026-11-17-asr-repo-readme
-      evidence: "The training pipeline is described in pipelines/asr-training."
+      evidence: "The training pipeline is described in docs/training.md."
       confidence: high      # high | medium | low
       status: current       # current | historical | proposed | disputed | superseded
 ```
 
 - A page's node id is `<node type>:<path without .md>`, e.g. `component:wiki/components/asr-model`,
-  `project:projects/alpha`, `decision:specs/alpha/decisions/0001-use-gpu2` (ADR pages are
-  `decision` nodes) and `source:wiki/sources/<name>` (source summaries are `source` nodes). Only
+  `project:domains/asr/parakeet/README`, `decision:domains/asr/parakeet/decisions/0001-use-gpu2`
+  (ADR pages are `decision` nodes), `domain:domains/asr/README` and `source:wiki/sources/<name>`
+  (source summaries are `source` nodes). Only
   set `graph.node_id` when a page needs an id that survives renames; it must start with its node
   type.
 - Predicates and allowed node types come from `_system/graph/ontology.yaml`. Every typed edge needs
@@ -186,7 +210,7 @@ Every statement of fact cites where it came from:
 - Cite repository facts as `repo@commit:path`, e.g. `github.com/org/asr@4f2c1e9:train/config.yaml`.
   The repo reading itself is submitted and ingested as a source (section 12).
 - A source summary records the original: `origin`, `url` if any, and the `raw/_processed/` path.
-- Facts taken from a human doc cite that page: `([[specs/alpha/search]])`.
+- Facts taken from a human doc cite that page: `([[domains/asr/parakeet/specs/search]])`.
 - If you can't find a source for something, don't write it.
 
 ## 7. Conflicts and contradictions
@@ -205,7 +229,7 @@ Every statement of fact cites where it came from:
 `review_queue_add(page, issue, suggestion)` adds a task to `_system/review-queue.md`:
 
 ```
-- [ ] 2026-11-10 09:30Z [[projects/alpha]] — Out of date — Mention the v2 API — by alice-laptop (alice@example.com) #review ^rq-01abc
+- [ ] 2026-11-10 09:30Z [[domains/asr/parakeet/README]] — Out of date — Mention the v2 API — by alice-laptop (alice@example.com) #review ^rq-01abc
 ```
 
 Use it for: changes you may not make, renames you can't do, contradictions you can't settle,

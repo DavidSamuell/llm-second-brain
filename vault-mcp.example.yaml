@@ -2,7 +2,7 @@
 # which is yours to edit; vault-mcp and vault-watcher read it at startup (restart to apply).
 write:
   # Agents write here, plus any page with `maintainer: agent` or `maintainer: shared`.
-  allow: [wiki/, raw/, _system/, projects/, specs/, pipelines/, runbooks/]
+  allow: [wiki/, raw/, _system/, domains/, shared/]
   # `maintainer: human` pages: edit_with_notice lets agents update them (with a summary and a
   # review-queue notice); read_only refuses, so agents must use review_queue_add (v0.1 behaviour).
   human_pages: edit_with_notice

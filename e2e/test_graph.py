@@ -17,6 +17,8 @@ from test_write import _call, _writer
 from vault_watcher.backup import restore
 
 SOURCE = "wiki/sources/graph-evidence"
+PROJECT = "domains/asr/graph-project/README.md"
+PIPELINE = "domains/asr/graph-project/pipelines/graph-train.md"
 
 
 def document(
@@ -55,14 +57,16 @@ async def test_graph_write_query_permissions_move_and_web_lint(stack: Stack) -> 
         "---\ntype: source-summary\n---\nThe project uses the training pipeline and model serving runbook.\n",
     )
     model = await write("wiki/graph-model.md", "---\ntype: component\n---\n# Model\n")
-    await write("runbooks/graph-serve.md", document("runbook", "runbook:graph-serve"))
     await write(
-        "projects/graph-project.md",
+        "domains/asr/shared/runbooks/graph-serve.md", document("runbook", "runbook:graph-serve")
+    )
+    await write(
+        PROJECT,
         document("project", "project:graph-project", [("depends_on", "pipeline:graph-train")]),
     )
     started = time.monotonic()
     await write(
-        "pipelines/graph-train.md",
+        PIPELINE,
         document(
             "pipeline",
             "pipeline:graph-train",
@@ -91,12 +95,10 @@ async def test_graph_write_query_permissions_move_and_web_lint(stack: Stack) -> 
     assert path["paths"] == [
         ["project:graph-project", "pipeline:graph-train", "runbook:graph-serve"]
     ]
-    neighbors = await _call(
-        stack, token, "graph_neighbors", {"node": "projects/graph-project.md", "depth": 2}
-    )
+    neighbors = await _call(stack, token, "graph_neighbors", {"node": PROJECT, "depth": 2})
     assert "pipeline:graph-train" in {n["id"] for n in neighbors["nodes"]}
     backlinks = await _call(stack, token, "backlinks", {"path": "wiki/graph-model.md"})
-    assert "pipelines/graph-train.md" in backlinks["pages"]
+    assert PIPELINE in backlinks["pages"]
     await write(
         "wiki/graph-reference.md",
         document(
@@ -146,7 +148,7 @@ async def test_graph_write_query_permissions_move_and_web_lint(stack: Stack) -> 
     moved = (await _call(stack, token, "graph_edges", {"predicate": "produces"}))["edges"]
     assert any(e["object"] == "component:wiki/graph-renamed-model" for e in moved)
     assert (
-        "pipelines/graph-train.md"
+        PIPELINE
         in (await _call(stack, token, "backlinks", {"path": "wiki/graph-renamed-model.md"}))[
             "pages"
         ]

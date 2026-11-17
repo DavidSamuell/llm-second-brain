@@ -94,8 +94,10 @@ async def test_doc_authoring_document_and_ingest_finish_with_updated_human_docs(
         + f"---\n# Training\n\nThe pipeline validates and trains on GPU1 ({citation}).\n",
     )
     source_link = source1.removesuffix(".md")
-    project = "projects/authoring-alpha.md"
-    pipeline = "pipelines/authoring-training.md"
+    project = "domains/asr/authoring-alpha/README.md"
+    project_link = f"[[{project.removesuffix('.md')}]]"
+    pipeline = "domains/asr/authoring-alpha/pipelines/authoring-training.md"
+    pipeline_node = "pipeline:" + pipeline.removesuffix(".md")
     wiki = "wiki/components/authoring-training.md"
     project_meta = {
         "title": "Alpha",
@@ -120,7 +122,7 @@ async def test_doc_authoring_document_and_ingest_finish_with_updated_human_docs(
     )
     meta, body = frontmatter.parse(template)
     assert meta is not None
-    meta.update(project=[project.removesuffix(".md")], sources=[source_link])
+    meta.update(project=[project_link], sources=[source_link])
     body = replace_section(
         body,
         "Inputs and outputs",
@@ -143,13 +145,13 @@ async def test_doc_authoring_document_and_ingest_finish_with_updated_human_docs(
                 "title": "Training reference",
                 "type": "component",
                 "maintainer": "agent",
-                "project": [project.removesuffix(".md")],
+                "project": [project_link],
                 "sources": [source_link],
                 "graph": {
                     "relationships": [
                         {
                             "predicate": "documented_in",
-                            "object": "pipeline:pipelines/authoring-training",
+                            "object": pipeline_node,
                             "source": source_link,
                             "evidence": "The pipeline validates and trains on GPU1",
                             "confidence": "high",
@@ -171,7 +173,7 @@ async def test_doc_authoring_document_and_ingest_finish_with_updated_human_docs(
     assert context["project"]["path"] == project
     assert len(json.dumps(context)) <= 4000
     edge_rows = (await call("graph_edges", subject=wiki, predicate="documented_in"))["edges"]
-    assert any(e["object"] == "pipeline:pipelines/authoring-training" for e in edge_rows)
+    assert any(e["object"] == pipeline_node for e in edge_rows)
     # /ingest: a pasted, settled update is processed in this same run, not queued nightly.
     raw2 = await call(
         "submit_source",

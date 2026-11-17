@@ -1,6 +1,6 @@
 ---
 description: Check the team docs vault (or one folder) now and fix what agents may fix
-argument-hint: "[folder, e.g. pipelines/]"
+argument-hint: "[folder, e.g. domains/asr/]"
 ---
 Lint the team docs vault now. Scope: $ARGUMENTS (empty means the whole vault).
 

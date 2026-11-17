@@ -13,7 +13,11 @@ from test_write import _call, _writer
 
 async def test_write_policy_human_folders_keep_history_and_audit(stack: Stack) -> None:
     token = _writer(stack, "policy-folders")
-    for rel in ("projects/policy-new.md", "pipelines/policy-etl.md"):
+    for rel in (
+        "domains/asr/policy-new/README.md",
+        "domains/asr/shared/pipelines/policy-etl.md",
+        "shared/runbooks/policy-onboarding.md",
+    ):
         result = await _call(
             stack, token, "write", {"path": rel, "content": "# New\n", "base_version": None}
         )
@@ -39,7 +43,7 @@ async def test_write_policy_human_folders_keep_history_and_audit(stack: Stack) -
 
 async def test_write_policy_three_human_edits_have_one_notice(stack: Stack) -> None:
     token = _writer(stack, "policy-notice")
-    rel = "projects/policy-human.md"
+    rel = "domains/asr/policy-human/README.md"
     await _call(
         stack,
         token,
@@ -66,7 +70,7 @@ async def test_write_policy_three_human_edits_have_one_notice(stack: Stack) -> N
     notices = [
         line
         for line in queue.splitlines()
-        if "[[projects/policy-human]]" in line and "#review/agent-edit" in line
+        if "[[domains/asr/policy-human/README]]" in line and "#review/agent-edit" in line
     ]
     assert len(notices) == 1
     rows = [
@@ -148,7 +152,7 @@ async def test_write_policy_read_only_still_refuses_human_pages(stack: Stack) ->
     original = path.read_text()
     policy = yaml.safe_load(original)
     policy["write"]["human_pages"] = "read_only"
-    page = stack.root / "vault" / "projects" / "alpha.md"
+    page = stack.root / "vault" / "domains" / "asr" / "alpha" / "README.md"
     before = page.read_text()
     try:
         path.write_text(yaml.safe_dump(policy))
@@ -160,7 +164,7 @@ async def test_write_policy_read_only_still_refuses_human_pages(stack: Stack) ->
                 token,
                 "append",
                 {
-                    "path": "projects/alpha.md",
+                    "path": "domains/asr/alpha/README.md",
                     "text": "Must not be written\n",
                     "summary": "Legacy refusal",
                 },

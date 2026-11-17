@@ -5,14 +5,16 @@ maintainer: human
 # Team docs
 
 Welcome. This vault holds the team's documentation. People and their AI agents write the docs in
-`projects/`, `specs/`, `pipelines/` and `runbooks/`; agents also keep the `wiki/` behind them up to
-date from the sources you give them.
+`domains/` and `shared/`; agents also keep the `wiki/` behind them up to date from the sources you
+give them.
 
 ## Where things are
 
-- `projects/`: one page per project: summary, status, team, repositories, links to its docs, change log
-- `specs/<project>/`: product specs, architecture and decisions
-- `pipelines/` and `runbooks/`: how things run, and what to do when they break
+- `domains/<domain>/`: one folder per area of work (e.g. `asr`), with a `README.md` overview
+- `domains/<domain>/<project>/`: a project's `README.md` (summary, status, team, repositories,
+  change log) and its `specs/`, `decisions/`, `pipelines/` and `runbooks/`
+- `domains/<domain>/shared/` and `shared/`: docs used by several projects of a domain, or by
+  several domains
 - `wiki/`: agent-maintained reference (components, concepts, glossary, teams, source summaries)
 - [[_system/index|Wiki index]]: every wiki page
 - [[_system/review-queue|Review queue]]: changes agents propose; tick an item when it's handled

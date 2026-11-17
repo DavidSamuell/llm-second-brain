@@ -23,10 +23,11 @@ Answer questions from the vault, citing the pages you used, following the vault'
    `graph_neighbors(node)`, `graph_edges(subject|object, predicate)`, `graph_path(from, to)`,
    `backlinks(path)`. Prefer `current` edges; mention `superseded` or `disputed` ones as such.
 4. `search(query)` with two or three phrasings (names, synonyms, likely page titles). Use
-   `folder` to narrow (`projects/`, `specs/`, `pipelines/`, `runbooks/`, `wiki/`…).
+   `folder` to narrow (`domains/asr/`, `domains/asr/parakeet/`, `shared/`, `wiki/`…).
 5. `read` the best 3–6 pages: human docs for the narrative, wiki pages for facts and edges.
    Follow wikilinks one or two steps when they look relevant.
-6. Answer briefly. Cite every claim with the page it came from: `[[pipelines/asr-training]]`.
+6. Answer briefly. Cite every claim with the page it came from:
+   `[[domains/asr/parakeet/pipelines/training]]`.
    Prefer human docs and `wiki/` over raw sources.
 7. Say what the vault doesn't cover. Don't present general knowledge as a vault fact.
 8. If the answer combined several pages into something worth keeping, offer to save it. Only

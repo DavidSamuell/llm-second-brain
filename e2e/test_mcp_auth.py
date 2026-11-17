@@ -54,7 +54,7 @@ async def test_16_5_read_token_reads_within_policy(stack: Stack) -> None:
         page = (await client.call_tool("read", {"path": "wiki/index.md"})).structured_content
         assert page is not None
         assert page["content"].startswith("---\ntitle: Wiki index")
-        for path in ("private/salaries.md", "projects/alpha.md"):
+        for path in ("private/salaries.md", "domains/asr/alpha/README.md"):
             with pytest.raises(ToolError) as exc:
                 await client.call_tool("read", {"path": path})
             assert json.loads(str(exc.value))["code"] == "forbidden"

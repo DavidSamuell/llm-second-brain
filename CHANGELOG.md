@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Opt-in agent editing of human-maintained pages with required change summaries, audit attribution and one review-queue notice per page per UTC day. The example policy now includes `projects/`, `specs/`, `pipelines/` and `runbooks/`; existing policies retain `read_only` unless changed.
+- Opt-in agent editing of human-maintained pages with required change summaries, audit attribution and one review-queue notice per page per UTC day. The example policy now includes the human-doc folders (`domains/`, `shared/`); existing policies retain `read_only` unless changed.
 - Protected rule paths (`write.protected`) and a 90-second grace after recorded web-editor saves (`human_edit_grace_s`), including move/link-update checks. Protected writes return `forbidden` with reason `protected`; recent saves return `recently_edited` with a retry delay. Stale-base writes still return `conflict`.
 - Derived typed knowledge graph in `DATA_PATH/graph.sqlite`, incrementally maintained by vault-watcher and rebuilt by reindex/restore; admin ontology with last-valid reload and alerting.
 - Read-scope MCP tools `graph_neighbors`, `graph_edges`, `graph_path`, `backlinks` and `graph_lint`, with endpoint/declaring-page permissions, evidence redaction, and ambiguity-safe references. MCP writes reject invalid typed metadata; browser edits remain editable and are reported by lint.
@@ -19,6 +19,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Opt-in, credential-free session hooks for Claude Code and omp: repo allowlist, per-repo/session opt-outs, startup/compaction context and every-tenth-prompt capture reminders. Codex CLI automatic capture remains unsupported.
 - Host `scripts/maintenance` for post-backup ingestion, structural/semantic lint and direct fixes through MCP, with estimated-spend/time limits, private logs, fresh-report checks, read-only preview and one Slack-compatible failure alert per run.
 - Vault schema 3: ingest and in-session capture now require every human doc they create or change (decision records included) to be the object of a `documented_in` edge from a wiki page about the component or concept it concerns. Run `scripts/upgrade-vault`; released schema-1 and schema-2 files upgrade with custom blocks kept.
+
+### Changed
+
+- **Breaking, vault schema 4:** human docs are grouped by domain and project: `domains/<domain>/README.md`, `domains/<domain>/<project>/README.md` with `specs/`, `decisions/`, `pipelines/` and `runbooks/` beside it, `domains/<domain>/shared/` for docs several projects of a domain use, and top-level `shared/` for docs spanning domains. The flat `projects/`, `specs/`, `pipelines/` and `runbooks/` folders are gone. New `domain` template and graph node type. People create domains; agents ask first, and when unattended they hold back a new project's docs and file a review item. `project_context` finds projects only at `domains/<domain>/<project>/README.md` and also accepts the project folder name. Update `write.allow` in your `vault-mcp.yaml` (example: `[wiki/, raw/, _system/, domains/, shared/]`); `upgrade-vault` updates the rules and skills but does not move existing pages: move them with the `move` tool before upgrading agents.
+- A human doc's folder follows its `project:` list (one project, several in one domain, several domains). Agents move a doc with `move` when its list changes; `docs-lint` finds and moves misplaced docs.
 
 ### Fixed
 

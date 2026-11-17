@@ -26,5 +26,8 @@ async def test_16_7_search_respects_deny_and_folder_scope(stack: Stack) -> None:
         "--folders",
         "wiki/",
     )
-    assert await _search(stack, everything, "quarry") == ["projects/alpha.md", "wiki/index.md"]
+    assert await _search(stack, everything, "quarry") == [
+        "domains/asr/alpha/README.md",
+        "wiki/index.md",
+    ]
     assert await _search(stack, wiki_only, "quarry") == ["wiki/index.md"]

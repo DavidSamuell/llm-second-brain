@@ -49,13 +49,18 @@ them. Nothing is left in `raw/` for a later run.
    open questions; frontmatter `origin`, `url`, `raw: raw/_processed/<name>`, `maintainer: agent`,
    plus `project` and `repo` when the source names them.
 6. **Find the project.** For a repo source call `project_context(repo=<repo id>)`; otherwise use
-   the source's `project`, or `search` in `projects/`. It gives the project page, its graph
+   the source's `project`, or `search` in `domains/`. It gives the project page, its graph
    neighbourhood, open review items and recent changes.
 7. **Human docs.** For each project, spec, architecture, decision, pipeline or runbook the source
    changes, `search` and `read` the doc first.
-   - **Where:** `projects/<project>.md` (`project-overview`), `specs/<project>/<name>.md`
-     (`product-spec` / `architecture`), `specs/<project>/decisions/NNNN-<title>.md` (`adr`),
-     `pipelines/<name>.md` (`pipeline`), `runbooks/<name>.md` (`runbook`).
+   - **Where:** under the project, `domains/<domain>/<project>/`: `README.md`
+     (`project-overview`), `specs/<name>.md` (`product-spec` / `architecture`),
+     `decisions/NNNN-<title>.md` (`adr`), `pipelines/<name>.md` (`pipeline`), `runbooks/<name>.md`
+     (`runbook`, `guide`). The `project:` list decides the folder: one project → that project's
+     folder; several projects of one domain → `domains/<domain>/shared/<same subfolders>`;
+     several domains → `shared/<same subfolders>`. When you add or remove a project in an
+     existing doc's `project:`, `move` it to match (AGENTS.md section 2). Link `README.md` files
+     by full path (`[[domains/asr/parakeet/README]]`).
    - **New doc:** start from the template; `maintainer: shared`, `project: [<project>]` (that
      is the project link; don't add a `belongs_to_project` edge), a `graph` block or `graph: {}`,
      cited facts, and a first `## Change log` line `- <date>: Created — [[wiki/sources/<name>]]`.
@@ -68,8 +73,12 @@ them. Nothing is left in `raw/` for a later run.
      on `maintainer: human` pages. There, change only what the cited source makes obsolete and
      keep the person's structure and wording elsewhere; a review notice is raised automatically.
    - **Project page:** link every new doc from its section (Specs, Pipelines, Runbooks,
-     Decisions). If the project page is missing, create it from `project-overview` with
-     `repo: [<repo id>]`.
+     Decisions). If the project page is missing, create
+     `domains/<domain>/<project>/README.md` from `project-overview` with `repo: [<repo id>]`, and
+     link it from `domains/<domain>/README.md`. Use an existing domain (`list("domains")`). If
+     none fits: in a session, ask the person (pick one, or agree to a new domain, which you then
+     create from the `domain` template); with nobody to ask, skip the project's human docs, still
+     do steps 8–11, and `review_queue_add` "Project <name> needs a domain: suggest <domain>".
    - **Contradictions:** newer, better-sourced information becomes the current text; the old
      claim stays in the change log and as its typed edge with `status: superseded`. If you can't
      tell which is right, keep the current text, put both claims with citations under
@@ -88,7 +97,7 @@ them. Nothing is left in `raw/` for a later run.
    graph:
      relationships:
        - predicate: documented_in
-         object: pipeline:pipelines/asr-training
+         object: pipeline:domains/asr/parakeet/pipelines/training
          source: wiki/sources/2026-11-17-asr-repo-readme
          evidence: "Training is described in docs/training.md and runs nightly."
          confidence: high

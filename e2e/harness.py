@@ -22,7 +22,7 @@ AGENTS_MD = "---\nschema_version: 1\n---\n# Vault rules\n"
 SEED = {
     "AGENTS.md": AGENTS_MD,
     "wiki/index.md": "---\ntitle: Wiki index\nmaintainer: agent\n---\n# Index\n\nquarry\n",
-    "projects/alpha.md": "---\nmaintainer: human\n---\n# Alpha\n\nquarry\n",
+    "domains/asr/alpha/README.md": "---\nmaintainer: human\n---\n# Alpha\n\nquarry\n",
     "private/salaries.md": "not for agents, quarry\n",
 }
 

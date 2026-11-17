@@ -20,16 +20,20 @@ in it (but follow their links and edges to judge them).
 
 1. `get_schema` and follow it. `read` `_system/graph/ontology.yaml` and
    `_system/review-queue.md` (so you don't add duplicate items).
-2. `list` the folders in scope (default: `projects/`, `specs/`, `pipelines/`, `runbooks/`, each
-   `wiki/` subfolder, `_system/`) and `read` the pages. For large vaults, check the pages changed
+2. `list` the folders in scope (default: `domains/` and `shared/` recursively, each `wiki/`
+   subfolder, `_system/`) and `read` the pages. For large vaults, check the pages changed
    most recently first and stop after about 100 pages.
 3. **Every page:** broken wikilinks; wiki page not in `_system/index.md`; orphan (nothing links
    to it); missing or invalid frontmatter (`title`, `type`, `maintainer`, `updated`); facts
    without a citation; `updated` older than 180 days; duplicates of another page; claims that
    contradict another page.
-4. **Human docs** (`projects/`, `specs/`, `pipelines/`, `runbooks/`):
-   - not linked from its project page, or no `project:`; project page without `repo:` when
-     its docs cite a repo;
+4. **Human docs** (everything under `domains/` and `shared/`):
+   - not linked from its project page, or no `project:`; project page not linked from its
+     domain's `README.md`, or not at `domains/<domain>/<project>/README.md`; project page without
+     `repo:` when its docs cite a repo;
+   - **misplaced:** its folder doesn't match its `project:` list (AGENTS.md section 2: one
+     project → that project's folder, several in one domain → `domains/<domain>/shared/`,
+     several domains → `shared/`);
    - no `## Change log`, or an update without a change-log line; agent working notes in the text;
      large unexplained rewrites in recent history;
    - **cites a superseded source:** collect superseded sources with
@@ -51,6 +55,8 @@ a statement made obsolete by a newer cited source). Never touch `AGENTS.md`, `CL
 
 - Links, index entries, frontmatter, missing project-page links and `documented_in` edges
   (only with a `source` and an `evidence` quote you read in that source page).
+- **Misplaced doc:** `move` it to the folder its `project:` list requires (one move per doc; its
+  links and graph references follow). If the move is refused, add a review item.
 - **Superseded citation:** when the superseding source states the replacement fact, rewrite
   that statement in place citing the newer source summary, and add one change-log line:
   `- <date>: <new fact> (was <old fact>) — [[wiki/sources/<newer>]]`. If the newer source

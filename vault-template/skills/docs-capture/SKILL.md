@@ -28,7 +28,9 @@ person asks you not to capture, stop for this session.
 1. Once per session: `get_schema`, and `project_context(repo=<repo id>)` for the repo you work
    in. The repo id is `git remote get-url origin` (any form; the server normalises it, e.g.
    `github.com/org/app`). No project returned: offer once to create one from the repo's README
-   and code, and continue if the person agrees or doesn't object.
+   and code, and continue if the person agrees or doesn't object. Ask which domain it belongs to
+   when that isn't obvious from the existing `domains/`; create a new domain only if the person
+   agrees (`docs-ingest` step 7).
 2. **Dedupe:** `search` (two phrasings) and `graph_neighbors` around the project or component.
    Already stated the same way: stop. Stated differently: this is an update; capture what changed
    and what it replaces.

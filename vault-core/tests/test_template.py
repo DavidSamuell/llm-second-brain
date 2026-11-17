@@ -21,17 +21,18 @@ TEMPLATE = Path(__file__).resolve().parents[2] / "vault-template"
 TEMPLATES = TEMPLATE / "_system" / "templates"
 ONTOLOGY = load_ontology((TEMPLATE / "_system" / "graph" / "ontology.yaml").read_text())
 HUMAN_DOC_TYPES = {
-    "project", "product-spec", "architecture", "decision", "pipeline", "runbook", "guide",
+    "domain", "project", "product-spec", "architecture", "decision", "pipeline", "runbook", "guide",
 }  # fmt: skip
 # template -> (a page path following AGENTS.md section 2, its graph node type)
 PLACES = {
-    "project-overview": ("projects/alpha.md", "project"),
-    "product-spec": ("specs/alpha/reader.md", "product-spec"),
-    "architecture": ("specs/alpha/asr-architecture.md", "architecture"),
-    "adr": ("specs/alpha/decisions/0001-use-gpu2.md", "decision"),
-    "pipeline": ("pipelines/asr-training.md", "pipeline"),
-    "runbook": ("runbooks/restart-asr.md", "runbook"),
-    "guide": ("runbooks/onboarding.md", "guide"),
+    "domain": ("domains/asr/README.md", "domain"),
+    "project-overview": ("domains/asr/parakeet/README.md", "project"),
+    "product-spec": ("domains/asr/parakeet/specs/reader.md", "product-spec"),
+    "architecture": ("domains/asr/shared/specs/asr-architecture.md", "architecture"),
+    "adr": ("domains/asr/parakeet/decisions/0001-use-gpu2.md", "decision"),
+    "pipeline": ("domains/asr/parakeet/pipelines/asr-training.md", "pipeline"),
+    "runbook": ("domains/asr/shared/runbooks/restart-asr.md", "runbook"),
+    "guide": ("shared/runbooks/onboarding.md", "guide"),
     "source-summary": ("wiki/sources/2026-11-17-asr-readme.md", "source"),
     "wiki-component": ("wiki/components/asr-model.md", "component"),
     "wiki-concept": ("wiki/concepts/search-ranking.md", "concept"),
@@ -102,6 +103,9 @@ def test_a_page_from_each_template_has_a_valid_default_graph_node(name: str) -> 
             "Summary", "Status", "Team", "Repositories", "Specs", "Pipelines", "Runbooks",
             "Decisions", "Change log",
         ]  # fmt: skip
+    elif node_type == "domain":  # a domain overview sits above projects, it belongs to none
+        assert isinstance(meta["owners"], list) and "project" not in meta
+        assert headings == ["Summary", "Projects", "Shared docs", "Change log"]
     else:
         assert isinstance(meta["project"], list)
 

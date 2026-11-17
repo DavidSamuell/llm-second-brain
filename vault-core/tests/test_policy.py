@@ -146,7 +146,7 @@ def test_check_write_intersects_credential_folders_with_policy(policy: Policy) -
 
 V2_POLICY = """\
 write:
-  allow: [wiki/, raw/, _system/, projects/, specs/, pipelines/, runbooks/]
+  allow: [wiki/, raw/, _system/, domains/, shared/]
   human_pages: edit_with_notice
   protected: [AGENTS.md, CLAUDE.md, skills/, _system/templates/, _system/graph/ontology.yaml]
   human_edit_grace_s: 90
@@ -181,11 +181,14 @@ def test_v01_policy_file_still_loads_with_safe_v02_defaults(policy: Policy) -> N
     ("path", "exists", "maintainer", "saved_ago", "allowed", "reason", "human_page"),
     [
         # human-facing folders are writable now
-        ("projects/alpha.md", False, None, None, True, None, False),
-        ("pipelines/etl.md", True, None, None, True, None, False),
-        ("specs/alpha/arch.md", True, "shared", None, True, None, False),
+        ("domains/asr/alpha/README.md", False, None, None, True, None, False),
+        ("domains/asr/alpha/pipelines/etl.md", True, None, None, True, None, False),
+        ("domains/asr/shared/specs/arch.md", True, "shared", None, True, None, False),
+        ("shared/runbooks/onboarding.md", False, None, None, True, None, False),
+        # the old flat folders are gone
+        ("projects/alpha.md", False, None, None, False, "not_in_write_allow", False),
         # person-maintained pages: allowed, flagged for the notice
-        ("projects/alpha.md", True, "human", None, True, None, True),
+        ("domains/asr/alpha/README.md", True, "human", None, True, None, True),
         ("wiki/x.md", True, "human", 3600.0, True, None, True),
         # protected files and folders, whatever the frontmatter says
         ("AGENTS.md", True, "human", None, False, "protected", False),
@@ -195,7 +198,7 @@ def test_v01_policy_file_still_loads_with_safe_v02_defaults(policy: Policy) -> N
         ("_system/graph/ontology.yaml", True, None, None, False, "protected", False),
         ("skills-notes.md", False, None, None, False, "not_in_write_allow", False),
         # a fresh web save waits, for every kind of page
-        ("projects/alpha.md", True, "shared", 10.0, False, "recently_edited", False),
+        ("domains/asr/alpha/README.md", True, "shared", 10.0, False, "recently_edited", False),
         ("wiki/x.md", True, "agent", 89.9, False, "recently_edited", False),
         ("wiki/x.md", True, "agent", 90.0, True, None, False),
         # read rules still come first

@@ -82,7 +82,10 @@ class ProjectTools:
         if repo is None and project is None:
             return {"project": None}
         selected: list[tuple[str, dict[str, Any], str]] = []
-        for path in sorted((self.vault_dir / "projects").rglob("*.md")):
+        # Project pages live only at domains/<domain>/<project>/README.md (AGENTS.md section 2).
+        for path in sorted((self.vault_dir / "domains").glob("*/*/README.md")):
+            if path.parent.name == "shared":
+                continue
             rel = path.relative_to(self.vault_dir).as_posix()
             text = self._text(cred, rel)
             if text is None:
@@ -103,7 +106,7 @@ class ProjectTools:
             refs = {
                 rel,
                 clean_reference(rel),
-                path.stem,
+                path.parent.name,
                 str(meta.get("title", "")),
                 str(graph.get("node_id", "project:" + clean_reference(rel))),
             }

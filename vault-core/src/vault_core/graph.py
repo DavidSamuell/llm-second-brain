@@ -64,6 +64,7 @@ def load_ontology(text: str) -> Ontology:
 def default_ontology() -> Ontology:
     """Built-in starter for schema-1 vaults, before their schema-2 template upgrade."""
     types = (
+        "domain",
         "project",
         "product-spec",
         "architecture",
@@ -105,7 +106,16 @@ def default_ontology() -> Ontology:
         (
             "documented_in",
             ["*"],
-            ["project", "product-spec", "architecture", "decision", "pipeline", "runbook", "guide"],
+            [
+                "domain",
+                "project",
+                "product-spec",
+                "architecture",
+                "decision",
+                "pipeline",
+                "runbook",
+                "guide",
+            ],
         ),
     ):
         rules[name] = Predicate(subject_types=subjects, object_types=objects)

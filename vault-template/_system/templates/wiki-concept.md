@@ -11,7 +11,7 @@ graph: {}
 # graph:
 #   relationships:
 #     - predicate: documented_in
-#       object: architecture:specs/<project>/<name>
+#       object: architecture:domains/<domain>/<project>/specs/<name>
 #       source: wiki/sources/<name>
 #       evidence: "<quote from the source>"
 #       confidence: high

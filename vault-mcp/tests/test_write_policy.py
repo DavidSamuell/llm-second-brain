@@ -17,7 +17,7 @@ from vault_mcp.writer import VaultWriter
 
 V2 = """\
 write:
-  allow: [wiki/, raw/, _system/, projects/, specs/, pipelines/, runbooks/]
+  allow: [wiki/, raw/, _system/, domains/, shared/]
   human_pages: edit_with_notice
   human_edit_grace_s: 90
   delete: false
@@ -32,6 +32,16 @@ def policy(tmp_path: Path) -> Policy:  # overrides conftest: the v0.2 policy, wa
     f = tmp_path / "vault-mcp-v2.yaml"
     f.write_text(V2)
     return load_policy(f)
+
+
+ALPHA = "domains/asr/alpha/README.md"
+
+
+@pytest.fixture
+def vault(vault: Path) -> Path:  # overrides conftest: the person's page in the domain layout
+    (vault / ALPHA).parent.mkdir(parents=True)
+    (vault / "projects" / "alpha.md").rename(vault / ALPHA)
+    return vault
 
 
 def cred(store: CredentialStore) -> Credential:
@@ -65,7 +75,7 @@ async def test_human_page_edit_needs_a_summary_then_audits_and_notifies_once_a_d
     vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
 ) -> None:
     w, c = VaultWriter(vault, data, policy), cred(store)
-    page = "projects/alpha.md"
+    page = ALPHA
     version = version_of((vault / page).read_bytes())
     with pytest.raises(ToolError) as exc:
         await w.write(c, page, "---\nmaintainer: human\n---\n# Alpha v2\n", version)
@@ -84,7 +94,7 @@ async def test_human_page_edit_needs_a_summary_then_audits_and_notifies_once_a_d
     assert all(r["human_page"] is True for r in oks)
     assert oks[0]["summary"] == "Status updated to phase 2 per the kickoff notes"
     [notice] = notices(vault)
-    assert "[[projects/alpha]]" in notice
+    assert "[[domains/asr/alpha/README]]" in notice
     assert "Status updated to phase 2 per the kickoff notes" in notice
     assert "by agent (agent@example.com)" in notice
 
@@ -148,9 +158,13 @@ async def test_human_folders_are_writable_for_new_pages(
     vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
 ) -> None:
     w, c = VaultWriter(vault, data, policy), cred(store)
-    await w.write(c, "pipelines/etl.md", "---\nmaintainer: shared\n---\n# ETL\n", None)
-    await w.write(c, "specs/alpha/architecture.md", "# Architecture\n", None)
-    assert (vault / "pipelines" / "etl.md").exists()
+    await w.write(
+        c, "domains/asr/alpha/pipelines/etl.md", "---\nmaintainer: shared\n---\n# ETL\n", None
+    )
+    await w.write(c, "domains/asr/shared/specs/architecture.md", "# Architecture\n", None)
+    await w.write(c, "shared/runbooks/onboarding.md", "# Onboarding\n", None)
+    assert (vault / "domains/asr/alpha/pipelines/etl.md").exists()
+    assert (vault / "shared/runbooks/onboarding.md").exists()
     assert notices(vault) == []
 
 
@@ -158,7 +172,7 @@ async def test_moving_a_page_updates_links_in_person_pages_and_notifies(
     vault: Path, data: Path, policy: Policy, store: CredentialStore, watcher: object
 ) -> None:
     w, c = VaultWriter(vault, data, policy), cred(store)
-    (vault / "projects" / "alpha.md").write_text(
+    (vault / ALPHA).write_text(
         "---\nmaintainer: human\n---\n# Alpha\n\nSee [[wiki/concepts/search]].\n"
     )
     page = vault / "wiki" / "concepts" / "search.md"
@@ -166,8 +180,8 @@ async def test_moving_a_page_updates_links_in_person_pages_and_notifies(
         c, "wiki/concepts/search.md", "wiki/concepts/full-text-search.md",
         version_of(page.read_bytes()),
     )  # fmt: skip
-    assert out["updated_links_in"] == ["projects/alpha.md"]
-    assert "[[wiki/concepts/full-text-search]]" in (vault / "projects" / "alpha.md").read_text()
+    assert out["updated_links_in"] == [ALPHA]
+    assert "[[wiki/concepts/full-text-search]]" in (vault / ALPHA).read_text()
     [notice] = notices(vault)
-    assert "[[projects/alpha]]" in notice
+    assert "[[domains/asr/alpha/README]]" in notice
     assert "Updated links after moving wiki/concepts/search.md" in notice

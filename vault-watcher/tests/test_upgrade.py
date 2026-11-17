@@ -18,7 +18,11 @@ from vault_watcher.upgrade import (
 KIT = Path(__file__).resolve().parents[2] / "vault-template"
 # Every managed file of each released kit, byte for byte (captured before the next schema bump).
 FIXTURES = Path(__file__).parent / "fixtures"
-RELEASED_KITS = {1: FIXTURES / "schema1-kit", 2: FIXTURES / "schema2-kit"}
+RELEASED_KITS = {
+    1: FIXTURES / "schema1-kit",
+    2: FIXTURES / "schema2-kit",
+    3: FIXTURES / "schema3-kit",
+}
 CUSTOM_HINT = "<!-- Add team-specific rules between these markers. Upgrades keep this block. -->"
 
 AGENTS_V1 = """---
