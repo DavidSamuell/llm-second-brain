@@ -19,21 +19,37 @@ def test_16_12_open_note_shows_agent_edit_and_keeps_both(stack: Stack) -> None:
     token = stack.token(
         "create", "--name", "nightly-agent", "--owner", "n@example.com", "--scope", "write"
     )
-    note = stack.root / "vault" / "wiki" / "index.md"
+    # Other tests save the shared index as a person, activating its human-edit grace period.
+    # Create this test's note through MCP so its append tests editor refresh, not that guard.
+    rel = "wiki/browser-edit.md"
+    note = stack.root / "vault" / rel
+
+    async def create_note() -> None:
+        async with Client(f"{stack.mcp_url}/mcp", auth=token) as c:
+            await c.call_tool(
+                "write",
+                {
+                    "path": rel,
+                    "content": "---\ntitle: Browser edit\nmaintainer: agent\n---\n# Browser edit\n",
+                    "base_version": None,
+                },
+            )
+
+    asyncio.run(create_note())
     with playwright.sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1400, "height": 900})
         page.goto(stack.ignis_url + "/", wait_until="domcontentloaded")
         page.get_by_text("Browse vault in Restricted Mode").click(timeout=120_000)
         page.locator(".nav-folder-title", has_text="wiki").click()
-        page.locator(".nav-file-title", has_text="index").click()
+        page.locator(".nav-file-title", has_text="browser-edit").click()
         editor = page.locator(".workspace-leaf.mod-active .cm-content")
         editor.wait_for(timeout=30_000)
 
         async def agent_append() -> None:
             async with Client(f"{stack.mcp_url}/mcp", auth=token) as c:
                 await c.call_tool(
-                    "append", {"path": "wiki/index.md", "text": "\nline from the agent\n"}
+                    "append", {"path": rel, "text": "\nline from the agent\n"}
                 )
 
         # Playwright's sync API owns this thread's event loop: call MCP from another thread.

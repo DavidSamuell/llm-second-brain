@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- The nightly Ignis browser check now creates its own note through MCP instead of reusing the index recently saved by the history tests. This removes cross-test `recently_edited` failures without disabling the human-edit grace period or weakening the editor-refresh assertions.
+
 ## [0.2.0] - 2026-11-17
 
 The second brain (SPEC.md §18): agents keep the human docs and a typed knowledge graph current, team members' agents use and feed the vault while they work, and a nightly agent maintains it. Verified on the live Bookbot deployment. **Vault template schema 1 → 4**, and **breaking for vault layout** (schema 4, below): run `scripts/upgrade-vault` and update `write.allow` in `vault-mcp.yaml`.
