@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - The nightly Ignis browser check now creates its own note through MCP instead of reusing the index recently saved by the history tests. This removes cross-test `recently_edited` failures without disabling the human-edit grace period or weakening the editor-refresh assertions.
 - Corrected Ruff formatting in the isolated Ignis browser test so the repository-wide CI formatting gate passes; test behavior and checks are unchanged.
+- Rewrote snapshot publisher guards as explicit conditions and removed an unused comparison result, preserving fail-closed checks while passing ShellCheck.
 
 ## [0.2.0] - 2026-11-17
 

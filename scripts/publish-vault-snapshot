@@ -178,10 +178,13 @@ files="$(jq -er '.files | numbers' <<<"$summary")" || die "exporter returned no 
 excluded="$(jq -er '.excluded | numbers' <<<"$summary")" || die "exporter returned no excluded count"
 jq -e --arg v "$vault_id" '(.vault_id | ascii_downcase) == $v' <<<"$summary" >/dev/null \
   || die "archive is not a backup of vault $vault_id"
-[ -d "$tmp/export/vault" ] && [ ! -L "$tmp/export/vault" ] || die "exporter wrote no vault folder"
+if [ ! -d "$tmp/export/vault" ] || [ -L "$tmp/export/vault" ]; then
+  die "exporter wrote no vault folder"
+fi
 [ "$files" -gt 0 ] || die "export is empty; refusing to replace vault/ with nothing"
-[ ! -e "$tmp/export/vault/$META" ] && [ ! -L "$tmp/export/vault/$META" ] \
-  || die "the vault has its own $META, which this tool writes; rename it"
+if [ -e "$tmp/export/vault/$META" ] || [ -L "$tmp/export/vault/$META" ]; then
+  die "the vault has its own $META, which this tool writes; rename it"
+fi
 
 if [ -f "$watermark" ]; then
   jq -e --arg v "$vault_id" --arg re "$TIME_RE" \
@@ -213,7 +216,7 @@ g fetch --quiet --no-tags --no-recurse-submodules --no-write-fetch-head "$url" \
 parent="$(g rev-parse --verify --quiet "refs/remotes/origin/$branch^{commit}")" \
   || die "$branch of $repo has no commit"
 
-remote_vault="$EMPTY_TREE" remote="none"
+remote_vault="$EMPTY_TREE"
 if remote_type="$(g cat-file -t "$parent:vault" 2>/dev/null)"; then
   [ "$remote_type" = tree ] || die "vault on $branch of $repo is not a folder; not replacing it"
   remote_vault="$(g rev-parse --verify "$parent:vault")"
@@ -225,8 +228,8 @@ if remote_type="$(g cat-file -t "$parent:vault" 2>/dev/null)"; then
     <<<"$remote_meta" >/dev/null 2>&1 || die "vault/$META on $branch of $repo is invalid"
   [ "$(jq -r .vault_id <<<"$remote_meta")" = "$vault_id" ] \
     || die "vault/ on $branch of $repo is a snapshot of another vault; not replacing it"
-  remote="$(compare_snapshot "$(jq -r .created_at <<<"$remote_meta")" \
-    "$(jq -r .archive_sha256 <<<"$remote_meta")" remote)"
+  compare_snapshot "$(jq -r .created_at <<<"$remote_meta")" \
+    "$(jq -r .archive_sha256 <<<"$remote_meta")" remote >/dev/null
 fi
 
 {
