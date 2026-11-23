@@ -1,6 +1,6 @@
 ---
 name: docs-capture
-description: Record a durable finding from the current work in the team docs vault the moment it becomes durable - a decision, an architecture or interface clarified, a pipeline or runbook step worked out, an incident root cause, a team convention - and ingest it completely in this session. Use while working in a repo connected to the docs vault, or when asked to document, save or capture something in the vault.
+description: Record a durable finding from the current work in the team docs vault the moment it becomes durable - a decision, an architecture or interface clarified, a pipeline or runbook step worked out, an incident root cause, a team convention, an ML experiment result, dataset fact or training gotcha - and ingest it completely in this session. Use while working in a repo connected to the docs vault, or when asked to document, save or capture something in the vault.
 ---
 # docs-capture
 
@@ -19,9 +19,37 @@ Capture, once each is settled:
 - an incident's confirmed root cause and fix;
 - a team convention agreed.
 
-Never capture: transient debugging, guesses or unconfirmed hypotheses, personal data, secrets,
-credentials, `.env` contents, raw logs, large code, or facts the vault already states. If the
-person asks you not to capture, stop for this session.
+### ML and research work
+
+In repos that train, evaluate or ship models, also capture, once confirmed:
+
+- dataset versions and provenance (manifest or hash, source corpora), train/dev/test split
+  definitions (held-out speakers, age bands, domains), and text normalisation or label-set rules
+  (e.g. a phone set mapping), since changing any of them silently changes the metrics;
+- final evaluation results for a candidate model: model and checkpoint, data version, code commit,
+  test set, decoding or inference parameters, headline metrics, and the experiment-tracker run
+  link (e.g. MLflow run id). Summarise the headline numbers; link the tracker for the rest;
+- the evaluation protocol and the current baseline or best model per test set;
+- negative results and abandoned approaches, with the evidence (what was tried, on what data,
+  what it scored against the baseline), so nobody reruns a dead end;
+- training gotchas: divergence or numerical issues and their fix, hardware and memory limits
+  (batch size that fits, time and cost per epoch), environment or dependency pins that matter;
+- error-analysis conclusions that change data collection or modelling plans;
+- model lineage (which checkpoint ships, and the data, code and recipe that produced it),
+  promotion criteria, and accuracy lost to export or quantisation (e.g. ONNX, int8).
+
+Put each where its readers look: a result that settles a choice goes in the decision record;
+the eval protocol, baselines and training gotchas go in the pipeline doc; release lineage and
+promotion criteria go in the project page or a runbook. A run often finishes after the session
+that started it: when its final results reach a later session, capture them then.
+
+A hypothesis the team is actively testing may be recorded only under `## Open questions` on the
+wiki page of the component it concerns, marked unconfirmed, never in a human doc as fact.
+
+Never capture: transient debugging, guesses or unconfirmed hypotheses (except as an open question,
+above), personal data, secrets, credentials, `.env` contents, raw logs, per-step training logs or
+full metric dumps, large code, or facts the vault already states. If the person asks you not to
+capture, stop for this session.
 
 ## Steps (vault-mcp)
 

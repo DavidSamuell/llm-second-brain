@@ -1,5 +1,5 @@
 ---
-schema_version: 4
+schema_version: 5
 title: Rules for agents
 maintainer: human
 ---
@@ -308,8 +308,13 @@ When you are asked to document, capture or ingest something, or a durable findin
 you work, ingest it now, in the current session. Nothing is left in `raw/` for a later run.
 
 - **Capture:** decisions, architecture, interfaces, pipeline and runbook steps, incidents and their
-  fixes, and team conventions, as each one becomes settled.
-- **Never capture:** transient debugging, guesses, personal data, secrets or `.env` contents.
+  fixes, and team conventions, as each one becomes settled. In ML work also: dataset versions,
+  splits and normalisation rules; final evaluation results with their tracker run link; the eval
+  protocol and baselines; negative results; training gotchas; error-analysis conclusions; model
+  lineage, promotion criteria and export accuracy loss (`docs-capture` skill lists the details).
+- **Never capture:** transient debugging, guesses, personal data, secrets or `.env` contents. A
+  hypothesis under active test goes only under `## Open questions` on a wiki page, marked
+  unconfirmed.
 - **Steps:** gather the content (fetch a URL with your own tools first; for a repository read the
   README and the relevant files and note the commit) → `submit_source` (origin
   `repo:<remote>@<commit>` for repository readings) → `claim_source` → `read` → source summary →

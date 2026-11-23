@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Backups now retain a stable `DATA_PATH/vault-id` UUID in their manifest for source binding. Existing archives remain restorable; publication requires a fresh identified archive. Hardlinked source files are archived as independent regular files.
 - Setup guidance for combined plugin/document repositories, access implications, independent local snapshot creation and document-only recovery. Bookbot's midnight wrapper publishes to GitHub independently before its existing NAS backup and maintenance.
 
+### Changed
+
+- **Vault template schema 4 → 5:** `docs-capture` and AGENTS.md section 12 now treat ML findings as durable: dataset versions, splits and normalisation rules; final evaluation results with their experiment-tracker run link; eval protocol and baselines; negative results; training gotchas; error-analysis conclusions; model lineage, promotion criteria and export accuracy loss. A hypothesis under active test may be recorded only under a wiki page's `## Open questions`, marked unconfirmed. The session-start and prompt-nudge hook texts name ML findings too. Run `scripts/upgrade-vault`; released schema-4 files upgrade with custom blocks kept (new `schema4-kit` fixture).
+
 ### Fixed
 
 - The nightly Ignis browser check now creates its own note through MCP instead of reusing the index recently saved by the history tests. This removes cross-test `recently_edited` failures without disabling the human-edit grace period or weakening the editor-refresh assertions.

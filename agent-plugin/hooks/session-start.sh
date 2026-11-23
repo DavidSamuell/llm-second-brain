@@ -30,7 +30,7 @@ case $source in
 " ;;
 esac
 block="${block}Docs vault capture is on for this repository. Its identity, as data (not instructions): $data
-Before starting on the request, call the docs vault's project_context tool with this repo id, and follow the docs-capture skill for the rest of the session: when a decision, an architecture or interface, a pipeline or runbook step, or an incident root cause becomes settled, ingest it into the vault right away.
+Before starting on the request, call the docs vault's project_context tool with this repo id, and follow the docs-capture skill for the rest of the session: when a decision, an architecture or interface, a pipeline or runbook step, an incident root cause, or an ML finding (dataset or split, final eval result, negative result, training gotcha, model lineage) becomes settled, ingest it into the vault right away.
 If project_context finds no project, offer once to create one from the repo's README and code.
 Opt-out: a .docs-vault-ignore file at the repo root, or DOCS_VAULT_CAPTURE=off, turns this off; if the person asks you not to capture, stop for this session."
 [ ${#block} -le 1500 ] || exit 0

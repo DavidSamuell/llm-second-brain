@@ -22,6 +22,7 @@ RELEASED_KITS = {
     1: FIXTURES / "schema1-kit",
     2: FIXTURES / "schema2-kit",
     3: FIXTURES / "schema3-kit",
+    4: FIXTURES / "schema4-kit",
 }
 CUSTOM_HINT = "<!-- Add team-specific rules between these markers. Upgrades keep this block. -->"
 

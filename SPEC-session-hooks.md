@@ -40,7 +40,8 @@ It works like llm-wiki-database's always-on behaviour, but against the shared va
   - a decision made;
   - an architecture or interface clarified;
   - a pipeline or runbook step worked out;
-  - an incident root cause.
+  - an incident root cause;
+  - in ML work: dataset versions, splits and normalisation rules, final evaluation results with their tracker run link, the eval protocol and baselines, negative results, training gotchas, error-analysis conclusions, model lineage, promotion criteria and export accuracy loss.
 - Each finding is ingested completely, right then (`docs-capture` skill):
   1. `search` or `project_context` to dedupe;
   2. `submit_source` (tagged with the project and repo@commit), then `claim_source`;

@@ -29,5 +29,5 @@ dv_resolve "$cwd" "$hooks/capture-repos" >/dev/null || exit 0
 count=$(dv_next_count "$session") || exit 0
 [ $((count % every)) -eq 0 ] || exit 0
 
-jq -cn --arg context "Docs vault reminder: if anything durable was settled in this session so far (a decision, an architecture or interface, a pipeline or runbook step, an incident root cause), capture it now with the docs-capture skill." \
+jq -cn --arg context "Docs vault reminder: if anything durable was settled in this session so far (a decision, an architecture or interface, a pipeline or runbook step, an incident root cause, an ML result, negative result or training gotcha), capture it now with the docs-capture skill." \
   '{hookSpecificOutput: {hookEventName: "UserPromptSubmit", additionalContext: $context}}'

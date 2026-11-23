@@ -1,0 +1,151 @@
+# Admin-managed graph vocabulary. Markdown remains canonical.
+node_types:
+  domain:
+    maps_from:
+      type: domain
+  project:
+    maps_from:
+      type: project
+  product-spec:
+    maps_from:
+      type: product-spec
+  architecture:
+    maps_from:
+      type: architecture
+  decision:
+    maps_from:
+      type: decision
+  pipeline:
+    maps_from:
+      type: pipeline
+  runbook:
+    maps_from:
+      type: runbook
+  guide:
+    maps_from:
+      type: guide
+  component:
+    maps_from:
+      type: component
+  concept:
+    maps_from:
+      type: concept
+  glossary-term:
+    maps_from:
+      type: glossary-term
+  team:
+    maps_from:
+      type: team
+  person:
+    maps_from:
+      type: person
+  source:
+    maps_from:
+      type: source
+  repo:
+    explicit_only: true
+  raw:
+    explicit_only: true
+predicates:
+  belongs_to_project:
+    subject_types:
+    - '*'
+    object_types:
+    - project
+    requires_evidence: false
+  sourced_from:
+    subject_types:
+    - '*'
+    object_types:
+    - source
+    requires_evidence: false
+  has_repo:
+    subject_types:
+    - project
+    object_types:
+    - repo
+    requires_evidence: false
+  summarizes_raw:
+    subject_types:
+    - source
+    object_types:
+    - '*'
+    requires_evidence: false
+  mentions:
+    subject_types:
+    - '*'
+    object_types:
+    - '*'
+    requires_evidence: false
+  part_of:
+    subject_types:
+    - '*'
+    object_types:
+    - '*'
+  depends_on:
+    subject_types:
+    - '*'
+    object_types:
+    - '*'
+  runs_on:
+    subject_types:
+    - '*'
+    object_types:
+    - '*'
+  supersedes:
+    subject_types:
+    - '*'
+    object_types:
+    - '*'
+  contradicts:
+    subject_types:
+    - '*'
+    object_types:
+    - '*'
+  produces:
+    subject_types:
+    - pipeline
+    - component
+    object_types:
+    - component
+    - source
+  consumes:
+    subject_types:
+    - pipeline
+    - component
+    object_types:
+    - component
+    - source
+  implements:
+    subject_types:
+    - pipeline
+    - component
+    - project
+    object_types:
+    - product-spec
+    - architecture
+    - decision
+  owned_by:
+    subject_types:
+    - '*'
+    object_types:
+    - person
+    - team
+  decided_in:
+    subject_types:
+    - '*'
+    object_types:
+    - decision
+  documented_in:
+    subject_types:
+    - '*'
+    object_types:
+    - domain
+    - project
+    - decision
+    - pipeline
+    - product-spec
+    - architecture
+    - runbook
+    - guide
+

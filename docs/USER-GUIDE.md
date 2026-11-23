@@ -189,8 +189,12 @@ plain requests rather than these namespaced commands. Automatic session hooks ar
 separately; the manual commands do not require them.
 
 Durable findings are captured as they become settled during work, not only at the end: decisions,
-architecture, interfaces, pipeline/runbook steps, incidents and conventions. The agent excludes
-secrets, personal data, guesses and transient debugging. Tell it not to capture to opt out.
+architecture, interfaces, pipeline/runbook steps, incidents and conventions. In ML work this also
+covers dataset versions and splits, final evaluation results (with the tracker run link), the eval
+protocol and baselines, negative results, training gotchas, error analysis, model lineage and
+export accuracy loss. The agent excludes secrets, personal data, guesses and transient debugging;
+a hypothesis under active test goes only under a wiki page's `## Open questions`, marked
+unconfirmed. Tell it not to capture to opt out.
 
 Human docs keep the current state first, cite a source summary or `repo@commit:path`, and record
 one dated `## Change log` line per update. An unresolved contradiction becomes a review item;
