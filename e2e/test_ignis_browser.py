@@ -48,9 +48,7 @@ def test_16_12_open_note_shows_agent_edit_and_keeps_both(stack: Stack) -> None:
 
         async def agent_append() -> None:
             async with Client(f"{stack.mcp_url}/mcp", auth=token) as c:
-                await c.call_tool(
-                    "append", {"path": rel, "text": "\nline from the agent\n"}
-                )
+                await c.call_tool("append", {"path": rel, "text": "\nline from the agent\n"})
 
         # Playwright's sync API owns this thread's event loop: call MCP from another thread.
         with ThreadPoolExecutor(1) as pool:
