@@ -343,6 +343,54 @@ GIT_LFS=false        # true: PDFs, PNGs, JPGs and ZIPs under raw/ and attachment
 
 On a conflict, git-sync keeps your local copy as `<file>.conflict-<timestamp>.md`, takes the remote side of the conflicting lines, pushes, and sends an alert. Conflicts it can't resolve pause pushing until you fix the repository.
 
+### Publish documents alongside an existing plugin repository
+
+Do **not** point `git-sync` at a plugin repository: it synchronizes a live vault root in both
+directions. For a one-way `vault/` documentation snapshot alongside an existing plugin, use
+`scripts/publish-vault-snapshot`. It fetches current remote content, replaces only `vault/`,
+and pushes without force. It never operates on the live vault or your plugin checkout.
+
+Requirements: a **private** GitHub repository whose readers/integrations are authorized for the
+exported documents, `gh auth login`, Git, `jq`, `flock` and host `uv` with Python 3.13 available.
+The script selects the `vault-watcher` workspace package with `uv run --locked --package`.
+Vault OAuth/folder permissions do not protect GitHub copies; repository access and offboarding
+must cover those copies and their retained history.
+
+Build the updated backup image (`docker compose build vault-watcher`) before making a fresh
+`scripts/backup` archive. Backups now persist a stable UUID in `DATA_PATH/vault-id` and include
+it in the manifest; older archives without that ID cannot be published. Keep this ID on full
+restore, and never reset it to work around a mismatch.
+
+Set `archive` to the completed archive's absolute path and `vault_id` to the contents of
+`DATA_PATH/vault-id`, then preview:
+
+```bash
+scripts/publish-vault-snapshot --archive "$archive" \
+  --repo your-org/docs-vault-plugin --branch main \
+  --state "$HOME/docs-vault-github-state" --vault-id "$vault_id" --dry-run
+```
+
+Keep `--state` outside both `VAULT_PATH` and `DATA_PATH` and outside any Git checkout. Remove
+`--dry-run` to publish. State is bound to the repo, branch and vault ID. `vault/.backup.json`
+records provenance; stale/foreign/incomplete snapshots are refused. Publishing the identical
+archive is a no-op; a fresh archive updates provenance even with unchanged documents.
+
+Only UTF-8 text documentation is publishable. All checksums are validated; data/config, editor
+state, trash and Git metadata are excluded. Credential paths, detected secrets, encrypted
+containers, binary files (including images/PDFs/archives) and files of 100 MiB or more refuse the
+whole publication. Nothing is silently dropped beyond the documented exclusions. A clean scan
+is not a guarantee of no sensitive content. Keep the existing full archive backup for binary
+attachments, databases, credentials and per-edit history.
+
+For scheduling, create a fresh archive on **local private storage**, publish it, and alert on a
+nonzero exit; do not make GitHub publication depend on reading the NAS. Keep NAS backup and
+maintenance attempts independent. Bookbot's host wrapper runs its GitHub snapshot first, then
+the existing NAS backup and maintenance, with a separate `github_backup_failed` Slack alert.
+No automatic non-fast-forward retry occurs; the next scheduled run fetches the latest branch.
+
+For a document-only recovery, copy `vault/` to a new empty folder, excluding `.backup.json`.
+This does not restore running-service state; use the full archive restore for that.
+
 ## 10. Optional: server-side agent (agent-runner)
 
 For scheduled lint and ingest on a host where Claude Code is installed and logged in (a Claude subscription or an API key), use [nightly maintenance](#nightly-maintenance-after-the-backup) instead: it runs after the backup, has no web tool, and alerts on failure. agent-runner remains the option for container-only deployments with no Claude Code on the host; if you use nightly maintenance, don't also run agent-runner's lint job on the same vault.

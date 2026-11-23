@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/publish-vault-snapshot`: publish a one-way `vault/` documentation snapshot into an existing private GitHub plugin repository. It preserves every path outside `vault/`, uses an isolated Git cache/index, checks repository privacy and archive integrity, refuses secrets/binary containers/stale or foreign snapshots, and pushes without force.
+- Backups now retain a stable `DATA_PATH/vault-id` UUID in their manifest for source binding. Existing archives remain restorable; publication requires a fresh identified archive. Hardlinked source files are archived as independent regular files.
+- Setup guidance for combined plugin/document repositories, access implications, independent local snapshot creation and document-only recovery. Bookbot's midnight wrapper publishes to GitHub independently before its existing NAS backup and maintenance.
+
 ### Fixed
 
 - The nightly Ignis browser check now creates its own note through MCP instead of reusing the index recently saved by the history tests. This removes cross-test `recently_edited` failures without disabling the human-edit grace period or weakening the editor-refresh assertions.

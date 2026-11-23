@@ -19,6 +19,7 @@ import shutil
 import sqlite3
 import tarfile
 import tempfile
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -75,7 +76,10 @@ def create_backup(
         manifest["vault_schema_version"] = vault_schema_version(vault_dir)
     out.parent.mkdir(parents=True, exist_ok=True)
     partial = out.with_name(out.name + ".partial")
-    with tempfile.TemporaryDirectory() as tmp, tarfile.open(partial, "w:gz") as tar:
+    with (
+        tempfile.TemporaryDirectory() as tmp,
+        tarfile.open(partial, "w:gz", dereference=True) as tar,
+    ):
         staging = Path(tmp)
 
         def add(path: Path, name: str) -> None:
@@ -91,6 +95,24 @@ def create_backup(
                 tar.add(d, arcname=f"{prefix}/{rel}", recursive=False)
 
         with vault_lock(data_dir, "backup"):
+            # Stable across backups/restores; prevents publishing another vault over this one.
+            identity = data_dir / "vault-id"
+            if identity.is_symlink():
+                raise BackupError("vault identity must not be a symlink")
+            if identity.exists():
+                vault_id = identity.read_text().strip()
+                try:
+                    canonical_id = str(uuid.UUID(vault_id))
+                except ValueError:
+                    raise BackupError("invalid vault identity in DATA_PATH/vault-id") from None
+                if canonical_id != vault_id:
+                    raise BackupError("vault identity must be a canonical UUID")
+            else:
+                vault_id = str(uuid.uuid4())
+                with identity.open("x") as identity_file:
+                    identity_file.write(vault_id + "\n")
+                identity.chmod(0o600)
+            manifest["vault_id"] = vault_id
             add_dirs(vault_dir, "vault")
             add_dirs(data_dir, "data")
             for path in _files(vault_dir):

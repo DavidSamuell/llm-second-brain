@@ -4,6 +4,7 @@ import io
 import json
 import sqlite3
 import tarfile
+import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -96,3 +97,49 @@ def test_force_replaces_existing_contents(site: tuple[Path, Path], tmp_path: Pat
     assert (vault / "wiki" / "page.md").read_text() == "# Page\n"
     assert not (vault / "stray.md").exists()
     assert json.loads((data / "ignis" / "state.json").read_text()) == {"user": "settings"}
+
+
+def test_backup_identity_survives_repeated_backups_and_restore(
+    site: tuple[Path, Path], tmp_path: Path
+) -> None:
+    vault, data = site
+    first = create_backup(vault, data, tmp_path / "first.tar.gz")
+    second = create_backup(vault, data, tmp_path / "second.tar.gz")
+    assert str(uuid.UUID(first["vault_id"])) == first["vault_id"]
+    assert second["vault_id"] == first["vault_id"]
+    assert (data / "vault-id").stat().st_mode & 0o777 == 0o600
+
+    restored_vault, restored_data = tmp_path / "restored-vault", tmp_path / "restored-data"
+    restored_vault.mkdir()
+    restored_data.mkdir()
+    restore(tmp_path / "first.tar.gz", restored_vault, restored_data, tmp_path / "config")
+    restored = create_backup(restored_vault, restored_data, tmp_path / "restored.tar.gz")
+    assert restored["vault_id"] == first["vault_id"]
+
+
+def test_backup_hardlinked_documents_are_independent_regular_members(
+    site: tuple[Path, Path], tmp_path: Path
+) -> None:
+    vault, data = site
+    (vault / "wiki" / "alias.md").hardlink_to(vault / "wiki" / "page.md")
+    archive = tmp_path / "hardlinks.tar.gz"
+    create_backup(vault, data, archive)
+    with tarfile.open(archive) as tar:
+        for name in ("vault/wiki/page.md", "vault/wiki/alias.md"):
+            member = tar.getmember(name)
+            assert member.isreg() and not member.islnk()
+            content = tar.extractfile(member)
+            assert content is not None
+            assert content.read() == b"# Page\n"
+
+
+@pytest.mark.parametrize("identity", ["not-an-id", "3F2B8C1E-5D4A-4C6B-9E7F-0A1B2C3D4E5F"])
+def test_backup_refuses_invalid_identity_instead_of_resetting_it(
+    site: tuple[Path, Path], tmp_path: Path, identity: str
+) -> None:
+    vault, data = site
+    (data / "vault-id").write_text(identity)
+    with pytest.raises(BackupError, match="identity"):
+        create_backup(vault, data, tmp_path / "bad.tar.gz")
+    assert (data / "vault-id").read_text() == identity
+    assert not (tmp_path / "bad.tar.gz").exists()

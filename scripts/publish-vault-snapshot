@@ -1,0 +1,307 @@
+#!/usr/bin/env bash
+# One-way snapshot of the live vault into vault/ of a private GitHub repository.
+#
+#   scripts/publish-vault-snapshot --archive ARCHIVE --repo OWNER/NAME --state DIR --vault-id UUID
+#                                  [--branch main] [--dry-run]
+#
+# ARCHIVE is a scripts/backup archive of the vault whose id (DATA_PATH/vault-id) is UUID. Its
+# documents are exported without data/, config/, editor state or credentials
+# (vault_watcher.snapshot_export) and become vault/ on BRANCH of github.com/OWNER/NAME, with
+# vault/.backup.json naming the vault id, archive time and archive sha256. Every path outside
+# vault/ is kept exactly as on the remote. The repository must be private. An existing remote
+# vault/ must come from the same vault id and an older archive: an older or foreign snapshot is
+# refused, never published over a newer one. Publication is a fast-forward push of one commit; a
+# branch that moved meanwhile is never overwritten (the run fails, the next one retries).
+# Re-publishing the same archive makes no commit. --dry-run reports the change and pushes nothing.
+# DIR is private state of this tool (a bare Git cache, the newest published archive time and
+# temporary files), bound to OWNER/NAME, BRANCH and UUID on first use; keep it outside the vault
+# and any checkout. Git authenticates with the existing `gh` login (gh auth git-credential).
+# Needs bash, git, gh, jq, flock, sha256sum and uv. Prints a JSON summary on stdout; exit status
+# 1 on failure, 2 on usage errors.
+set -euo pipefail
+
+KIT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TOOL=publish-vault-snapshot
+META=.backup.json
+EMPTY_TREE=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+TIME_RE='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+
+die() { echo "$TOOL: $*" >&2; exit 1; }
+usage() { echo "$TOOL: $*" >&2; exit 2; }
+log() { echo "$TOOL: $*" >&2; }
+
+archive="" repo="" state="" vault_id="" branch="main" dry_run=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --archive) [ $# -ge 2 ] || usage "--archive needs a value"; archive="$2"; shift 2 ;;
+    --repo) [ $# -ge 2 ] || usage "--repo needs a value"; repo="$2"; shift 2 ;;
+    --state) [ $# -ge 2 ] || usage "--state needs a value"; state="$2"; shift 2 ;;
+    --vault-id) [ $# -ge 2 ] || usage "--vault-id needs a value"; vault_id="$2"; shift 2 ;;
+    --branch) [ $# -ge 2 ] || usage "--branch needs a value"; branch="$2"; shift 2 ;;
+    --dry-run) dry_run=1; shift ;;
+    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) usage "unknown argument: $1" ;;
+  esac
+done
+[ -n "$archive" ] || usage "--archive is required"
+[ -n "$repo" ] || usage "--repo is required"
+[ -n "$state" ] || usage "--state is required"
+[ -n "$vault_id" ] || usage "--vault-id is required"
+[[ "$repo" =~ ^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$ ]] || usage "--repo must be OWNER/NAME: $repo"
+case "${repo#*/}" in .|..|*.git) usage "--repo must be OWNER/NAME without .git: $repo" ;; esac
+vault_id="$(printf '%s' "$vault_id" | tr '[:upper:]' '[:lower:]')"
+[[ "$vault_id" =~ $UUID_RE ]] || usage "--vault-id must be a UUID"
+case "$branch" in -*) usage "invalid --branch: $branch" ;; esac
+git check-ref-format --branch "$branch" >/dev/null 2>&1 || usage "invalid --branch: $branch"
+
+for cmd in git gh jq flock uv realpath sha256sum; do
+  command -v "$cmd" >/dev/null || die "$cmd is required"
+done
+
+export LC_ALL=C GIT_TERMINAL_PROMPT=0
+# The caller's Git environment must not redirect any of the operations below.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES \
+  GIT_NAMESPACE GIT_COMMON_DIR GIT_ATTR_SOURCE
+umask 077
+
+repo_lc="$(printf '%s' "$repo" | tr '[:upper:]' '[:lower:]')"
+url="https://github.com/$repo.git"
+
+archive="$(realpath -e -- "$archive" 2>/dev/null)" || die "archive not found"
+[ -f "$archive" ] || die "archive is not a regular file: $archive"
+
+# --- private state ------------------------------------------------------------------------------
+[ ! -L "$state" ] || die "--state must not be a symlink: $state"
+state="$(realpath -m -- "$state")"
+if [ -f "$KIT/.env" ]; then
+  for var in VAULT_PATH DATA_PATH; do
+    live="$(sed -n "s/^$var=\([^[:space:]#]*\).*/\1/p" "$KIT/.env" | tail -n 1)"
+    [ -n "$live" ] || continue
+    case "$live" in /*) ;; *) live="$KIT/$live" ;; esac
+    live="$(realpath -m -- "$live")"
+    case "$state/" in "$live"/*) die "--state must be outside $var ($live)" ;; esac
+  done
+fi
+# Nothing is created or changed in a folder that is not this tool's state (or new).
+probe="$state"
+while [ ! -e "$probe" ]; do probe="$(dirname -- "$probe")"; done
+! git -C "$probe" rev-parse --git-dir >/dev/null 2>&1 \
+  || die "--state must not be inside a Git repository or checkout: $state"
+marker="$state/$TOOL.json"
+watermark="$state/published.json"
+cache="$state/cache.git"
+check_foreign() {
+  [ ! -f "$marker" ] || return 0
+  local entry
+  for entry in "$state"/* "$state"/.[!.]* "$state"/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    [ "$entry" = "$state/lock" ] || die "$state is not empty and not $TOOL state; use another --state"
+  done
+}
+if [ -e "$state" ]; then
+  [ -d "$state" ] || die "--state is not a directory: $state"
+  [ -O "$state" ] || die "--state is not owned by $(id -un): $state"
+  check_foreign
+  chmod 700 -- "$state"
+else
+  mkdir -m 700 -- "$state" || die "cannot create --state $state"
+fi
+
+exec 9>>"$state/lock"
+flock -n 9 || die "another $TOOL run holds $state"
+
+check_foreign
+if [ -f "$marker" ]; then
+  jq -e --arg r "$repo_lc" --arg b "$branch" --arg v "$vault_id" --arg t "$TOOL" \
+    '.tool == $t and .format == 1 and .repo == $r and .branch == $b and .vault_id == $v' \
+    "$marker" >/dev/null \
+    || die "$state belongs to another repository, branch or vault (see $marker); use another --state"
+else
+  jq -n --arg r "$repo_lc" --arg b "$branch" --arg v "$vault_id" --arg t "$TOOL" \
+    '{tool: $t, format: 1, repo: $r, branch: $b, vault_id: $v}' > "$marker"
+fi
+if [ ! -d "$cache" ]; then
+  [ ! -e "$cache" ] || die "$cache is not a directory"
+  git init --quiet --bare --template= "$cache" >/dev/null
+fi
+# Temporary folders left by an interrupted run of this tool (we hold the lock).
+for old in "$state"/tmp.*; do
+  [ ! -d "$old" ] || [ -L "$old" ] || rm -rf -- "$old"
+done
+tmp="$(mktemp -d "$state/tmp.XXXXXXXX")"
+trap 'rm -rf -- "$tmp"' EXIT
+
+# Git on the private cache only: no hooks, no signing prompts, no content filters or line-ending
+# conversion, credentials only from the existing gh login.
+g() {
+  git --git-dir="$cache" \
+    -c core.hooksPath=/dev/null -c core.autocrlf=false -c core.attributesFile=/dev/null \
+    -c commit.gpgSign=false -c credential.helper= -c 'credential.helper=!gh auth git-credential' \
+    "$@"
+}
+
+check_private() {
+  local info
+  info="$(gh api "repos/$repo")" || die "cannot read GitHub repository $repo with gh; is gh logged in?"
+  jq -e --arg r "$repo_lc" \
+    '(.full_name | ascii_downcase) == $r and .private == true and .visibility == "private"' \
+    <<<"$info" >/dev/null || die "GitHub repository $repo is not private; refusing to publish"
+}
+
+# Refuse a snapshot (created_at, sha) that is not newer than a recorded one (rec_at, rec_sha):
+# the same archive is "same", an older archive or another archive of the same second is refused.
+compare_snapshot() {
+  local rec_at=$1 rec_sha=$2 what=$3
+  if [[ "$created_at" < "$rec_at" ]]; then
+    die "archive of $created_at is older than the $what snapshot of $rec_at; not publishing"
+  elif [ "$created_at" = "$rec_at" ]; then
+    [ "$archive_sha" = "$rec_sha" ] \
+      || die "$what snapshot of $created_at came from a different archive; not publishing"
+    echo same
+  else
+    echo newer
+  fi
+}
+
+# --- export ---------------------------------------------------------------------------------------
+check_private
+archive_sha="$(sha256sum -- "$archive" | cut -d' ' -f1)"
+mkdir -m 700 "$tmp/export"
+log "exporting vault documents from $archive"
+summary="$(uv run --locked --directory "$KIT" --package vault-watcher \
+  python -m vault_watcher.snapshot_export "$archive" "$tmp/export/vault" --vault-id "$vault_id")" \
+  || die "export failed"
+created_at="$(jq -er '.created_at | strings' <<<"$summary")" || die "exporter returned no created_at"
+[[ "$created_at" =~ $TIME_RE ]] || die "exporter returned an invalid created_at"
+files="$(jq -er '.files | numbers' <<<"$summary")" || die "exporter returned no file count"
+excluded="$(jq -er '.excluded | numbers' <<<"$summary")" || die "exporter returned no excluded count"
+jq -e --arg v "$vault_id" '(.vault_id | ascii_downcase) == $v' <<<"$summary" >/dev/null \
+  || die "archive is not a backup of vault $vault_id"
+[ -d "$tmp/export/vault" ] && [ ! -L "$tmp/export/vault" ] || die "exporter wrote no vault folder"
+[ "$files" -gt 0 ] || die "export is empty; refusing to replace vault/ with nothing"
+[ ! -e "$tmp/export/vault/$META" ] && [ ! -L "$tmp/export/vault/$META" ] \
+  || die "the vault has its own $META, which this tool writes; rename it"
+
+if [ -f "$watermark" ]; then
+  jq -e --arg v "$vault_id" --arg re "$TIME_RE" \
+    '.vault_id == $v and (.created_at | test($re)) and (.archive_sha256 | test("^[0-9a-f]{64}$"))' \
+    "$watermark" >/dev/null || die "$watermark is invalid; inspect it, do not delete it blindly"
+  compare_snapshot "$(jq -r .created_at "$watermark")" "$(jq -r .archive_sha256 "$watermark")" \
+    "last published" >/dev/null
+fi
+
+# Document tree (vault/ without metadata) through a private index. Attributes come from the empty
+# tree, so no .gitattributes in the vault can filter or convert content; -f adds what .gitignore
+# lists.
+export GIT_INDEX_FILE="$tmp/vault.index"
+(cd "$tmp/export" && GIT_ATTR_SOURCE=$EMPTY_TREE g --work-tree=. add --all --force -- vault) \
+  || die "cannot stage the export"
+docs_tree="$(g write-tree --prefix=vault/)" || die "cannot build the vault/ tree"
+jq -n --arg v "$vault_id" --arg at "$created_at" --arg sha "$archive_sha" \
+  '{schema: "docs-vault-snapshot", version: 1, vault_id: $v, created_at: $at, archive_sha256: $sha}' \
+  > "$tmp/$META"
+meta_blob="$(g hash-object -w --no-filters -- "$tmp/$META")"
+g update-index --add --cacheinfo "100644,$meta_blob,vault/$META"
+vault_tree="$(g write-tree --prefix=vault/)" || die "cannot build the vault/ tree"
+unset GIT_INDEX_FILE
+
+# --- compare with the latest remote branch -------------------------------------------------------
+log "fetching $branch of $repo"
+g fetch --quiet --no-tags --no-recurse-submodules --no-write-fetch-head "$url" \
+  "+refs/heads/$branch:refs/remotes/origin/$branch" || die "cannot fetch $branch of $repo"
+parent="$(g rev-parse --verify --quiet "refs/remotes/origin/$branch^{commit}")" \
+  || die "$branch of $repo has no commit"
+
+remote_vault="$EMPTY_TREE" remote="none"
+if remote_type="$(g cat-file -t "$parent:vault" 2>/dev/null)"; then
+  [ "$remote_type" = tree ] || die "vault on $branch of $repo is not a folder; not replacing it"
+  remote_vault="$(g rev-parse --verify "$parent:vault")"
+  remote_meta="$(g cat-file blob "$parent:vault/$META" 2>/dev/null)" \
+    || die "vault/ on $branch of $repo has no $META; not replacing a folder this tool did not write"
+  jq -e --arg re "$TIME_RE" --arg uuid "$UUID_RE" \
+    '.schema == "docs-vault-snapshot" and .version == 1 and (.vault_id | test($uuid))
+     and (.created_at | test($re)) and (.archive_sha256 | test("^[0-9a-f]{64}$"))' \
+    <<<"$remote_meta" >/dev/null 2>&1 || die "vault/$META on $branch of $repo is invalid"
+  [ "$(jq -r .vault_id <<<"$remote_meta")" = "$vault_id" ] \
+    || die "vault/ on $branch of $repo is a snapshot of another vault; not replacing it"
+  remote="$(compare_snapshot "$(jq -r .created_at <<<"$remote_meta")" \
+    "$(jq -r .archive_sha256 <<<"$remote_meta")" remote)"
+fi
+
+{
+  while IFS= read -r -d '' entry; do
+    [ "${entry#*$'\t'}" = vault ] || printf '%s\0' "$entry"
+  done < <(g ls-tree -z "$parent^{tree}")
+  printf '040000 tree %s\tvault\0' "$vault_tree"
+} > "$tmp/root.tree"
+tree="$(g mktree -z --missing < "$tmp/root.tree")" || die "cannot build the root tree"
+while IFS= read -r -d '' path; do
+  case "$path" in vault/*) ;; *) die "internal error: change outside vault/: $path" ;; esac
+done < <(g diff-tree -r -z --no-renames --name-only "$parent^{tree}" "$tree")
+
+# Count document changes separately from the snapshot's source timestamp.
+added=0 modified=0 deleted=0
+while IFS= read -r -d '' status && IFS= read -r -d '' path; do
+  [ "$path" != "$META" ] || continue
+  case "$status" in
+    A) added=$((added + 1)) ;;
+    D) deleted=$((deleted + 1)) ;;
+    *) modified=$((modified + 1)) ;;
+  esac
+done < <(g diff-tree -r -z --no-renames --name-status "$remote_vault" "$docs_tree")
+changed=false
+[ "$remote_vault" = "$vault_tree" ] || changed=true
+
+report() {
+  jq -n --arg status "$1" --arg commit "$2" --arg base "$parent" --arg repo "$repo" \
+    --arg branch "$branch" --arg vault_id "$vault_id" --arg created_at "$created_at" \
+    --arg sha "$archive_sha" --argjson changed "$changed" --argjson files "$files" \
+    --argjson excluded "$excluded" --argjson added "$added" --argjson modified "$modified" \
+    --argjson deleted "$deleted" \
+    '{status: $status, repo: $repo, branch: $branch, base: $base, commit: $commit,
+      changed: $changed, vault_id: $vault_id, created_at: $created_at, archive_sha256: $sha,
+      files: $files, excluded: $excluded, added: $added, modified: $modified, deleted: $deleted}'
+}
+
+# Local receipt supplements the remote metadata; every new archive updates the remote timestamp,
+# even when the documents are unchanged, so stale snapshots are refused on other hosts too.
+record() {
+  jq -n --arg v "$vault_id" --arg at "$created_at" --arg sha "$archive_sha" --arg c "$1" \
+    '{vault_id: $v, created_at: $at, archive_sha256: $sha, commit: $c}' > "$tmp/published.json"
+  mv -f -- "$tmp/published.json" "$watermark"
+}
+
+if [ "$dry_run" = 1 ]; then
+  log "dry run: nothing pushed"
+  report dry-run ""
+  exit 0
+fi
+if [ "$changed" = false ]; then
+  log "vault/ documents are already up to date"
+  record "$parent"
+  report unchanged "$parent"
+  exit 0
+fi
+
+# --- publish --------------------------------------------------------------------------------------
+message="vault: snapshot $created_at
+
+$files files exported, $excluded excluded. Generated by scripts/publish-vault-snapshot from a
+backup of the live vault; edit the vault, not this folder."
+commit="$(
+  GIT_AUTHOR_NAME="${GIT_AUTHOR_NAME:-Docs Vault snapshot}" \
+  GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-docs-vault-snapshot@noreply.invalid}" \
+  GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-Docs Vault snapshot}" \
+  GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-docs-vault-snapshot@noreply.invalid}" \
+  g commit-tree "$tree" -p "$parent" <<<"$message"
+)" || die "cannot create the snapshot commit"
+
+check_private
+log "pushing $commit to $branch of $repo"
+# No '+': Git accepts only a fast-forward of $parent, so a concurrent commit is never overwritten.
+g push --quiet --no-verify --no-recurse-submodules "$url" "$commit:refs/heads/$branch" \
+  || die "push to $branch of $repo rejected (did the branch move?); nothing was overwritten"
+g update-ref "refs/remotes/origin/$branch" "$commit" "$parent"
+record "$commit"
+report published "$commit"
