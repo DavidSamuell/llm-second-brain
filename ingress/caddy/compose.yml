@@ -3,7 +3,7 @@
 # MCP_PORT stay on 127.0.0.1. See docs/ingress/caddy.md.
 services:
   caddy:
-    image: caddy@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d  # 2.10.2-alpine
+    image: caddy@sha256:4851e54a46b206517c574821bb5cc67f170d2156041e9fbc4c9193b45e84a75b  # 2.10.2-alpine
     environment:
       ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env}
       IGNIS_HOST: ${IGNIS_HOST:?set IGNIS_HOST in .env}
