@@ -479,7 +479,7 @@ Change `VAULT_PATH` and `DATA_PATH` in `.env` first if the new server uses other
 `scripts/maintenance` runs an agent on the host once a night, after the backup. It:
 
 1. ingests the sources waiting directly in `raw/`, oldest first, up to `--max-sources` (default 30); sources it can't process (for example a URL it can't fetch: it has no web tool) are released with a review item;
-2. runs the structural and semantic checks of the `docs-lint` skill on the whole vault;
+2. runs the structural checks of the `docs-lint` skill on the whole vault, from tool output (`graph_lint`, folder listings, the index) so they stay cheap as the vault grows, and the semantic checks on the pages changed since the last lint (at most `--max-pages`, default 80; the rest wait for the next night). Every `MAINTENANCE_FULL_EVERY_DAYS` days (default 7), on the first run and with `--full`, the semantic checks sweep the whole vault instead. The changed pages come from history, as for the dream below, leaving out lint's own edits; the report lists the pages it finished under `## Pages`;
 3. fixes what agents may fix and files review items for the rest;
 4. archives ticked review items, rewrites `_system/lint-report.md` and adds a `_system/log.md` line.
 
@@ -519,6 +519,8 @@ timezone; report dates and log filenames use UTC.
 | `--max-budget-usd N` | Claude Code's `--max-budget-usd` (default `5`). It is Claude Code's own cost estimate, checked between requests, so a run can end slightly above it; it is not a billing cap. |
 | `--timeout D` / `MAINTENANCE_TIMEOUT` | Agent wall-clock limit (default `45m`; `30s`, `2h` and plain seconds work), then up to 30 seconds kill grace. Each MCP probe has its own 30-second limit. |
 | `--max-sources N` | Requested source limit for the agent workflow (default `30`), not a server-side claim quota; remaining sources wait for the next night. |
+| `--max-pages N` | Most changed pages the semantic checks cover in one night (default `80`; `40` for `--dream`). The oldest changes go first; the rest wait for the next night. |
+| `--full` / `MAINTENANCE_FULL_EVERY_DAYS` | Force a full semantic sweep tonight / days between automatic full sweeps (default `7`). State: `DATA_PATH/maintenance/lint-since` and `lint-last-full`. |
 | `MAINTENANCE_MODEL` | Model passed to Claude Code; empty = its default. |
 | `MAINTENANCE_MAX_TURNS` | Claude Code's `--max-turns` (default `300`). |
 | `MAINTENANCE_MCP_URL` | vault-mcp endpoint (default `http://<BIND_ADDR>:<MCP_PORT>/mcp`, with `127.0.0.1` for `0.0.0.0`). |

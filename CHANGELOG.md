@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- The nightly lint run no longer reads the whole vault every night. Structural checks still cover the whole vault, from tool output (`graph_lint`, folder listings, the index); semantic checks cover only the pages changed since the last lint (`--max-pages`, default 80, with the same `## Pages` coverage rule as the dream). A full semantic sweep runs on the first run, every `MAINTENANCE_FULL_EVERY_DAYS` days (default 7) and with `--full`. This keeps the nightly cost tied to how much changes, not to vault size.
 - **Vault template schema 4 → 5:** `docs-capture` and AGENTS.md section 12 now treat ML findings as durable: dataset versions, splits and normalisation rules; final evaluation results with their experiment-tracker run link; eval protocol and baselines; negative results; training gotchas; error-analysis conclusions; model lineage, promotion criteria and export accuracy loss. A hypothesis under active test may be recorded only under a wiki page's `## Open questions`, marked unconfirmed. The session-start and prompt-nudge hook texts name ML findings too. Run `scripts/upgrade-vault`; released schema-4 files upgrade with custom blocks kept (new `schema4-kit` fixture).
 
 ### Fixed

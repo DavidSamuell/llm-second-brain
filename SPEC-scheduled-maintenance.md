@@ -32,7 +32,7 @@ It replaces "agent-runner `LINT_CRON`" as the recommended path for deployments t
 ### The job (prompt plus the `docs-lint` and `docs-ingest` skills)
 
 1. **Ingest:** claim, ingest and complete every file directly in `raw/`, oldest first, up to `--max-sources` (default 30). Sources it can't process are released, with a review item.
-2. **Structural:**
+2. **Structural, whole vault every night,** from tool output (`graph_lint`, `list`, the index, `project_context`) rather than by reading every page, so it stays cheap as the vault grows:
    - broken wikilinks;
    - pages missing from `_system/index.md`;
    - orphans;
@@ -40,13 +40,15 @@ It replaces "agent-runner `LINT_CRON`" as the recommended path for deployments t
    - `graph_lint` findings (unknown predicates, missing evidence, dangling objects);
    - human docs without a project link;
    - stale `project_context` inputs (no change log on recent edits).
-3. **Semantic:**
+3. **Semantic, on the pages changed since the last lint** (most nights) **or the whole vault** (a full sweep: the first run, every `MAINTENANCE_FULL_EVERY_DAYS` days, default 7, or `--full`):
    - contradictions between pages;
    - claims superseded by newer sources;
    - facts without citations;
-   - pages not updated in 180 days whose project is active;
+   - pages not updated in 180 days whose project is active (full sweep only);
    - duplicate pages on one topic;
    - human docs out of step with the wiki.
+
+   The script picks the changed pages from history, as the dream does ([SPEC-dreaming.md](SPEC-dreaming.md)): pages under `domains/`, `shared/`, `wiki/` and `Home.md` changed since `DATA_PATH/maintenance/lint-since`, leaving out lint's own `maintenance` edits; oldest first, at most `--max-pages` (default 80). The report lists the pages it finished under `## Pages`; the rest stay in scope for the next night.
 4. **Fix** what it may, following doc-authoring and write-policy rules (edits apply directly). File review items for what needs a person's decision.
 5. **Report:** write `_system/lint-report.md` (date, counts per check, fixes made, items filed), append one `_system/log.md` line, and archive ticked review items to `_system/review-archive.md`.
 

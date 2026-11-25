@@ -487,3 +487,31 @@ def test_pages_a_dream_did_not_finish_stay_in_scope(maint: Maint, tmp_path: Path
     assert retry.proc.returncode == 0, retry.output
     assert retry.seen is not None and retry.seen["scope"] == ["wiki/dream-c.md"]
     assert mark.read_text() > window
+
+
+def test_lint_sweeps_everything_weekly_and_only_changed_pages_between(
+    maint: Maint, tmp_path: Path
+) -> None:
+    stack, state = maint.stack, maint.stack.root / "data" / "maintenance"
+    maint.seed()
+    maint.hook.posts.clear()
+    before = _ids(stack, "maintenance")
+    full = maintenance(stack, maint.hook, tmp_path, "--full")
+    assert full.proc.returncode == 0, full.output
+    assert full.seen is not None and full.seen["full"] and full.seen["scope"] == []
+    last_full = (state / "lint-last-full").read_text()
+    _recorded(stack, "wiki/maint-broken.md", _ids(stack, "maintenance") - before)  # lint's own fix
+
+    _edit(maint, "wiki/lint-a.md", DREAM_TEXT.replace("Dream A", "Lint A"))
+    nightly = maintenance(stack, maint.hook, tmp_path)
+    assert nightly.proc.returncode == 0, nightly.output
+    assert nightly.seen is not None and not nightly.seen["full"]
+    assert nightly.seen["scope"] == ["wiki/lint-a.md"]  # not the pages lint itself fixed
+    assert (state / "lint-last-full").read_text() == last_full
+
+    (state / "lint-last-full").write_text("2000-01-01T00:00:00Z\n")  # the weekly sweep is due
+    due = maintenance(stack, maint.hook, tmp_path)
+    assert due.proc.returncode == 0, due.output
+    assert due.seen is not None and due.seen["full"]
+    assert (state / "lint-last-full").read_text() > "2026"
+    assert maint.hook.posts == []

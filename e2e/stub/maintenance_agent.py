@@ -45,6 +45,7 @@ def observe(token: str) -> dict[str, Any]:
         "prompt": (prompt := Path(os.environ["MAINTENANCE_PROMPT_FILE"]).read_text()),
         "scope": re.findall(r"^- (\S+) \(last changed", prompt, re.MULTILINE),
         "stage": STAGE,
+        "full": "FULL SWEEP" in prompt,
     }
 
 
@@ -128,7 +129,7 @@ async def main() -> None:
             unresolved = (
                 ("wiki/maint-dupe.md: duplicate of wiki/index.md",) if MODE == "unresolved" else ()
             )
-            await write_report(c, report(unresolved=unresolved))
+            await write_report(c, report(unresolved=unresolved, pages=tuple(seen["scope"])))
             await call(c, "append", {"path": "_system/log.md",
                                      "text": f"- maintenance {RUN_ID} — 1 fix (by maintenance)\n"})  # fmt: skip
         elif MODE == "errorline":

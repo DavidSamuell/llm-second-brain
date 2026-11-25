@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Nightly vault maintenance on the host (SPEC-scheduled-maintenance, plan D45): ingest raw/, run
-# the structural and semantic lint, fix what agents may fix, write _system/lint-report.md, and
-# alert (maintenance_failed, high) when the run fails. Run it from cron after scripts/backup.
+# the structural lint on the whole vault and the semantic lint on the pages changed since the
+# last lint (the whole vault on a full sweep, every 7 days or with --full), fix what agents may
+# fix, write _system/lint-report.md, and alert (maintenance_failed, high) when the run fails.
+# Run it from cron after scripts/backup.
 # --dream is the second nightly pass (SPEC-dreaming): check the pages changed since the last
 # dream against their sources, merge duplicates, keep project summaries short, record recurring
 # patterns, write _system/dream-report.md, and alert (dream_failed, high) when it fails.
 #
 #   scripts/maintenance --setup [--owner admin@example.com]   create the maintenance tokens
-#   scripts/maintenance [--max-budget-usd 5] [--max-sources 30] [--timeout 45m]
+#   scripts/maintenance [--max-budget-usd 5] [--max-sources 30] [--max-pages 80] [--timeout 45m]
+#                       [--full] [--since 2026-11-24T00:00:00Z]
 #                       [--after-backup-failure]              one run (what cron calls)
 #   scripts/maintenance --dream [--max-budget-usd 7] [--max-pages 40] [--timeout 60m]
 #                       [--since 2026-11-24T00:00:00Z]        one dream, after the lint run
@@ -16,7 +19,8 @@
 # Environment (each also read as a plain KEY=value line from ENV_FILE, default .env; .env is
 # never sourced): DATA_PATH, MCP_PORT, BIND_ADDR, ALERT_WEBHOOK. Optional: MAINTENANCE_MCP_URL
 # (default http://<BIND_ADDR or 127.0.0.1>:<MCP_PORT>/mcp), MAINTENANCE_MODEL,
-# MAINTENANCE_MAX_TURNS (300; 500 for --dream), MAINTENANCE_TIMEOUT, MAINTENANCE_AGENT_COMMAND
+# MAINTENANCE_MAX_TURNS (300; 500 for --dream), MAINTENANCE_TIMEOUT, MAINTENANCE_FULL_EVERY_DAYS
+# (7), MAINTENANCE_AGENT_COMMAND
 # (trusted operator or test command that replaces Claude Code; see docs/SETUP.md). Never run as
 # root.
 set -euo pipefail
@@ -39,7 +43,8 @@ STAGE=lint
 OWNER=${MAINTENANCE_OWNER:-}
 BUDGET=
 MAX_SOURCES=30
-MAX_PAGES=40
+MAX_PAGES=
+FULL=0
 SINCE=
 TIMEOUT=${MAINTENANCE_TIMEOUT:-}
 AFTER_BACKUP_FAILURE=0
@@ -48,6 +53,7 @@ while [ $# -gt 0 ]; do
     --setup) MODE=setup ;;
     --dry-run) MODE=dry-run ;;
     --dream) STAGE=dream ;;
+    --full) FULL=1 ;;
     --max-pages) MAX_PAGES=${2:?--max-pages needs a number}; shift ;;
     --since) SINCE=${2:?--since needs a UTC time}; shift ;;
     --owner) OWNER=${2:?--owner needs an email}; shift ;;
@@ -55,16 +61,19 @@ while [ $# -gt 0 ]; do
     --max-sources) MAX_SOURCES=${2:?--max-sources needs a number}; shift ;;
     --timeout) TIMEOUT=${2:?--timeout needs a duration}; shift ;;
     --after-backup-failure) AFTER_BACKUP_FAILURE=1 ;;
-    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
 done
 if [ "$STAGE" = dream ]; then
-  BUDGET=${BUDGET:-7} TIMEOUT=${TIMEOUT:-60m} DEFAULT_TURNS=500
+  BUDGET=${BUDGET:-7} TIMEOUT=${TIMEOUT:-60m} MAX_PAGES=${MAX_PAGES:-40} DEFAULT_TURNS=500
+  [ "$FULL" = 0 ] || die "--full is for the lint run; a dream always works on changed pages"
 else
-  BUDGET=${BUDGET:-5} TIMEOUT=${TIMEOUT:-45m} DEFAULT_TURNS=300
+  BUDGET=${BUDGET:-5} TIMEOUT=${TIMEOUT:-45m} MAX_PAGES=${MAX_PAGES:-80} DEFAULT_TURNS=300
 fi
+FULL_EVERY_DAYS=${MAINTENANCE_FULL_EVERY_DAYS:-7}
+[[ $FULL_EVERY_DAYS =~ ^[1-9][0-9]*$ ]] || die "MAINTENANCE_FULL_EVERY_DAYS must be a whole number above 0"
 [[ $BUDGET =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--max-budget-usd must be a number of dollars"
 [[ $MAX_SOURCES =~ ^[0-9]+$ ]] || die "--max-sources must be a whole number"
 [[ $MAX_PAGES =~ ^[1-9][0-9]*$ ]] || die "--max-pages must be a whole number above 0"
@@ -81,6 +90,8 @@ WRITE_TOKEN_FILE=$STATE/token
 PREVIEW_TOKEN_FILE=$STATE/preview-token
 DREAM_TOKEN_FILE=$STATE/dream-token
 DREAM_SINCE_FILE=$STATE/dream-since
+LINT_SINCE_FILE=$STATE/lint-since
+LINT_FULL_FILE=$STATE/lint-last-full
 DREAM_CREDENTIAL=maintenance-dream
 umask 077
 mkdir -p "$STATE"
@@ -141,8 +152,10 @@ source "$KIT/scripts/lib/alert.sh"
 
 if [ "$STAGE" = dream ]; then
   WHAT=dream EVENT=dream_failed REPORT=_system/dream-report.md NONCE_KEY=dream_run
+  SINCE_FILE=$DREAM_SINCE_FILE OWN_CREDENTIAL=$DREAM_CREDENTIAL
 else
   WHAT=maintenance EVENT=maintenance_failed REPORT=_system/lint-report.md NONCE_KEY=maintenance_run
+  SINCE_FILE=$LINT_SINCE_FILE OWN_CREDENTIAL=maintenance
 fi
 
 log() { printf '%s %s[%s]: %s\n' "$(date -u +%FT%TZ)" "$WHAT" "$RUN_ID" "$*" | tee -a "$LOG" >&2; }
@@ -245,50 +258,64 @@ report_state() {  # report_state: sets REPORT_VERSION ("absent" if missing), sav
   REPORT_VERSION=$(jq -r '.version // "unknown"' <<<"$result")
 }
 
+# The lint run sweeps the whole vault semantically on its first run, every FULL_EVERY_DAYS days
+# and with --full; other nights only the pages changed since the last lint.
+if [ "$STAGE" = lint ] && [ "$FULL" = 0 ]; then
+  if [ ! -s "$LINT_FULL_FILE" ]; then
+    FULL=1
+  else
+    last_full=$(date -u -d "$(head -n1 "$LINT_FULL_FILE")" +%s 2>/dev/null) || last_full=0
+    [ $(( $(date -u +%s) - last_full )) -lt $(( FULL_EVERY_DAYS * 86400 )) ] || FULL=1
+  fi
+fi
+
 if [ "$STAGE" = dream ]; then
   log "started (dream ${MODE}; budget \$$BUDGET, max pages $MAX_PAGES, timeout $TIMEOUT)"
+elif [ "$FULL" = 1 ]; then
+  log "started (${MODE}, full sweep; budget \$$BUDGET, max sources $MAX_SOURCES, timeout $TIMEOUT)"
 else
-  log "started (${MODE}; budget \$$BUDGET, max sources $MAX_SOURCES, timeout $TIMEOUT)"
+  log "started (${MODE}, changed pages; budget \$$BUDGET, max sources $MAX_SOURCES, max pages $MAX_PAGES, timeout $TIMEOUT)"
 fi
 [ "$AFTER_BACKUP_FAILURE" = 0 ] || log "tonight's backup failed; maintenance runs anyway and notes it in the report"
 report_state || fail "$MCP_ERROR"
 BEFORE=$REPORT_VERSION
 
-# -- dream scope: pages changed since the last successful dream, decided here, not by the agent ----
-set_dream_since() {  # set_dream_since TIME: only after a successful real dream
+# -- scope: pages changed since the stage's last successful run, decided here, not by the agent --
+set_since() {  # set_since FILE TIME: only after a successful real run
   local tmp
-  tmp=$(mktemp "$STATE/.dream-since.XXXXXX")
-  printf '%s\n' "$1" > "$tmp"
-  mv "$tmp" "$DREAM_SINCE_FILE"
+  tmp=$(mktemp "$STATE/.since.XXXXXX")
+  printf '%s\n' "$2" > "$tmp"
+  mv "$tmp" "$1"
 }
-if [ "$STAGE" = dream ]; then
-  if [ -z "$SINCE" ] && [ -s "$DREAM_SINCE_FILE" ]; then SINCE=$(head -n1 "$DREAM_SINCE_FILE"); fi
+NEXT_SINCE=$RUN_START pages=0 scope=
+: > "$PRIV/scope.tsv"
+if [ "$FULL" = 0 ]; then
+  if [ -z "$SINCE" ] && [ -s "$SINCE_FILE" ]; then SINCE=$(head -n1 "$SINCE_FILE"); fi
   [ -n "$SINCE" ] || SINCE=$(date -u -d '7 days ago' +%FT%TZ)
   changes=$("$KIT/scripts/history" changes --since "$SINCE" \
-    --exclude-credential "$DREAM_CREDENTIAL" 2>"$PRIV/history.err") \
+    --exclude-credential "$OWN_CREDENTIAL" 2>"$PRIV/history.err") \
     || fail "could not list changes since $SINCE: $(tail -n1 "$PRIV/history.err" | redact)"
   # Pages people and agents read; never _system/, raw/, skills/, rules, templates or deleted files.
-  # History stamps (20261124T031502.123456Z[_0001]) become ISO times, the format dream-since keeps.
+  # History stamps (20261124T031502.123456Z[_0001]) become ISO times, the format *-since files keep.
   changed=$(jq -c '[.[] | select(.gone | not)
     | select(.path | test("^((domains|shared|wiki)/.*|Home)\\.md$"))
     | .last |= (split("_")[0] | "\(.[0:4])-\(.[4:6])-\(.[6:8])T\(.[9:11]):\(.[11:13]):\(.[13:])")]' \
     <<<"$changes") || fail "vault-watcher listed changes in an unreadable form"
   total=$(jq 'length' <<<"$changed")
-  if [ "$total" = 0 ]; then
+  if [ "$total" = 0 ] && [ "$STAGE" = dream ]; then
     DECIDED=1
-    [ "$MODE" = dry-run ] || set_dream_since "$RUN_START"
+    [ "$MODE" = dry-run ] || set_since "$SINCE_FILE" "$RUN_START"
     log "done: nothing changed since $SINCE; no dream needed"
     exit 0
   fi
   # Oldest change first; what doesn't fit tonight starts the next window.
-  NEXT_SINCE=$RUN_START
   if [ "$total" -gt "$MAX_PAGES" ]; then
     NEXT_SINCE=$(jq -r --argjson n "$MAX_PAGES" '.[$n].last' <<<"$changed")
-    log "$total pages changed; dreaming over the oldest $MAX_PAGES, the rest from $NEXT_SINCE next time"
+    log "$total pages changed; working on the oldest $MAX_PAGES, the rest from $NEXT_SINCE next time"
   fi
   scope=$(jq -r --argjson n "$MAX_PAGES" '.[:$n][] | "- \(.path) (last changed \(.last[0:10]) \(.last[11:16]) UTC, by \(.sources | join(", ")))"' <<<"$changed")
   jq -r --argjson n "$MAX_PAGES" '.[:$n][] | [.path, .last] | @tsv' <<<"$changed" > "$PRIV/scope.tsv"
-  pages=$(grep -c '^- ' <<<"$scope")
+  pages=$(jq --argjson n "$MAX_PAGES" '.[:$n] | length' <<<"$changed")
 fi
 
 # -- the agent's working folder and prompt ---------------------------------------------------------
@@ -311,6 +338,38 @@ rules="Rules for this run:
   never copy secrets (write [secret removed] and add a review item).
 - On conflict re-read and re-apply; on recently_edited wait details.retry_after_s; on rate_limited
   wait details.retry_after_s; on forbidden add a review item instead."
+
+# Lint: structural checks cover the whole vault from tool output (cheap at any size); semantic
+# checks read pages, so they cover the whole vault only on a full sweep.
+structural="Structural checks (docs-lint) on the whole vault, from tool output rather than by
+   reading every page: graph_lint() for broken wikilinks (dangling objects), orphans, unknown
+   predicates and missing evidence; list() of each folder against _system/index.md for pages
+   missing from the index and for missing title or maintainer; project_context and the project
+   READMEs for human docs without a project link and recent edits without a change-log line.
+   Read a page only when a finding names it."
+if [ "$FULL" = 1 ]; then
+  semantic="Semantic checks (docs-lint), FULL SWEEP of the whole vault: contradictions between
+   pages; claims superseded by newer sources; facts without citations; pages not updated in 180
+   days whose project is active; duplicate pages on one topic; human docs out of step with the
+   wiki."
+  pages_report=
+elif [ "$pages" = 0 ]; then
+  semantic="Semantic checks: no page under domains/, shared/ or wiki/ changed since $SINCE, so
+   there is nothing to check tonight (a full sweep runs every $FULL_EVERY_DAYS days)."
+  pages_report=
+else
+  semantic="Semantic checks (docs-lint) on these $pages page(s) changed since $SINCE only (a full
+   sweep of the whole vault runs every $FULL_EVERY_DAYS days): contradictions with the pages they
+   link to or that link to them; claims superseded by newer sources; facts without citations;
+   duplicates of these pages; human docs among them out of step with the wiki. Check EVERY page
+   in this list, not a sample:
+$scope"
+  pages_report="
+   ## Pages
+   - <page>: <checked | fixed | flagged>
+     (one line for EVERY page in the semantic list that you finished, in list order. A page you
+     didn't get to is left out: it stays in scope for the next run.)"
+fi
 
 if [ "$STAGE" = dream ]; then
   dream_task="Scope: these $pages page(s) changed since $SINCE (by people, agents or restores),
@@ -434,13 +493,9 @@ $rules
 Preview, without changing anything:
 1. Ingest preview: list(\"raw\") and say which files directly in raw/ (oldest first, at most
    $MAX_SOURCES) tonight's run would ingest, and which human docs and wiki pages each would touch.
-2. Run every docs-lint check: broken wikilinks; pages missing from _system/index.md; orphans;
-   invalid frontmatter; graph_lint findings (unknown predicates, missing evidence, dangling
-   objects); human docs without a project link; stale project_context inputs (recent edits
-   without a change-log line); contradictions between pages; claims superseded by newer sources;
-   facts without citations; pages not updated in 180 days whose project is active; duplicate
-   pages on one topic; human docs out of step with the wiki.
-3. Finish with the report you would have written, in Markdown, as your final message: counts per
+2. $structural
+3. $semantic
+4. Finish with the report you would have written, in Markdown, as your final message: counts per
    check, each fix you would make (page and change), and each review item you would file."
 else
   backup_note=
@@ -460,13 +515,8 @@ Do these steps in order:
    A source you can't process (a URL stub you can't fetch, an unreadable file, a failure you
    can't resolve): release_source it and add a review item saying why. Leave the rest for the
    next night.
-2. Structural checks (docs-lint): broken wikilinks; pages missing from _system/index.md; orphans;
-   invalid frontmatter; graph_lint findings (unknown predicates, missing evidence, dangling
-   objects); human docs without a project link; stale project_context inputs (recent edits
-   without a change-log line).
-3. Semantic checks (docs-lint): contradictions between pages; claims superseded by newer sources;
-   facts without citations; pages not updated in 180 days whose project is active; duplicate
-   pages on one topic; human docs out of step with the wiki.
+2. $structural
+3. $semantic
 4. Fix what you may under docs-lint and the vault's write rules (with base_version, and summary on
    human-doc edits). Everything that needs a person's decision gets one review_queue_add item; no
    duplicates.
@@ -484,7 +534,7 @@ Do these steps in order:
    errors: <number of lines under ## Errors>
    unresolved: <number of lines under ## Unresolved>
    ## Counts
-   - <check>: <found> found, <fixed> fixed   (one line per check above, plus sources ingested)
+   - <check>: <found> found, <fixed> fixed   (one line per check above, plus sources ingested)$pages_report
    ## Fixes
    - <page>: <what you changed>
    ## Review items filed
@@ -593,8 +643,8 @@ unresolved=$declared_unresolved
 [ "$unresolved_lines" = 0 ] || unresolved=$unresolved_lines
 if [[ $errors =~ [1-9] ]]; then fail "$REPORT lists $errors error(s)"; fi
 
-if [ "$STAGE" = dream ]; then
-  # Coverage, from the report's ## Pages list: pages the dream didn't finish keep their place,
+if [ "$pages" -gt 0 ]; then
+  # Coverage, from the report's ## Pages list: pages the run didn't finish keep their place,
   # so the next window starts at the first of them. The backticks are literal (code-formatted paths).
   # shellcheck disable=SC2016
   sed -n '/^## Pages/,/^## /p' "$PRIV/report.md" | sed -nE 's/^- `?([^`:[:space:]]+)`?: .*/\1/p' \
@@ -608,13 +658,18 @@ if [ "$STAGE" = dream ]; then
   [ "$missing" -lt "$pages" ] || fail "$REPORT lists none of the $pages pages in scope under ## Pages"
   if [ "$missing" -gt 0 ]; then
     NEXT_SINCE=$first_missing
-    log "$missing of $pages pages were not finished; they stay in scope for the next dream"
+    log "$missing of $pages pages were not finished; they stay in scope for the next run"
   fi
 fi
 
 DECIDED=1
-# Finished pages are done; a failed dream returned above, so its pages stay in scope next night.
-[ "$STAGE" != dream ] || set_dream_since "$NEXT_SINCE"
+# Finished pages are done; a failed run returned above, so its pages stay in scope next night.
+if [ "$FULL" = 1 ]; then
+  set_since "$SINCE_FILE" "$RUN_START"
+  set_since "$LINT_FULL_FILE" "$RUN_START"
+else
+  set_since "$SINCE_FILE" "$NEXT_SINCE"
+fi
 if [[ $unresolved =~ [1-9] ]]; then
   log "done: unresolved ($unresolved finding(s) left for the review queue; report $REPORT)"
 else
