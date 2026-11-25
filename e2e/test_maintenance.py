@@ -460,3 +460,30 @@ def test_dream_preview_cannot_write_or_move_its_window(maint: Maint, tmp_path: P
     previews = list((stack.root / "data" / "maintenance").glob("*-dream-preview-*.md"))
     assert any("Would fix 1 broken wikilink" in p.read_text() for p in previews)
     assert maint.hook.posts == []
+
+
+def test_pages_a_dream_did_not_finish_stay_in_scope(maint: Maint, tmp_path: Path) -> None:
+    mark = maint.stack.root / "data" / "maintenance" / "dream-since"
+    since = _now()
+    _edit(maint, "wiki/dream-b.md", DREAM_TEXT.replace("Dream A", "Dream B"))
+    _edit(maint, "wiki/dream-c.md", DREAM_TEXT.replace("Dream A", "Dream C"))
+    maint.hook.posts.clear()
+
+    run = maintenance(
+        maint.stack, maint.hook, tmp_path, "--dream", "--since", since, mode="dreampartial"
+    )
+    assert run.proc.returncode == 0, run.output
+    assert run.seen is not None and run.seen["scope"] == ["wiki/dream-b.md", "wiki/dream-c.md"]
+    assert "1 of 2 pages were not finished" in run.output
+
+    nothing = maintenance(maint.stack, maint.hook, tmp_path, "--dream", mode="dreamnone")
+    assert nothing.proc.returncode == 1, nothing.output
+    assert nothing.seen is not None and nothing.seen["scope"] == ["wiki/dream-c.md"]
+    [alert] = maint.hook.posts
+    assert alert["event"] == "dream_failed" and "lists none of the 1 pages" in alert["message"]
+
+    window = mark.read_text()
+    retry = maintenance(maint.stack, maint.hook, tmp_path, "--dream", mode="dreampartial")
+    assert retry.proc.returncode == 0, retry.output
+    assert retry.seen is not None and retry.seen["scope"] == ["wiki/dream-c.md"]
+    assert mark.read_text() > window

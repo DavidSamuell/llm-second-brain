@@ -40,13 +40,13 @@ The script, not the agent, decides the scope:
 2. **Consolidate** the pages in scope and their one-hop graph neighbours: merge duplicate agent-maintained wiki pages into the older one, archive the other (`status: archived`, a "Superseded by" link) and repoint its backlinks; fold thin pages the same way; repoint links to missing pages when an existing page covers the same thing.
 3. **Promote:** for every project whose docs are in scope, keep its `README.md` `## Summary` within 900 characters and `## Status` within 180 (what `project_context` shows). Move detail into the project's docs and leave a link; never drop a fact.
 4. **Patterns:** read the last 7 days of `_system/log.md`. When two or more sources record the same incident, workaround or rule but no runbook or wiki page states it, add it to the right page, citing every source.
-5. **Report:** write `_system/dream-report.md` with `dream_run: <run id>`, the same `## Outcome` counts as the lint report, and a line per action. Append one `_system/log.md` line.
+5. **Report:** write `_system/dream-report.md` with `dream_run: <run id>`, the same `## Outcome` counts as the lint report, a `## Pages` line for every page in scope it finished, and a line per action. Append one `_system/log.md` line.
 
 Rules: the vault's write policy and doc-authoring apply; `maintainer: human` pages and decision records are never edited (review item instead); no deletes; no new domains; the meaning of a page changes only on a cited source.
 
 ### Outcome and alerts
 
-As the lint run, judged by the script through vault-mcp: agent exit and typed result, the report rewritten with this run's `dream_run:` nonce, zero errors. A failed dream posts exactly one `dream_failed` (high) alert and leaves `dream-since` unchanged, so the same changes are retried. Only a successful run (ok or unresolved) moves `dream-since`. A dry run writes nothing and never moves it.
+As the lint run, judged by the script through vault-mcp: agent exit and typed result, the report rewritten with this run's `dream_run:` nonce, zero errors. A failed dream posts exactly one `dream_failed` (high) alert and leaves `dream-since` unchanged, so the same changes are retried. Only a successful run (ok or unresolved) moves `dream-since`, and only past the pages its `## Pages` list says it finished: the next window starts at the first page it didn't finish. A report that finishes none of its pages is a failure. A dry run writes nothing and never moves it.
 
 ## Commands
 

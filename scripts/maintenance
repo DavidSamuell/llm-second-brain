@@ -268,9 +268,11 @@ if [ "$STAGE" = dream ]; then
     --exclude-credential "$DREAM_CREDENTIAL" 2>"$PRIV/history.err") \
     || fail "could not list changes since $SINCE: $(tail -n1 "$PRIV/history.err" | redact)"
   # Pages people and agents read; never _system/, raw/, skills/, rules, templates or deleted files.
+  # History stamps (20261124T031502.123456Z[_0001]) become ISO times, the format dream-since keeps.
   changed=$(jq -c '[.[] | select(.gone | not)
-    | select(.path | test("^((domains|shared|wiki)/.*|Home)\\.md$"))]' <<<"$changes") \
-    || fail "vault-watcher listed changes in an unreadable form"
+    | select(.path | test("^((domains|shared|wiki)/.*|Home)\\.md$"))
+    | .last |= (split("_")[0] | "\(.[0:4])-\(.[4:6])-\(.[6:8])T\(.[9:11]):\(.[11:13]):\(.[13:])")]' \
+    <<<"$changes") || fail "vault-watcher listed changes in an unreadable form"
   total=$(jq 'length' <<<"$changed")
   if [ "$total" = 0 ]; then
     DECIDED=1
@@ -284,7 +286,8 @@ if [ "$STAGE" = dream ]; then
     NEXT_SINCE=$(jq -r --argjson n "$MAX_PAGES" '.[$n].last' <<<"$changed")
     log "$total pages changed; dreaming over the oldest $MAX_PAGES, the rest from $NEXT_SINCE next time"
   fi
-  scope=$(jq -r --argjson n "$MAX_PAGES" '.[:$n][] | "- \(.path) (last changed \(.last[0:4])-\(.last[4:6])-\(.last[6:8]) \(.last[9:11]):\(.last[11:13]) UTC, by \(.sources | join(", ")))"' <<<"$changed")
+  scope=$(jq -r --argjson n "$MAX_PAGES" '.[:$n][] | "- \(.path) (last changed \(.last[0:10]) \(.last[11:16]) UTC, by \(.sources | join(", ")))"' <<<"$changed")
+  jq -r --argjson n "$MAX_PAGES" '.[:$n][] | [.path, .last] | @tsv' <<<"$changed" > "$PRIV/scope.tsv"
   pages=$(grep -c '^- ' <<<"$scope")
 fi
 
@@ -314,8 +317,9 @@ if [ "$STAGE" = dream ]; then
 oldest change first. Work on them and on the pages the steps below name; leave the rest alone.
 $scope
 
-1. Verify. For each page in scope, read it and every source it cites (wiki/sources/ summaries and
-   the raw/_processed/ file each summary names). Compare each factual claim with its source:
+1. Verify EVERY page in scope, not a sample: read it and every source it cites (wiki/sources/
+   summaries and the raw/_processed/ file each summary names). Compare each factual claim with
+   its source:
    - the source contradicts it: correct the claim and keep the citation;
    - no cited source supports it: on a maintainer: agent page move it under ## Open questions,
      marked (unconfirmed); on any other page add a review item;
@@ -331,9 +335,14 @@ $scope
      repoint it.
    Duplicates that involve human docs (domains/, shared/) get a review item instead.
 3. Promote. For each project whose docs are in scope (project: frontmatter or project_context),
-   keep its README.md ## Summary within 900 characters and ## Status within 180: project_context
-   shows them at the start of every session. Move detail into the project's docs and leave a
-   link; never drop a fact. Use replace_section with a summary.
+   keep its README.md ## Summary within 900 characters and ## Status within 180, not counting the
+   citations after the text: project_context shows them at the start of every session. Move
+   detail into the project's docs (or a later section of the same README) and leave a link;
+   never drop a fact or a citation: a shortened
+   Summary or Status keeps the citation of each fact it states. Edit one section at a time with
+   replace_section (never put other ## headings inside its content), keep a blank line before
+   and after every heading, pass a summary, and add one ## Change log line, as doc-authoring
+   requires for human docs.
 4. Patterns. read(\"_system/log.md\") and look at the last 7 days. When two or more sources
    record the same incident, workaround or rule and no runbook or wiki page states it, add it
    to the right page (a component page or the project's runbook), citing every source.
@@ -389,6 +398,10 @@ $dream_task
    - project summaries tightened: <n>
    - patterns recorded: <n>
    - review items filed: <n>
+   ## Pages
+   - <page>: <verified | corrected | flagged | not checkable | no claims>
+     (one line for EVERY page in scope that you finished, in scope order. A page you didn't get
+     to is left out: it stays in scope for the next dream. Don't list pages you didn't read.)
    ## Changes
    - <page>: <what changed and why, with the source>
    ## Review items filed
@@ -575,8 +588,27 @@ unresolved=$declared_unresolved
 [ "$unresolved_lines" = 0 ] || unresolved=$unresolved_lines
 if [[ $errors =~ [1-9] ]]; then fail "$REPORT lists $errors error(s)"; fi
 
+if [ "$STAGE" = dream ]; then
+  # Coverage, from the report's ## Pages list: pages the dream didn't finish keep their place,
+  # so the next window starts at the first of them. The backticks are literal (code-formatted paths).
+  # shellcheck disable=SC2016
+  sed -n '/^## Pages/,/^## /p' "$PRIV/report.md" | sed -nE 's/^- `?([^`:[:space:]]+)`?: .*/\1/p' \
+    > "$PRIV/covered.txt"
+  missing=0 first_missing=
+  while IFS=$'\t' read -r path last; do
+    grep -qxF -- "$path" "$PRIV/covered.txt" && continue
+    missing=$((missing + 1))
+    [ -n "$first_missing" ] || first_missing=$last
+  done < "$PRIV/scope.tsv"
+  [ "$missing" -lt "$pages" ] || fail "$REPORT lists none of the $pages pages in scope under ## Pages"
+  if [ "$missing" -gt 0 ]; then
+    NEXT_SINCE=$first_missing
+    log "$missing of $pages pages were not finished; they stay in scope for the next dream"
+  fi
+fi
+
 DECIDED=1
-# Tonight's pages are done; a failed dream returned above, so they stay in scope next night.
+# Finished pages are done; a failed dream returned above, so its pages stay in scope next night.
 [ "$STAGE" != dream ] || set_dream_since "$NEXT_SINCE"
 if [[ $unresolved =~ [1-9] ]]; then
   log "done: unresolved ($unresolved finding(s) left for the review queue; report $REPORT)"

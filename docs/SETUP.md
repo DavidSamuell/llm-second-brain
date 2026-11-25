@@ -555,7 +555,7 @@ scripts/maintenance --dream --dry-run   # preview with the read-only token, kept
 scripts/maintenance --dream             # one dream
 ```
 
-`--max-budget-usd` defaults to `7` and the timeout to `60m` for a dream; `MAINTENANCE_MAX_TURNS` defaults to `500`. Outcome and logs work as for the lint run, with `dream_run:` in the report. A failed dream sends one `dream_failed` (high) alert and keeps its window, so the next dream retries the same pages; only a successful dream moves `dream-since`. Session transcripts are not used: the server never receives them.
+`--max-budget-usd` defaults to `7` and the timeout to `60m` for a dream; `MAINTENANCE_MAX_TURNS` defaults to `500`. Outcome and logs work as for the lint run, with `dream_run:` in the report. The report lists every page the dream finished under `## Pages`; pages it didn't get to stay in scope for the next dream, and a report that finishes none of them fails. A failed dream sends one `dream_failed` (high) alert and keeps its window, so the next dream retries the same pages; only a successful dream moves `dream-since`. Session transcripts are not used: the server never receives them.
 
 ## 13. Everyday commands
 

@@ -49,13 +49,15 @@ def observe(token: str) -> dict[str, Any]:
 
 
 def report(
-    errors: tuple[str, ...] = (), unresolved: tuple[str, ...] = (), run_id: str = RUN_ID
-) -> str:
+    errors: tuple[str, ...] = (), unresolved: tuple[str, ...] = (), run_id: str = RUN_ID,
+    pages: tuple[str, ...] = (),
+) -> str:  # fmt: skip
     lines = [
         "---", "title: Stub report", "maintainer: agent", f"{NONCE}: {run_id}",
         f"updated: {time.strftime('%Y-%m-%d', time.gmtime())}", "---", "# Stub report",
         "## Outcome", f"errors: {len(errors)}", f"unresolved: {len(unresolved)}",
-        "## Counts", "- broken wikilinks: 1 found, 1 fixed", "## Fixes",
+        "## Counts", "- broken wikilinks: 1 found, 1 fixed", "## Pages",
+        *[f"- `{p}`: verified" for p in pages], "## Fixes",
         "- wiki/maint-broken.md: fixed [[wiki/missing-page]]", "## Errors",
         *[f"- error: {e}" for e in errors], "## Unresolved", *[f"- unresolved: {u}" for u in unresolved],
     ]  # fmt: skip
@@ -107,9 +109,13 @@ async def main() -> None:
             await call(c, "write", {"path": DREAM_PAGE,
                                     "content": page["content"].replace("runs hourly", "runs nightly"),
                                     "base_version": page["version"]})  # fmt: skip
-            await write_report(c, report())
+            await write_report(c, report(pages=tuple(seen["scope"])))
             await call(c, "append", {"path": "_system/log.md",
                                      "text": f"- dream {RUN_ID} — 1 claim corrected (by maintenance-dream)\n"})  # fmt: skip
+        elif MODE == "dreampartial":  # finishes only the first page in scope
+            await write_report(c, report(pages=tuple(seen["scope"][:1])))
+        elif MODE == "dreamnone":  # finishes no page at all
+            await write_report(c, report())
         elif MODE in ("ok", "unresolved"):
             page = await call(c, "read", {"path": "wiki/maint-broken.md"})
             await call(c, "write", {"path": "wiki/maint-broken.md",
