@@ -12,6 +12,7 @@ import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
@@ -147,7 +148,7 @@ def maint(stack: Stack, hook: Hook, tmp_path_factory: pytest.TempPathFactory) ->
     assert run.proc.returncode == 0, run.output
     assert not TOKEN_RE.search(run.output)
     state = stack.root / "data" / "maintenance"
-    tokens = {f: (state / f).read_text().strip() for f in ("token", "preview-token")}
+    tokens = {f: (state / f).read_text().strip() for f in ("token", "preview-token", "dream-token")}
     return Maint(stack, hook, seeder, tokens)
 
 
@@ -156,6 +157,7 @@ def test_setup_creates_private_tokens_and_keeps_other_grants(maint: Maint, tmp_p
     assert state.stat().st_mode & 0o777 == 0o700
     for name, scope, file in (
         ("maintenance", "write", "token"),
+        ("maintenance-dream", "write", "dream-token"),
         ("maintenance-preview", "read", "preview-token"),
     ):
         assert (state / file).stat().st_mode & 0o777 == 0o600
@@ -343,3 +345,118 @@ def test_runs_never_overlap(maint: Maint, tmp_path: Path) -> None:
     assert run.proc.returncode == 0
     assert "still going; skipped" in run.output
     assert run.seen is None and maint.hook.posts == []
+
+
+# -- dreaming (SPEC-dreaming) ------------------------------------------------------------------
+
+DREAM_PAGE = "wiki/dream-a.md"
+DREAM_TEXT = "---\ntitle: Dream A\nmaintainer: agent\n---\n# Dream A\n\nThe exporter runs hourly.\n"
+
+
+def _now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
+def _ids(stack: Stack, credential: str) -> set[str]:
+    return {
+        r["id"]
+        for r in _audit(stack)
+        if r.get("credential_name") == credential and r["result"] == "ok"
+    }
+
+
+def _recorded(stack: Stack, rel: str, ids: set[str]) -> None:
+    """Wait until vault-watcher has recorded a version of `rel` written by one of `ids`."""
+    pointers = stack.root / "data" / "history" / rel
+    deadline = time.monotonic() + 20
+    while not any(
+        json.loads(p.read_text()).get("audit_id") in ids for p in pointers.glob("*.json")
+    ):
+        assert time.monotonic() < deadline, f"no history version of {rel}"
+        time.sleep(0.3)
+
+
+def _edit(maint: Maint, rel: str, content: str) -> None:
+    before = _ids(maint.stack, "maint-seeder")
+    asyncio.run(put(maint.stack, maint.seeder, rel, content))
+    _recorded(maint.stack, rel, _ids(maint.stack, "maint-seeder") - before)
+
+
+def test_dream_works_on_changed_pages_and_never_on_its_own_edits(
+    maint: Maint, tmp_path: Path
+) -> None:
+    stack, vault = maint.stack, maint.stack.root / "vault"
+    mark = stack.root / "data" / "maintenance" / "dream-since"
+    maint.seed()
+    since = _now()
+    _edit(maint, DREAM_PAGE, DREAM_TEXT)
+    maint.hook.posts.clear()
+
+    run = maintenance(stack, maint.hook, tmp_path, "--dream", "--since", since, mode="dream")
+    assert run.proc.returncode == 0, run.output
+    assert run.seen is not None and run.seen["stage"] == "dream"
+    assert run.seen["scope"] == [DREAM_PAGE]  # only pages changed since `since`; never _system/
+    report = (vault / "_system" / "dream-report.md").read_text()
+    run_id = report.split("dream_run: ", 1)[1].split("\n", 1)[0]
+    assert "runs nightly" in (vault / DREAM_PAGE).read_text()
+    assert f"dream[{run_id}]: done: ok" in _log_text(stack)
+    first = mark.read_text().strip()
+    assert first > since and mark.stat().st_mode & 0o777 == 0o600
+    assert maint.hook.posts == []
+
+    # The dream's own correction is in history, but it is not something to dream over next time.
+    _recorded(stack, DREAM_PAGE, _ids(stack, "maintenance-dream"))
+    again = maintenance(stack, maint.hook, tmp_path, "--dream", mode="dream")
+    assert again.proc.returncode == 0, again.output
+    assert again.seen is None  # nothing changed: no agent, no cost
+    assert "nothing changed since" in again.output
+    assert mark.read_text().strip() > first
+
+    # A person's later edit of the same page is in scope again.
+    _edit(maint, DREAM_PAGE, DREAM_TEXT.replace("hourly", "every two hours"))
+    third = maintenance(stack, maint.hook, tmp_path, "--dream", mode="dream")
+    assert third.proc.returncode == 0, third.output
+    assert third.seen is not None and third.seen["scope"] == [DREAM_PAGE]
+
+
+def test_failed_dream_alerts_once_and_keeps_its_window(maint: Maint, tmp_path: Path) -> None:
+    mark = maint.stack.root / "data" / "maintenance" / "dream-since"
+    since = _now()
+    _edit(maint, DREAM_PAGE, DREAM_TEXT.replace("Dream A", "Dream A, revised"))
+    before = mark.read_text() if mark.exists() else None
+    maint.hook.posts.clear()
+    run = maintenance(maint.stack, maint.hook, tmp_path, "--dream", "--since", since, mode="fail")
+    assert run.proc.returncode == 1, run.output
+    assert run.seen is not None and run.seen["scope"] == [DREAM_PAGE]
+    [alert] = maint.hook.posts
+    assert alert["event"] == "dream_failed" and alert["severity"] == "high"
+    assert "Nightly dream failed: the agent exited with status 1" in alert["message"]
+    assert "vmcp_" not in json.dumps(alert)
+    assert (mark.read_text() if mark.exists() else None) == before  # retried next night
+
+
+def test_dream_preview_cannot_write_or_move_its_window(maint: Maint, tmp_path: Path) -> None:
+    stack, vault = maint.stack, maint.stack.root / "vault"
+    mark = stack.root / "data" / "maintenance" / "dream-since"
+    maint.seed()
+    since = _now()
+    _edit(maint, "wiki/maint-broken.md", BROKEN + "\nEdited for the dream preview.\n")
+    before = (
+        mark.read_text() if mark.exists() else None,
+        (vault / "wiki/maint-broken.md").read_bytes(),
+    )
+    maint.hook.posts.clear()
+    run = maintenance(stack, maint.hook, tmp_path, "--dream", "--dry-run", "--since", since,
+                      mode="dryrun")  # fmt: skip
+    assert run.proc.returncode == 0, run.output
+    assert run.seen is not None and run.seen["dry_run"] == "1"
+    assert run.seen["scope"] == ["wiki/maint-broken.md"]
+    assert run.seen["write"] == "forbidden"  # the read-scope preview token
+    after = (
+        mark.read_text() if mark.exists() else None,
+        (vault / "wiki/maint-broken.md").read_bytes(),
+    )
+    assert after == before
+    previews = list((stack.root / "data" / "maintenance").glob("*-dream-preview-*.md"))
+    assert any("Would fix 1 broken wikilink" in p.read_text() for p in previews)
+    assert maint.hook.posts == []

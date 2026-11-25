@@ -18,6 +18,10 @@ from fastmcp.exceptions import ToolError
 MODE = os.environ.get("STUB_MODE", "ok")
 RUN_ID = os.environ["MAINTENANCE_RUN_ID"]
 CONFIG = Path(os.environ["MAINTENANCE_MCP_CONFIG"])
+STAGE = os.environ.get("MAINTENANCE_STAGE", "lint")
+REPORT = os.environ.get("MAINTENANCE_REPORT", "_system/lint-report.md")
+NONCE = "dream_run" if STAGE == "dream" else "maintenance_run"
+DREAM_PAGE = "wiki/dream-a.md"
 
 
 def observe(token: str) -> dict[str, Any]:
@@ -38,7 +42,9 @@ def observe(token: str) -> dict[str, Any]:
         "token_on_argv": on_argv,
         "token_in_env": any(token in v for v in os.environ.values()),
         "dry_run": os.environ.get("MAINTENANCE_DRY_RUN"),
-        "prompt": Path(os.environ["MAINTENANCE_PROMPT_FILE"]).read_text(),
+        "prompt": (prompt := Path(os.environ["MAINTENANCE_PROMPT_FILE"]).read_text()),
+        "scope": re.findall(r"^- (\S+) \(last changed", prompt, re.MULTILINE),
+        "stage": STAGE,
     }
 
 
@@ -46,8 +52,8 @@ def report(
     errors: tuple[str, ...] = (), unresolved: tuple[str, ...] = (), run_id: str = RUN_ID
 ) -> str:
     lines = [
-        "---", "title: Lint report", "maintainer: agent", f"maintenance_run: {run_id}",
-        f"updated: {time.strftime('%Y-%m-%d', time.gmtime())}", "---", "# Lint report",
+        "---", "title: Stub report", "maintainer: agent", f"{NONCE}: {run_id}",
+        f"updated: {time.strftime('%Y-%m-%d', time.gmtime())}", "---", "# Stub report",
         "## Outcome", f"errors: {len(errors)}", f"unresolved: {len(unresolved)}",
         "## Counts", "- broken wikilinks: 1 found, 1 fixed", "## Fixes",
         "- wiki/maint-broken.md: fixed [[wiki/missing-page]]", "## Errors",
@@ -70,8 +76,8 @@ async def read_or_none(c: Client, path: str) -> dict[str, Any] | None:
 
 
 async def write_report(c: Client, text: str) -> None:
-    current = await read_or_none(c, "_system/lint-report.md")
-    await call(c, "write", {"path": "_system/lint-report.md", "content": text,
+    current = await read_or_none(c, REPORT)
+    await call(c, "write", {"path": REPORT, "content": text,
                             "base_version": current["version"] if current else None})  # fmt: skip
 
 
@@ -96,6 +102,14 @@ async def main() -> None:
             except ToolError as exc:
                 seen["write"] = json.loads(str(exc))["code"]
             result["result"] = "# Preview\n\nWould fix 1 broken wikilink in wiki/maint-broken.md.\n"
+        elif MODE == "dream":  # corrects one page in scope against its source, then reports
+            page = await call(c, "read", {"path": DREAM_PAGE})
+            await call(c, "write", {"path": DREAM_PAGE,
+                                    "content": page["content"].replace("runs hourly", "runs nightly"),
+                                    "base_version": page["version"]})  # fmt: skip
+            await write_report(c, report())
+            await call(c, "append", {"path": "_system/log.md",
+                                     "text": f"- dream {RUN_ID} — 1 claim corrected (by maintenance-dream)\n"})  # fmt: skip
         elif MODE in ("ok", "unresolved"):
             page = await call(c, "read", {"path": "wiki/maint-broken.md"})
             await call(c, "write", {"path": "wiki/maint-broken.md",

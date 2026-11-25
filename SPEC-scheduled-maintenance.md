@@ -25,7 +25,7 @@ It replaces "agent-runner `LINT_CRON`" as the recommended path for deployments t
   - stored at `DATA_PATH/maintenance/token`, mode 600; setup also creates a read-scope preview credential for dry-run, so no-write preview is enforced by the server rather than only the prompt.
 
   All changes go through MCP, so they get policy checks, history, audit and the secret scan.
-- **Bookbot:** called at the end of the nightly job, after a successful or recovered backup, so the vault never changes before it is backed up. It also runs if the backup failed (`--after-backup-failure` notes it in the report), because maintenance doesn't depend on that night's archive.
+- **Bookbot:** called at the end of the nightly job, after a successful or recovered backup, so the vault never changes before it is backed up. It also runs if the backup failed (`--after-backup-failure` notes it in the report), because maintenance doesn't depend on that night's archive. After a successful backup and lint run, the same job runs `--dream` ([SPEC-dreaming.md](SPEC-dreaming.md)).
 - **Tools:** the vault MCP tools only (`mcp__vault__*`), plus `Read` confined to the temporary working folder using Claude Code restricted mode. Credential configuration is outside that folder.
 - **Limits:** `--max-budget-usd` (default 5) and a wall-clock timeout (default 45 min). The cost stop uses the CLI's client-side estimate and can overshoot by an in-flight request; it is not a hard billing cap. The maintenance token's normal rate limits apply.
 

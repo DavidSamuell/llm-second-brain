@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -106,6 +107,33 @@ def test_restore_deleted_restores_every_deleted_file_under_a_folder(
     out = capsys.readouterr().out
     assert "wiki/x.md" in out
     assert "wiki/sub/y.md" in out
+
+
+def test_changes_lists_json_and_leaves_out_an_excluded_credentials_writes(
+    env: tuple[Path, Path], capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = env[1]
+    store = HistoryStore(data)
+    store.record(
+        "wiki/by-dream.md", b"d", event="modify", source="mcp", ts=T0, audit_id="A1", kind="post"
+    )
+    store.record(
+        "wiki/by-lint.md", b"l", event="modify", source="mcp", ts=T0, audit_id="A2", kind="post"
+    )
+    seed(data, "wiki/by-person.md", b"p")
+    (data / "audit.log").write_text(
+        '{"id":"A1","credential_name":"maintenance-dream"}\nnot json\n'
+        '{"id":"A2","credential_name":"maintenance"}\n'
+    )
+    argv = ["history", "changes", "--since", "2026-01-01T11:00:00Z"]
+    assert main([*argv, "--exclude-credential", "maintenance-dream"]) == 0
+    changes = json.loads(capsys.readouterr().out)
+    assert sorted(c["path"] for c in changes) == ["wiki/by-lint.md", "wiki/by-person.md"]
+    assert set(changes[0]) == {"path", "first", "last", "sources", "gone"}
+    assert main(argv) == 0
+    assert len(json.loads(capsys.readouterr().out)) == 3
+    assert main(["history", "changes", "--since", "soon"]) == 1
+    assert "--since" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize(

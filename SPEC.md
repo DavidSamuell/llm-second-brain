@@ -403,8 +403,9 @@ Agents keep the whole documentation current and connected, and team members' age
 | `doc-authoring` | Agents write and update the human docs under `domains/<domain>/<project>/` and `shared/`; wiki links to them; `project_context` tool; `docs-capture` skill; AGENTS.md schema 2 (domain layout since schema 4) | write-policy, knowledge-graph | [SPEC-doc-authoring.md](SPEC-doc-authoring.md) |
 | `session-hooks` | Plugin hooks (Claude Code, omp; Codex if its CLI hooks work): project context at start, capture during the session, allowlisted repos only | doc-authoring | [SPEC-session-hooks.md](SPEC-session-hooks.md) |
 | `scheduled-maintenance` | Nightly host-cron agent after the backup: ingest queued sources, structural and semantic lint, fix, report; Slack alert on failure | doc-authoring, knowledge-graph | [SPEC-scheduled-maintenance.md](SPEC-scheduled-maintenance.md) |
+| `dreaming` | Second nightly pass over the pages changed since the last dream: verify claims against their sources, merge duplicates, keep project summaries short, record recurring patterns | scheduled-maintenance | [SPEC-dreaming.md](SPEC-dreaming.md) |
 
-Build order: `write-policy`, `knowledge-graph` → `doc-authoring` → `session-hooks`, `scheduled-maintenance`.
+Build order: `write-policy`, `knowledge-graph` → `doc-authoring` → `session-hooks`, `scheduled-maintenance` → `dreaming`.
 
 Decisions taken with the user (2026-11-17):
 

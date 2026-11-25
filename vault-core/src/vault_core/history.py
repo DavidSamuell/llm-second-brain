@@ -63,6 +63,18 @@ class Version:
         return parse_ts(self.ts)
 
 
+@dataclass(frozen=True)
+class Change:
+    """A path with versions in a time window: the first and last of them, who made them, and
+    whether the file is gone now (deleted or moved away)."""
+
+    path: str
+    first: str
+    last: str
+    sources: tuple[str, ...]
+    gone: bool
+
+
 class HistoryStore:
     def __init__(self, data_dir: Path) -> None:
         self.root = data_dir / "history"
@@ -184,6 +196,37 @@ class HistoryStore:
             if not f.relative_to(self.root).parts[0].startswith(".")
         }
         return sorted(paths)
+
+    def changes_since(self, since: datetime, *, exclude_audit_ids: frozenset[str] = frozenset()
+                      ) -> list[Change]:  # fmt: skip
+        """Paths with a version at or after `since`, oldest last change first. Versions written
+        by an excluded audit id don't count, except the web pre-image recorded with such a write:
+        that is a person's edit."""
+        cutoff = format_ts(since)
+        candidates = {
+            str(f.parent.relative_to(self.root))
+            for f in self.root.rglob("*.json")
+            if f.stem >= cutoff and not f.relative_to(self.root).parts[0].startswith(".")
+        }
+        changes = []
+        for path in candidates:
+            versions = self.versions(path)
+            window = [
+                v for v in versions
+                if v.ts >= cutoff and (v.audit_id not in exclude_audit_ids or v.kind == "pre")
+            ]  # fmt: skip
+            if not window:
+                continue
+            changes.append(
+                Change(
+                    path=path,
+                    first=window[0].ts,
+                    last=window[-1].ts,
+                    sources=tuple(sorted({v.source for v in window})),
+                    gone=versions[-1].sha256 is None,
+                )
+            )
+        return sorted(changes, key=lambda c: (c.last, c.path))
 
     def deleted_under(self, prefix: str) -> dict[str, bytes]:
         """Files under `prefix` whose newest version is a delete, with their last content.

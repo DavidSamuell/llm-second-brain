@@ -493,7 +493,7 @@ All changes go through vault-mcp with the `maintenance` token, so they get the p
 scripts/maintenance --setup --owner admin@example.com
 ```
 
-It creates two tokens with `scripts/token`: `maintenance` (scope `write`) in `DATA_PATH/maintenance/token` and `maintenance-preview` (scope `read`, for `--dry-run`) in `DATA_PATH/maintenance/preview-token`, both mode `0600` and never expiring. Running it again keeps existing tokens. If a token file is lost, setup revokes only that credential and creates a new one; other tokens and OAuth grants are never touched. `--owner` defaults to `maintenance@<DOMAIN>`.
+It creates three tokens with `scripts/token`: `maintenance` (scope `write`) in `DATA_PATH/maintenance/token`, `maintenance-dream` (scope `write`, for `--dream`) in `DATA_PATH/maintenance/dream-token` and `maintenance-preview` (scope `read`, for `--dry-run`) in `DATA_PATH/maintenance/preview-token`, all mode `0600` and never expiring. Running it again keeps existing tokens and adds any that are missing, so deployments set up before dreaming only need to run it once more. If a token file is lost, setup revokes only that credential and creates a new one; other tokens and OAuth grants are never touched. `--owner` defaults to `maintenance@<DOMAIN>`.
 
 **Preview first:**
 
@@ -503,11 +503,11 @@ scripts/maintenance --dry-run
 
 The agent reads the vault with the read-only preview token and writes what it would do to `DATA_PATH/maintenance/<date>-preview-<run>.md`. vault-mcp refuses any write, so nothing in the vault changes: no ingest, no fixes, no report, no log line. A failed preview exits 1 and sends the same failure alert as a scheduled run.
 
-**Cron** (host crontab of the same user): run maintenance after the backup, also when the backup failed, because maintenance doesn't depend on that night's archive:
+**Cron** (host crontab of the same user): run maintenance after the backup, also when the backup failed, because maintenance doesn't depend on that night's archive. Dream only after a successful backup and lint run:
 
 ```bash
 # crontab -e
-0 0 * * * cd /path/to/docs-vault-kit && { if scripts/backup --out /mnt/backups; then scripts/maintenance; else scripts/maintenance --after-backup-failure; fi; } >> /var/log/docs-vault-nightly.log 2>&1
+0 0 * * * cd /path/to/docs-vault-kit && { if scripts/backup --out /mnt/backups; then scripts/maintenance && scripts/maintenance --dream; else scripts/maintenance --after-backup-failure; fi; } >> /var/log/docs-vault-nightly.log 2>&1
 ```
 
 `--after-backup-failure` asks the agent to note the failed backup in the report. The backup failure itself is reported by your backup job, not by maintenance.
@@ -536,7 +536,26 @@ Coverage is bounded: a large vault or a long `raw/` queue may not fit in the bud
 
 **Logs:** `DATA_PATH/maintenance/<UTC date>.log` (mode `0600`) has one line per step, the reported cost (or "cost unavailable"), the agent's final text, and on failure the end of its error output, with tokens redacted. Runs never overlap: a run that starts while another is going logs "skipped" and exits 0.
 
-**Custom agent:** `MAINTENANCE_AGENT_COMMAND` replaces Claude Code (the e2e tests use it). It runs with `bash -c` in the working folder and gets `MAINTENANCE_MCP_CONFIG` (path of the `0600` MCP config holding the token), `MAINTENANCE_PROMPT_FILE`, `MAINTENANCE_RUN_ID`, `MAINTENANCE_DRY_RUN`, `MAINTENANCE_MAX_SOURCES`, `MAINTENANCE_MAX_BUDGET_USD` and `MAINTENANCE_AFTER_BACKUP_FAILURE`. It must print a Claude Code style result object (`{"type": "result", "subtype": "success", "is_error": false, "total_cost_usd": …, "result": "…"}`). It is trusted configuration: it has whatever tools it gives itself.
+**Custom agent:** `MAINTENANCE_AGENT_COMMAND` replaces Claude Code (the e2e tests use it). It runs with `bash -c` in the working folder and gets `MAINTENANCE_MCP_CONFIG` (path of the `0600` MCP config holding the token), `MAINTENANCE_PROMPT_FILE`, `MAINTENANCE_RUN_ID`, `MAINTENANCE_DRY_RUN`, `MAINTENANCE_STAGE` (`lint` or `dream`), `MAINTENANCE_REPORT` (the report path to write), `MAINTENANCE_MAX_SOURCES`, `MAINTENANCE_MAX_BUDGET_USD` and `MAINTENANCE_AFTER_BACKUP_FAILURE`. It must print a Claude Code style result object (`{"type": "result", "subtype": "success", "is_error": false, "total_cost_usd": …, "result": "…"}`). It is trusted configuration: it has whatever tools it gives itself.
+
+### Dreaming (after nightly maintenance)
+
+Lint keeps the vault consistent; `scripts/maintenance --dream` keeps it correct and small ([SPEC-dreaming.md](../SPEC-dreaming.md)). It is a second agent run that looks back at the pages changed since the last dream (by people in the browser, by agents, by git or restores) and:
+
+1. checks each changed page's claims against the sources it cites, and corrects or flags what doesn't match;
+2. merges duplicate agent-maintained wiki pages and folds thin ones into the page about the same thing (the other page is archived with a "Superseded by" link; nothing is deleted), and repoints links to missing pages;
+3. keeps each touched project's `README.md` `## Summary` (900 characters) and `## Status` (180) short and current, because `project_context` loads them at the start of every session;
+4. records an incident, workaround or rule that two or more recent sources repeat on the right page;
+5. writes `_system/dream-report.md` and a `_system/log.md` line.
+
+The script, not the agent, picks the pages: `scripts/history changes` lists every page under `domains/`, `shared/`, `wiki/` and `Home.md` changed since the start of the last successful dream (`DATA_PATH/maintenance/dream-since`; 7 days on the first run, or `--since`), leaving out the dream's own edits, which it makes with its own `maintenance-dream` token. Oldest change first, at most `--max-pages` (default 40); the rest are next night's. When nothing changed, no agent starts and the run costs nothing. `maintainer: human` pages and decision records are never edited: the dream files a review item.
+
+```bash
+scripts/maintenance --dream --dry-run   # preview with the read-only token, kept in DATA_PATH/maintenance/<date>-dream-preview-<run>.md
+scripts/maintenance --dream             # one dream
+```
+
+`--max-budget-usd` defaults to `7` and the timeout to `60m` for a dream; `MAINTENANCE_MAX_TURNS` defaults to `500`. Outcome and logs work as for the lint run, with `dream_run:` in the report. A failed dream sends one `dream_failed` (high) alert and keeps its window, so the next dream retries the same pages; only a successful dream moves `dream-since`. Session transcripts are not used: the server never receives them.
 
 ## 13. Everyday commands
 

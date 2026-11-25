@@ -1,4 +1,4 @@
-"""`vault-watcher` command line (SPEC §7): `run`, `history list|restore|restore-deleted`,
+"""`vault-watcher` command line (SPEC §7): `run`, `history list|restore|restore-deleted|changes`,
 `reindex`. The scripts in `scripts/` run these inside the vault-watcher container."""
 
 from __future__ import annotations
@@ -8,6 +8,7 @@ import logging
 import signal
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType
@@ -115,7 +116,7 @@ def _vault_path(raw: str) -> str:
         raise CliError(f"invalid path: {exc}") from None
 
 
-def _parse_at(text: str) -> datetime:
+def _parse_at(text: str, option: str = "--at") -> datetime:
     """Accept a timestamp as listed by `history list` (20261109T120000.000000Z) or ISO 8601."""
     try:
         return parse_ts(text)
@@ -125,7 +126,7 @@ def _parse_at(text: str) -> datetime:
         dt = datetime.fromisoformat(text)
     except ValueError:
         raise CliError(
-            f"invalid --at {text!r}: use ISO 8601 (2026-11-09T12:00:00Z) or a listed timestamp"
+            f"invalid {option} {text!r}: use ISO 8601 (2026-11-09T12:00:00Z) or a listed timestamp"
         ) from None
     return dt.replace(tzinfo=UTC) if dt.tzinfo is None else dt.astimezone(UTC)
 
@@ -217,6 +218,32 @@ def _cmd_restore_deleted(settings: WatcherSettings, args: argparse.Namespace) ->
         print(f"restored {rel}")
         restored += 1
     print(f"{restored} deleted files restored under {prefix or '(vault root)'}", file=sys.stderr)
+    return 0
+
+
+def _audit_ids(data_dir: Path, credentials: Sequence[str]) -> frozenset[str]:
+    """Audit ids of calls made by the named credentials (unreadable lines are skipped)."""
+    wanted, ids = set(credentials), set()
+    audit = data_dir / "audit.log"
+    if not wanted or not audit.is_file():
+        return frozenset()
+    with audit.open(encoding="utf-8", errors="replace") as lines:
+        for line in lines:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(entry, dict) and entry.get("credential_name") in wanted:
+                ids.add(str(entry.get("id")))
+    return frozenset(ids)
+
+
+def _cmd_changes(settings: WatcherSettings, args: argparse.Namespace) -> int:
+    excluded = _audit_ids(settings.data_dir, args.exclude_credential)
+    changes = HistoryStore(settings.data_dir).changes_since(
+        _parse_at(args.since, "--since"), exclude_audit_ids=excluded
+    )
+    print(json.dumps([asdict(c) for c in changes]))
     return 0
 
 
@@ -342,6 +369,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     deleted.add_argument("folder")
     deleted.set_defaults(handler=_cmd_restore_deleted)
+    changes = history_cmds.add_parser(
+        "changes", help="JSON list of paths changed at or after --since, oldest change first"
+    )
+    changes.add_argument("--since", required=True, help="UTC time, ISO 8601 or a listed timestamp")
+    changes.add_argument(
+        "--exclude-credential", action="append", default=[], metavar="NAME",
+        help="leave out versions written by this credential (repeatable)",
+    )  # fmt: skip
+    changes.set_defaults(handler=_cmd_changes)
 
     reindex = commands.add_parser("reindex", help="rebuild the search index from the vault")
     reindex.set_defaults(handler=_cmd_reindex)

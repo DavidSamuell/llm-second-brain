@@ -2,17 +2,23 @@
 # Nightly vault maintenance on the host (SPEC-scheduled-maintenance, plan D45): ingest raw/, run
 # the structural and semantic lint, fix what agents may fix, write _system/lint-report.md, and
 # alert (maintenance_failed, high) when the run fails. Run it from cron after scripts/backup.
+# --dream is the second nightly pass (SPEC-dreaming): check the pages changed since the last
+# dream against their sources, merge duplicates, keep project summaries short, record recurring
+# patterns, write _system/dream-report.md, and alert (dream_failed, high) when it fails.
 #
 #   scripts/maintenance --setup [--owner admin@example.com]   create the maintenance tokens
 #   scripts/maintenance [--max-budget-usd 5] [--max-sources 30] [--timeout 45m]
 #                       [--after-backup-failure]              one run (what cron calls)
-#   scripts/maintenance --dry-run                             read-only preview, kept locally
+#   scripts/maintenance --dream [--max-budget-usd 7] [--max-pages 40] [--timeout 60m]
+#                       [--since 2026-11-24T00:00:00Z]        one dream, after the lint run
+#   scripts/maintenance [--dream] --dry-run                   read-only preview, kept locally
 #
 # Environment (each also read as a plain KEY=value line from ENV_FILE, default .env; .env is
 # never sourced): DATA_PATH, MCP_PORT, BIND_ADDR, ALERT_WEBHOOK. Optional: MAINTENANCE_MCP_URL
 # (default http://<BIND_ADDR or 127.0.0.1>:<MCP_PORT>/mcp), MAINTENANCE_MODEL,
-# MAINTENANCE_MAX_TURNS (300), MAINTENANCE_TIMEOUT, MAINTENANCE_AGENT_COMMAND (trusted operator
-# or test command that replaces Claude Code; see docs/SETUP.md). Never run as root.
+# MAINTENANCE_MAX_TURNS (300; 500 for --dream), MAINTENANCE_TIMEOUT, MAINTENANCE_AGENT_COMMAND
+# (trusted operator or test command that replaces Claude Code; see docs/SETUP.md). Never run as
+# root.
 set -euo pipefail
 
 KIT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -29,28 +35,42 @@ env_value() {  # env_value KEY DEFAULT: from the environment, else ENV_FILE, els
 }
 
 MODE=run
+STAGE=lint
 OWNER=${MAINTENANCE_OWNER:-}
-BUDGET=5
+BUDGET=
 MAX_SOURCES=30
-TIMEOUT=${MAINTENANCE_TIMEOUT:-45m}
+MAX_PAGES=40
+SINCE=
+TIMEOUT=${MAINTENANCE_TIMEOUT:-}
 AFTER_BACKUP_FAILURE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --setup) MODE=setup ;;
     --dry-run) MODE=dry-run ;;
+    --dream) STAGE=dream ;;
+    --max-pages) MAX_PAGES=${2:?--max-pages needs a number}; shift ;;
+    --since) SINCE=${2:?--since needs a UTC time}; shift ;;
     --owner) OWNER=${2:?--owner needs an email}; shift ;;
     --max-budget-usd) BUDGET=${2:?--max-budget-usd needs an amount}; shift ;;
     --max-sources) MAX_SOURCES=${2:?--max-sources needs a number}; shift ;;
     --timeout) TIMEOUT=${2:?--timeout needs a duration}; shift ;;
     --after-backup-failure) AFTER_BACKUP_FAILURE=1 ;;
-    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
 done
+if [ "$STAGE" = dream ]; then
+  BUDGET=${BUDGET:-7} TIMEOUT=${TIMEOUT:-60m} DEFAULT_TURNS=500
+else
+  BUDGET=${BUDGET:-5} TIMEOUT=${TIMEOUT:-45m} DEFAULT_TURNS=300
+fi
 [[ $BUDGET =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--max-budget-usd must be a number of dollars"
 [[ $MAX_SOURCES =~ ^[0-9]+$ ]] || die "--max-sources must be a whole number"
+[[ $MAX_PAGES =~ ^[1-9][0-9]*$ ]] || die "--max-pages must be a whole number above 0"
 [[ $TIMEOUT =~ ^[1-9][0-9]*[smh]?$ ]] || die "--timeout must look like 45m, 3600 or 30s"
+[ -z "$SINCE" ] || [[ $SINCE =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]+Z$ ]] \
+  || die "--since must be a UTC time like 2026-11-24T00:00:00Z"
 [ "$(id -u)" != 0 ] || die "never run as root; use the user that owns DATA_PATH"
 
 DATA=$(env_value DATA_PATH "")
@@ -59,13 +79,17 @@ DATA=$(env_value DATA_PATH "")
 STATE=$DATA/maintenance
 WRITE_TOKEN_FILE=$STATE/token
 PREVIEW_TOKEN_FILE=$STATE/preview-token
+DREAM_TOKEN_FILE=$STATE/dream-token
+DREAM_SINCE_FILE=$STATE/dream-since
+DREAM_CREDENTIAL=maintenance-dream
 umask 077
 mkdir -p "$STATE"
 chmod 700 "$STATE"
 TOKEN_RE='^vmcp_[A-Za-z0-9_-]{43}$'
 
 # -- setup -----------------------------------------------------------------------------------------
-# Two credentials, each touched only by name: `maintenance` (write) for nightly runs and
+# Three credentials, each touched only by name: `maintenance` (write) for the nightly lint run,
+# `maintenance-dream` (write) for the dream, so its own edits can be told apart in history, and
 # `maintenance-preview` (read) for --dry-run, so a preview can't change the vault even if the
 # agent tries. Other tokens and OAuth grants are never revoked or changed.
 setup_token() {  # setup_token NAME SCOPE FILE
@@ -99,12 +123,14 @@ if [ "$MODE" = setup ]; then
     OWNER=maintenance@${domain:-localhost}
   fi
   setup_token maintenance write "$WRITE_TOKEN_FILE"
+  setup_token "$DREAM_CREDENTIAL" write "$DREAM_TOKEN_FILE"
   setup_token maintenance-preview read "$PREVIEW_TOKEN_FILE"
   exit 0
 fi
 
 # -- one run ---------------------------------------------------------------------------------------
 RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')
+RUN_START=$(date -u +%FT%T.%6NZ)
 TODAY=$(date -u +%F)
 LOG=$STATE/$TODAY.log
 export ALERT_SERVICE=maintenance ALERT_STATE_DIR=$STATE/alerts
@@ -113,7 +139,13 @@ export ALERT_WEBHOOK
 # shellcheck source=scripts/lib/alert.sh
 source "$KIT/scripts/lib/alert.sh"
 
-log() { printf '%s maintenance[%s]: %s\n' "$(date -u +%FT%TZ)" "$RUN_ID" "$*" | tee -a "$LOG" >&2; }
+if [ "$STAGE" = dream ]; then
+  WHAT=dream EVENT=dream_failed REPORT=_system/dream-report.md NONCE_KEY=dream_run
+else
+  WHAT=maintenance EVENT=maintenance_failed REPORT=_system/lint-report.md NONCE_KEY=maintenance_run
+fi
+
+log() { printf '%s %s[%s]: %s\n' "$(date -u +%FT%TZ)" "$WHAT" "$RUN_ID" "$*" | tee -a "$LOG" >&2; }
 redact() { sed -E 's/vmcp_[A-Za-z0-9_-]{8,}/vmcp_[redacted]/g'; }
 
 PRIV="" WORK="" DECIDED=0
@@ -123,8 +155,8 @@ cleanup() {
   [ -z "$WORK" ] || rm -rf "$WORK"
   if [ "$DECIDED" = 0 ] && [ "$status" != 0 ]; then
     log "failed: the script stopped unexpectedly (exit $status)"
-    send_alert maintenance_failed high \
-      "Nightly maintenance failed: the script stopped unexpectedly (exit $status). Log: $LOG" "$RUN_ID"
+    send_alert "$EVENT" high \
+      "Nightly $WHAT failed: the script stopped unexpectedly (exit $status). Log: $LOG" "$RUN_ID"
   fi
 }
 trap cleanup EXIT
@@ -133,7 +165,7 @@ trap 'exit 143' TERM INT HUP
 fail() {  # fail REASON: log, one alert per failed run, exit 1
   DECIDED=1
   log "failed: $1"
-  send_alert maintenance_failed high "Nightly maintenance failed: $1. Log: $LOG" "$RUN_ID"
+  send_alert "$EVENT" high "Nightly $WHAT failed: $1. Log: $LOG" "$RUN_ID"
   exit 1
 }
 
@@ -144,7 +176,9 @@ if ! flock -n 9; then
   exit 0
 fi
 
-if [ "$MODE" = dry-run ]; then TOKEN_FILE=$PREVIEW_TOKEN_FILE; else TOKEN_FILE=$WRITE_TOKEN_FILE; fi
+if [ "$MODE" = dry-run ]; then TOKEN_FILE=$PREVIEW_TOKEN_FILE
+elif [ "$STAGE" = dream ]; then TOKEN_FILE=$DREAM_TOKEN_FILE
+else TOKEN_FILE=$WRITE_TOKEN_FILE; fi
 [ -s "$TOKEN_FILE" ] || fail "no token at $TOKEN_FILE (run scripts/maintenance --setup)"
 [ "$(stat -c %a "$TOKEN_FILE")" = 600 ] || fail "$TOKEN_FILE must be mode 600"
 TOKEN=$(head -n1 "$TOKEN_FILE")
@@ -194,7 +228,6 @@ mcp_connect() {
   mcp_post '{"jsonrpc":"2.0","method":"notifications/initialized"}' notify
 }
 
-REPORT=_system/lint-report.md
 REPORT_VERSION=
 report_state() {  # report_state: sets REPORT_VERSION ("absent" if missing), saves the report text
   local req result code
@@ -212,10 +245,48 @@ report_state() {  # report_state: sets REPORT_VERSION ("absent" if missing), sav
   REPORT_VERSION=$(jq -r '.version // "unknown"' <<<"$result")
 }
 
-log "started (${MODE}; budget \$$BUDGET, max sources $MAX_SOURCES, timeout $TIMEOUT)"
+if [ "$STAGE" = dream ]; then
+  log "started (dream ${MODE}; budget \$$BUDGET, max pages $MAX_PAGES, timeout $TIMEOUT)"
+else
+  log "started (${MODE}; budget \$$BUDGET, max sources $MAX_SOURCES, timeout $TIMEOUT)"
+fi
 [ "$AFTER_BACKUP_FAILURE" = 0 ] || log "tonight's backup failed; maintenance runs anyway and notes it in the report"
 report_state || fail "$MCP_ERROR"
 BEFORE=$REPORT_VERSION
+
+# -- dream scope: pages changed since the last successful dream, decided here, not by the agent ----
+set_dream_since() {  # set_dream_since TIME: only after a successful real dream
+  local tmp
+  tmp=$(mktemp "$STATE/.dream-since.XXXXXX")
+  printf '%s\n' "$1" > "$tmp"
+  mv "$tmp" "$DREAM_SINCE_FILE"
+}
+if [ "$STAGE" = dream ]; then
+  if [ -z "$SINCE" ] && [ -s "$DREAM_SINCE_FILE" ]; then SINCE=$(head -n1 "$DREAM_SINCE_FILE"); fi
+  [ -n "$SINCE" ] || SINCE=$(date -u -d '7 days ago' +%FT%TZ)
+  changes=$("$KIT/scripts/history" changes --since "$SINCE" \
+    --exclude-credential "$DREAM_CREDENTIAL" 2>"$PRIV/history.err") \
+    || fail "could not list changes since $SINCE: $(tail -n1 "$PRIV/history.err" | redact)"
+  # Pages people and agents read; never _system/, raw/, skills/, rules, templates or deleted files.
+  changed=$(jq -c '[.[] | select(.gone | not)
+    | select(.path | test("^((domains|shared|wiki)/.*|Home)\\.md$"))]' <<<"$changes") \
+    || fail "vault-watcher listed changes in an unreadable form"
+  total=$(jq 'length' <<<"$changed")
+  if [ "$total" = 0 ]; then
+    DECIDED=1
+    [ "$MODE" = dry-run ] || set_dream_since "$RUN_START"
+    log "done: nothing changed since $SINCE; no dream needed"
+    exit 0
+  fi
+  # Oldest change first; what doesn't fit tonight starts the next window.
+  NEXT_SINCE=$RUN_START
+  if [ "$total" -gt "$MAX_PAGES" ]; then
+    NEXT_SINCE=$(jq -r --argjson n "$MAX_PAGES" '.[$n].last' <<<"$changed")
+    log "$total pages changed; dreaming over the oldest $MAX_PAGES, the rest from $NEXT_SINCE next time"
+  fi
+  scope=$(jq -r --argjson n "$MAX_PAGES" '.[:$n][] | "- \(.path) (last changed \(.last[0:4])-\(.last[4:6])-\(.last[6:8]) \(.last[9:11]):\(.last[11:13]) UTC, by \(.sources | join(", ")))"' <<<"$changed")
+  pages=$(grep -c '^- ' <<<"$scope")
+fi
 
 # -- the agent's working folder and prompt ---------------------------------------------------------
 mkdir -p "$WORK/skills"
@@ -238,7 +309,101 @@ rules="Rules for this run:
 - On conflict re-read and re-apply; on recently_edited wait details.retry_after_s; on rate_limited
   wait details.retry_after_s; on forbidden add a review item instead."
 
-if [ "$MODE" = dry-run ]; then
+if [ "$STAGE" = dream ]; then
+  dream_task="Scope: these $pages page(s) changed since $SINCE (by people, agents or restores),
+oldest change first. Work on them and on the pages the steps below name; leave the rest alone.
+$scope
+
+1. Verify. For each page in scope, read it and every source it cites (wiki/sources/ summaries and
+   the raw/_processed/ file each summary names). Compare each factual claim with its source:
+   - the source contradicts it: correct the claim and keep the citation;
+   - no cited source supports it: on a maintainer: agent page move it under ## Open questions,
+     marked (unconfirmed); on any other page add a review item;
+   - repository citations (repo@commit:path) can't be opened from the vault: leave them and
+     count them as not checkable.
+2. Consolidate the pages in scope and their one-hop graph_neighbors:
+   - two maintainer: agent wiki pages about the same thing: merge into the older one (every
+     fact, citation and graph edge kept), rewrite the other as a short page with
+     status: archived and \"Superseded by [[<survivor>]]\", and repoint its backlinks;
+   - a thin maintainer: agent page (a sentence or two) another page already covers: fold it in
+     the same way;
+   - a wikilink to a page that doesn't exist, when an existing page covers the same thing:
+     repoint it.
+   Duplicates that involve human docs (domains/, shared/) get a review item instead.
+3. Promote. For each project whose docs are in scope (project: frontmatter or project_context),
+   keep its README.md ## Summary within 900 characters and ## Status within 180: project_context
+   shows them at the start of every session. Move detail into the project's docs and leave a
+   link; never drop a fact. Use replace_section with a summary.
+4. Patterns. read(\"_system/log.md\") and look at the last 7 days. When two or more sources
+   record the same incident, workaround or rule and no runbook or wiki page states it, add it
+   to the right page (a component page or the project's runbook), citing every source.
+5. Never edit a maintainer: human page or a decision record: add a review item. Don't create
+   domains. Change what a page says only on a cited source. A page that needs nothing is fine."
+  if [ "$MODE" = dry-run ]; then
+    prompt="You are the docs vault's nightly dream agent, in PREVIEW mode (run $RUN_ID).
+Dreaming looks back at what changed since the last dream and keeps the vault correct and small.
+Your credential is read-only: any write is refused. Don't call write, append, replace_section,
+insert_after, move, review_queue_add, submit_source, claim_source, complete_source or
+release_source.
+
+$skills
+
+$rules
+
+Preview steps 1-5 below with reads only. Finish with the report you would have written, in
+Markdown, as your final message: counts, each change you would make (page, change, source) and
+each review item you would file.
+
+$dream_task"
+  else
+    prompt="You are the docs vault's nightly dream agent (run $RUN_ID). Work through vault-mcp only.
+Lint has already run tonight. Dreaming looks back at what changed since the last dream, with
+hindsight, and keeps the vault correct and small.
+
+$skills
+
+$rules
+
+$dream_task
+6. Report: write $REPORT (pass its current base_version, or null if it doesn't exist) in exactly
+   this shape:
+
+   ---
+   title: Dream report
+   maintainer: agent
+   dream_run: $RUN_ID
+   updated: $TODAY
+   ---
+   # Dream report $TODAY
+   ## Outcome
+   errors: <number of lines under ## Errors>
+   unresolved: <number of lines under ## Unresolved>
+   ## Counts
+   - pages in scope: $pages
+   - claims checked: <n>
+   - claims corrected: <n>
+   - claims not checkable: <n>
+   - unsupported claims flagged: <n>
+   - pages merged or folded: <n>
+   - links repointed: <n>
+   - project summaries tightened: <n>
+   - patterns recorded: <n>
+   - review items filed: <n>
+   ## Changes
+   - <page>: <what changed and why, with the source>
+   ## Review items filed
+   - <page>: <issue>
+   ## Errors
+   - error: <step>: <what could not be done at all, e.g. a tool kept failing>
+   ## Unresolved
+   - unresolved: <page>: <finding you could not fix> (review item filed)
+
+   Keep the dream_run line exactly as given. List a step under ## Errors only when it could not
+   be carried out; findings you couldn't fix go under ## Unresolved.
+7. append(\"_system/log.md\", \"- <UTC time> dream $RUN_ID — <counts> (by maintenance-dream)\\n\").
+Finish with one line: SUMMARY: <claims corrected, pages merged, summaries tightened, review items>."
+  fi
+elif [ "$MODE" = dry-run ]; then
   prompt="You are the docs vault's nightly maintenance agent, in PREVIEW mode (run $RUN_ID).
 Your credential is read-only: any write is refused. Don't call write, append, replace_section,
 insert_after, move, review_queue_add, submit_source, claim_source, complete_source or
@@ -327,6 +492,7 @@ if [ -n "${MAINTENANCE_AGENT_COMMAND:-}" ]; then
   (cd "$WORK" && env -u ALERT_WEBHOOK \
     MAINTENANCE_MCP_CONFIG="$PRIV/mcp.json" MAINTENANCE_PROMPT_FILE="$WORK/prompt.md" \
     MAINTENANCE_RUN_ID="$RUN_ID" MAINTENANCE_DRY_RUN="$([ "$MODE" = dry-run ] && echo 1 || echo 0)" \
+    MAINTENANCE_STAGE="$STAGE" MAINTENANCE_REPORT="$REPORT" \
     MAINTENANCE_MAX_SOURCES="$MAX_SOURCES" MAINTENANCE_MAX_BUDGET_USD="$BUDGET" \
     MAINTENANCE_AFTER_BACKUP_FAILURE="$AFTER_BACKUP_FAILURE" \
     timeout -k 30 "$TIMEOUT" bash -c "$MAINTENANCE_AGENT_COMMAND") 9>&- > "$OUT" 2> "$ERR" || status=$?
@@ -341,7 +507,7 @@ else
         --tools Read --allowedTools "mcp__vault__*"
         --disallowedTools "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch"
         --permission-mode dontAsk --permission-prompts none
-        --max-budget-usd "$BUDGET" --max-turns "${MAINTENANCE_MAX_TURNS:-300}")
+        --max-budget-usd "$BUDGET" --max-turns "${MAINTENANCE_MAX_TURNS:-$DEFAULT_TURNS}")
   if [ "$MODE" = dry-run ]; then
     args+=(--disallowedTools "mcp__vault__write,mcp__vault__append,mcp__vault__replace_section,mcp__vault__insert_after,mcp__vault__move,mcp__vault__review_queue_add,mcp__vault__submit_source,mcp__vault__claim_source,mcp__vault__complete_source,mcp__vault__release_source")
   fi
@@ -381,8 +547,9 @@ report_state || fail "after the run: $MCP_ERROR"
 AFTER=$REPORT_VERSION
 
 if [ "$MODE" = dry-run ]; then
-  [ "$AFTER" = "$BEFORE" ] || fail "the lint report changed during a dry run"
-  preview=$STATE/$TODAY-preview-$RUN_ID.md
+  [ "$AFTER" = "$BEFORE" ] || fail "$REPORT changed during a dry run"
+  if [ "$STAGE" = dream ]; then preview=$STATE/$TODAY-dream-preview-$RUN_ID.md
+  else preview=$STATE/$TODAY-preview-$RUN_ID.md; fi
   redact <<<"$final" > "$preview"
   DECIDED=1
   log "dry run done; preview in $preview (nothing was written to the vault)"
@@ -392,8 +559,8 @@ fi
 # -- outcome: judged from the report read back through vault-mcp, not the agent's word ------------
 [ "$AFTER" != absent ] || fail "the agent wrote no $REPORT"
 [ "$AFTER" != "$BEFORE" ] || fail "$REPORT was not rewritten this run"
-grep -qxF "maintenance_run: $RUN_ID" "$PRIV/report.md" \
-  || fail "$REPORT is not from this run (no maintenance_run: $RUN_ID line)"
+grep -qxF "$NONCE_KEY: $RUN_ID" "$PRIV/report.md" \
+  || fail "$REPORT is not from this run (no $NONCE_KEY: $RUN_ID line)"
 declared_errors=$(sed -nE 's/^errors:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$PRIV/report.md" | head -n1)
 declared_unresolved=$(sed -nE 's/^unresolved:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$PRIV/report.md" | head -n1)
 if [ -z "$declared_errors" ] || [ -z "$declared_unresolved" ]; then
@@ -409,6 +576,8 @@ unresolved=$declared_unresolved
 if [[ $errors =~ [1-9] ]]; then fail "$REPORT lists $errors error(s)"; fi
 
 DECIDED=1
+# Tonight's pages are done; a failed dream returned above, so they stay in scope next night.
+[ "$STAGE" != dream ] || set_dream_since "$NEXT_SINCE"
 if [[ $unresolved =~ [1-9] ]]; then
   log "done: unresolved ($unresolved finding(s) left for the review queue; report $REPORT)"
 else

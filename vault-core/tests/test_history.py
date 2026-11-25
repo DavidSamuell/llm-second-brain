@@ -92,6 +92,49 @@ def test_tombstones_let_deleted_files_be_restored(store: HistoryStore) -> None:
     assert set(store.deleted_under("")) == {"wiki/gone.md", "projects/other.md"}
 
 
+def test_changes_since_lists_each_path_changed_in_the_window(store: HistoryStore) -> None:
+    store.record("wiki/old.md", b"o", event="create", source="web", ts=T0 - timedelta(days=1))
+    store.record("wiki/a.md", b"a0", event="create", source="web", ts=T0 - timedelta(hours=1))
+    store.record("wiki/a.md", b"a1", event="modify", source="mcp", ts=T0 + timedelta(hours=2))
+    store.record("wiki/a.md", b"a2", event="modify", source="web", ts=T0 + timedelta(hours=3))
+    store.record("wiki/b.md", b"b", event="create", source="git", ts=T0)  # at `since`: included
+    store.record("wiki/gone.md", b"g", event="create", source="web", ts=T0 + timedelta(hours=1))
+    store.record("wiki/gone.md", None, event="delete", source="web", ts=T0 + timedelta(hours=4))
+    changes = store.changes_since(T0)
+    assert [c.path for c in changes] == ["wiki/b.md", "wiki/a.md", "wiki/gone.md"]  # oldest last
+    a = changes[1]
+    assert (a.first, a.last) == (
+        format_ts(T0 + timedelta(hours=2)),
+        format_ts(T0 + timedelta(hours=3)),
+    )
+    assert a.sources == ("mcp", "web") and not a.gone
+    assert changes[2].gone
+
+
+def test_changes_since_skips_excluded_writes_but_keeps_the_web_edit_before_them(
+    store: HistoryStore,
+) -> None:
+    store.record(
+        "wiki/self.md", b"s", event="modify", source="mcp", ts=T0, audit_id="D1", kind="post"
+    )
+    store.record(
+        "wiki/both.md", b"p", event="modify", source="web", ts=T0, audit_id="D2", kind="pre"
+    )
+    store.record(
+        "wiki/both.md", b"q", event="modify", source="mcp", ts=T0, audit_id="D2", kind="post"
+    )
+    store.record(
+        "wiki/other.md", b"o", event="modify", source="mcp", ts=T0, audit_id="X1", kind="post"
+    )
+    changes = store.changes_since(
+        T0 - timedelta(minutes=1), exclude_audit_ids=frozenset({"D1", "D2"})
+    )
+    assert {c.path: c.sources for c in changes} == {
+        "wiki/both.md": ("web",),
+        "wiki/other.md": ("mcp",),
+    }
+
+
 def test_gc_keeps_min_versions_regardless_of_age(store: HistoryStore, tmp_path: Path) -> None:
     for i in range(12):
         store.record(

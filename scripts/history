@@ -3,6 +3,7 @@
 #   scripts/history list <path>
 #   scripts/history restore <path> [--at <timestamp>]
 #   scripts/history restore-deleted <folder>
+#   scripts/history changes --since <UTC time> [--exclude-credential <name>]   JSON, for --dream
 #
 # Runs inside the vault-watcher container, so the host needs only docker.
 set -euo pipefail
