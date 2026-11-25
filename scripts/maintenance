@@ -321,6 +321,11 @@ $scope
    summaries and the raw/_processed/ file each summary names). Compare each factual claim with
    its source:
    - the source contradicts it: correct the claim and keep the citation;
+   - a NEWER source about the same subject changed the fact (look at the page's backlinks,
+     graph_neighbors and a search on its subject; source summaries are dated): on a page that
+     is not itself a source summary, update the claim, cite the newer source, and keep the old
+     fact only as dated history (\"until 2026-11-23, …\"). Source summaries record what their
+     source said: never rewrite them to match later events;
    - no cited source supports it: on a maintainer: agent page move it under ## Open questions,
      marked (unconfirmed); on any other page add a review item;
    - repository citations (repo@commit:path) can't be opened from the vault: leave them and
